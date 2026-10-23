@@ -1,0 +1,135 @@
+<main class="page">
+  <p
+    class="state"
+    aria-live="polite"
+    *ngIf="carregando"
+  >
+    Carregando agendamentos...
+  </p>
+
+  <section
+    class="state error"
+    role="alert"
+    *ngIf="erro && !carregando"
+  >
+    <p>{{ erro }}</p>
+
+    <button
+      type="button"
+      (click)="carregar()"
+      *ngIf="id"
+    >
+      Tentar novamente
+    </button>
+  </section>
+
+  <ng-container *ngIf="detalhe as d">
+    <header class="patient-head">
+      <div class="identity">
+        <span
+          class="avatar"
+          aria-hidden="true"
+        >
+          {{ iniciais() }}
+        </span>
+
+        <div>
+          <h1>
+            {{ d.paciente.nome }}
+
+            <span
+              class="risk"
+              [class]="'risk ' + d.classificacaoRisco.toLowerCase()"
+            >
+              {{ label(d.classificacaoRisco) }}
+            </span>
+          </h1>
+
+          <p>Agendamentos do paciente.</p>
+        </div>
+      </div>
+
+      <a
+        class="back"
+        [routerLink]="['/pacientes/detalhes', id]"
+      >
+        Voltar para os detalhes
+      </a>
+    </header>
+
+    <nav
+      class="tabs"
+      aria-label="Navegação do paciente"
+    >
+      <a [routerLink]="['/pacientes/detalhes', id]">
+        Visão geral
+      </a>
+
+      <a [routerLink]="['/pacientes/detalhes', id, 'historico']">
+        Histórico
+      </a>
+
+      <a aria-current="page">
+        Agendamentos
+      </a>
+    </nav>
+
+    <section
+      class="card"
+      *ngIf="agendamentos.length; else vazio"
+    >
+      <h2>Agendamentos</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Horário</th>
+              <th>Profissional</th>
+              <th>Tipo</th>
+              <th>Situação</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            <tr *ngFor="let a of agendamentos">
+              <td data-label="Data">
+                {{ a.dataAgendamento | date:'dd/MM/yyyy' }}
+              </td>
+
+              <td data-label="Horário">
+                {{ a.horaAtendimento.slice(0, 5) }}
+              </td>
+
+              <td data-label="Profissional">
+                {{ a.nomeProfissional }}
+              </td>
+
+              <td data-label="Tipo">
+                {{ label(a.tipoAcompanhamento) }}
+              </td>
+
+              <td data-label="Situação">
+                {{ label(a.situacaoAtendimento) }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <ng-template #vazio>
+      <section class="card empty">
+        <p>Nenhum agendamento encontrado para este paciente.</p>
+
+        <a
+          routerLink="/agenda/novo"
+          [queryParams]="{ pacienteId: id }"
+        >
+          Novo agendamento
+        </a>
+      </section>
+    </ng-template>
+  </ng-container>
+</main>

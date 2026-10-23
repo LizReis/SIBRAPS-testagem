@@ -1,0 +1,302 @@
+<main class="schedule-page">
+    <header>
+        <h1>{{ modoEdicao ? 'Editar grupo terapêutico' : 'Agendar grupo terapêutico' }}</h1>
+        <p>{{ modoEdicao ? 'Atualize as informações do grupo terapêutico.' : 'Defina o grupo, configure a recorrência e selecione os pacientes inscritos.' }}</p>
+    </header>
+
+    <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+        <div class="layout">
+            <div class="steps">
+                <section class="card">
+                    <div class="section-title">
+                        <span>1</span>
+                        <h2>Informações do grupo</h2>
+                    </div>
+
+                    <div class="fields two">
+                        <label for="tema">Tema do grupo *</label>
+                        <label for="coordenador">Coordenador responsável *</label>
+
+                        <div>
+                            <input
+                                id="tema"
+                                formControlName="tema"
+                                placeholder="Ex.: Ansiedade e autocuidado"
+                                [attr.aria-invalid]="campoInvalido('tema')"
+                            >
+                            @if(campoInvalido('tema')) {
+                                <small>Informe o tema do grupo.</small>
+                            }
+                        </div>
+
+                        <div>
+                            <select id="coordenador" formControlName="coordenadorId">
+                                <option value="">Selecione o profissional</option>
+                                @for(p of profissionais; track p.idPublico) {
+                                    <option [value]="p.idPublico">{{ p.nome }}</option>
+                                }
+                            </select>
+                            @if(campoInvalido('coordenadorId')) {
+                                <small>Selecione o coordenador responsável.</small>
+                            }
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <div class="section-title">
+                        <span>2</span>
+                        <h2>Data, horário e recorrência</h2>
+                    </div>
+
+                    <div class="fields three">
+                        <label for="data">Primeira sessão *</label>
+                        <label for="horario">Horário *</label>
+                        <label for="recorrencia">Recorrência *</label>
+
+                        <div>
+                            <input
+                                id="data"
+                                type="date"
+                                formControlName="dataPrimeiraSessao"
+                                [min]="dataMinima"
+                            >
+                            @if(campoInvalido('dataPrimeiraSessao')) {
+                                <small>
+                                    {{ form.controls.dataPrimeiraSessao.hasError('passada')
+                                        ? 'A data não pode estar no passado.'
+                                        : 'Informe a primeira sessão.' }}
+                                </small>
+                            }
+                        </div>
+
+                        <div>
+                            <input id="horario" type="time" formControlName="horario">
+                            @if(campoInvalido('horario')) {
+                                <small>Informe o horário.</small>
+                            }
+                        </div>
+
+                        <div>
+                            <select id="recorrencia" formControlName="recorrencia">
+                                @for(r of recorrencias; track r.valor) {
+                                    <option [value]="r.valor">{{ r.label }}</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+
+                    <fieldset>
+                        <legend>OPÇÕES RÁPIDAS</legend>
+                        <div class="quick-options">
+                            @for(r of recorrencias; track r.valor) {
+                                <button
+                                    type="button"
+                                    (click)="selecionarRecorrencia(r.valor)"
+                                    [class.active]="form.controls.recorrencia.value === r.valor"
+                                    [attr.aria-pressed]="form.controls.recorrencia.value === r.valor"
+                                >
+                                    {{ r.label }}
+                                </button>
+                            }
+                        </div>
+                    </fieldset>
+
+                    @if(!recorrenciaEhUnica) {
+                        <div class="recurrence-end">
+                            <label for="dataFimRecorrencia">Repetir até *</label>
+                            <input
+                                id="dataFimRecorrencia"
+                                type="date"
+                                formControlName="dataFimRecorrencia"
+                                [min]="form.controls.dataPrimeiraSessao.value || dataMinima"
+                                [attr.aria-invalid]="campoInvalido('dataFimRecorrencia')"
+                            >
+
+                            @if(campoInvalido('dataFimRecorrencia')) {
+                                <small>
+                                    {{ form.controls.dataFimRecorrencia.hasError('anteriorPrimeiraSessao')
+                                        ? 'A data final não pode ser anterior à primeira sessão.'
+                                        : 'Informe até quando o grupo deve se repetir.' }}
+                                </small>
+                            }
+
+                            <p>
+                                O sistema criará automaticamente as sessões conforme a recorrência escolhida,
+                                incluindo a data final quando ela coincidir com uma ocorrência da série.
+                            </p>
+                        </div>
+                    }
+                </section>
+
+                @if (!modoEdicao) { <section class="card participants">
+                    <div class="section-title">
+                        <span>3</span>
+                        <div>
+                            <h2>Participantes esperados</h2>
+                            <p>
+                                {{ recorrenciaEhUnica
+                                    ? 'Pesquise e adicione pacientes à sessão do grupo.'
+                                    : 'Pesquise e adicione os pacientes que serão inscritos em todas as sessões da série.' }}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="search-row">
+                        <div class="autocomplete">
+                            <label for="paciente">Buscar paciente por nome, CPF ou CNS</label>
+                            <div class="search-input">
+                                <i class="bi bi-search"></i>
+                                <input
+                                    id="paciente"
+                                    type="search"
+                                    [value]="termoPesquisa"
+                                    (input)="pesquisar($any($event.target).value)"
+                                    autocomplete="off"
+                                    placeholder="Nome, CPF ou CNS"
+                                    aria-describedby="pesquisa-ajuda"
+                                >
+                            </div>
+
+                            @if(resultados.length) {
+                                <ul class="results">
+                                    @for(p of resultados; track p.idPublico) {
+                                        <li>
+                                            <button
+                                                type="button"
+                                                (click)="selecionarPaciente(p)"
+                                                [disabled]="p.statusPaciente !== 'ATIVO'"
+                                            >
+                                                <strong>{{ p.nome }}</strong>
+                                                <span>{{ documento(p) }} • {{ p.tipoAcompanhamento }}</span>
+                                                @if(p.statusPaciente !== 'ATIVO') {
+                                                    <em>Paciente inativo</em>
+                                                }
+                                            </button>
+                                        </li>
+                                    }
+                                </ul>
+                            } @else if(pesquisaRealizada && !buscando) {
+                                <p class="search-message">Nenhum paciente encontrado.</p>
+                            }
+                        </div>
+
+                        <button
+                            type="button"
+                            class="secondary"
+                            (click)="adicionarPaciente()"
+                            [disabled]="!pacienteSelecionado"
+                        >
+                            Adicionar paciente
+                        </button>
+
+                        <span class="count">
+                            {{ participantes.length }}
+                            {{ participantes.length === 1 ? 'inscrito' : 'inscritos' }}
+                        </span>
+                    </div>
+
+                    <p id="pesquisa-ajuda" class="hint">
+                        Digite ao menos 3 letras, 11 dígitos para CPF ou 15 para CNS.
+                    </p>
+
+                    @if(buscando) {
+                        <p class="search-message">Buscando pacientes...</p>
+                    }
+
+                    @if(mensagemPesquisa) {
+                        <p class="field-message" role="alert">{{ mensagemPesquisa }}</p>
+                    }
+
+                    <ul class="selected">
+                        @for(p of participantes; track p.idPublico) {
+                            <li>
+                                <span>
+                                    <strong>{{ p.nome }}</strong>
+                                    <small>{{ documento(p) }}</small>
+                                </span>
+                                <button
+                                    type="button"
+                                    (click)="removerPaciente(p.idPublico)"
+                                    [attr.aria-label]="'Remover ' + p.nome"
+                                >
+                                    <i class="bi bi-x-lg"></i>
+                                    <span>Remover</span>
+                                </button>
+                            </li>
+                        }
+                    </ul>
+                </section> }
+            </div>
+
+            <aside>
+                <section class="card summary">
+                    <h2>Resumo do agendamento</h2>
+                    <dl>
+                        <div>
+                            <dt>TEMA</dt>
+                            <dd>{{ form.controls.tema.value.trim() || 'Não informado' }}</dd>
+                        </div>
+                        <div>
+                            <dt>COORDENADOR</dt>
+                            <dd>{{ coordenadorNome }}</dd>
+                        </div>
+                        <div>
+                            <dt>PRIMEIRA SESSÃO</dt>
+                            <dd>{{ primeiraSessaoResumo }}</dd>
+                        </div>
+                        <div class="half">
+                            <span>
+                                <dt>RECORRÊNCIA</dt>
+                                <dd>{{ recorrenciaLabel }}</dd>
+                            </span>
+                            @if (!modoEdicao) { <span>
+                                <dt>PARTICIPANTES</dt>
+                                <dd>
+                                    {{ participantes.length }}
+                                    {{ participantes.length === 1 ? 'inscrito' : 'inscritos' }}
+                                </dd>
+                            </span> }
+                        </div>
+
+                        @if(!recorrenciaEhUnica) {
+                            <div>
+                                <dt>REPETIR ATÉ</dt>
+                                <dd>{{ fimRecorrenciaResumo }}</dd>
+                            </div>
+                        }
+                    </dl>
+
+                    @if (!modoEdicao) { <p class="info">
+                        <i class="bi bi-info-circle"></i>
+                        {{ recorrenciaEhUnica
+                            ? 'Os participantes selecionados serão inscritos nesta sessão.'
+                            : 'O sistema criará automaticamente a série até a data informada e replicará os participantes selecionados para todas as sessões.' }}
+                    </p> }
+                </section>
+
+                <section class="card guidance">
+                    <h2><i class="bi bi-info-circle"></i> Orientações</h2>
+                    <ul>
+                        <li><i class="bi bi-check-circle"></i>Revise os dados antes de confirmar.</li>
+                        <li><i class="bi bi-person-check"></i>Somente pacientes ativos podem ser incluídos.</li>
+                        <li><i class="bi bi-clock-history"></i>Pacientes com conflito no mesmo horário não poderão ser inscritos.</li>
+                        <li><i class="bi bi-calendar-range"></i>Em grupos recorrentes, “Repetir até” define o limite da série.</li>
+                    </ul>
+                </section>
+            </aside>
+        </div>
+
+        @if(erroGeral) {
+            <div class="submit-error" role="alert">{{ erroGeral }}</div>
+        }
+
+        <footer>
+            <a routerLink="/grupos-terapeuticos" class="cancel">Cancelar</a>
+            <button type="submit" class="primary" [disabled]="enviando">
+                <i class="bi bi-calendar-plus"></i>
+                {{ enviando ? 'Salvando...' : modoEdicao ? 'Salvar alterações' : 'Agendar grupo' }}
+            </button>
+        </footer>
+    </form>
+</main>

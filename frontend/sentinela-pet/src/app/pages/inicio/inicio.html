@@ -1,0 +1,90 @@
+
+
+<section class="inicio-page" aria-labelledby="inicio-title">
+  <div class="page-heading">
+    <h1 id="inicio-title">Visão geral da unidade</h1>
+    <p>Acompanhe os principais indicadores e acesse funcionalidades rapidamente.</p>
+  </div>
+
+  <!-- Cards de ação rápida -->
+  @if (erro) {
+    <div class="state-card error" role="alert">
+      <span class="material-symbols-outlined">error</span>
+      <div>
+        <strong>Não foi possível carregar os indicadores.</strong>
+        <p>Tente novamente para consultar os dados atualizados do backend.</p>
+      </div>
+      <button type="button" (click)="buscarResumo()">Tentar novamente</button>
+    </div>
+  }
+
+  <div class="indicators-grid" aria-label="Indicadores da unidade">
+    @for (indicador of indicadores; track indicador.titulo) {
+      <article class="indicator-card" [class]="'indicator-card accent-' + indicador.cor">
+        <div class="indicator-top">
+          <span class="indicator-icon material-symbols-outlined" aria-hidden="true">{{ indicador.icone }}</span>
+          <h2>{{ indicador.titulo }}</h2>
+        </div>
+        <strong class="indicator-value">{{ carregando ? '—' : valorIndicador(indicador.campo) }}</strong>
+        <p>{{ indicador.descricao }}</p>
+      </article>
+    }
+  </div>
+
+  <div class="dashboard-grid">
+    <article class="panel-card priority-card">
+      <div class="card-title-row">
+        <h2>Pacientes prioritários</h2>
+      </div>
+  
+      @if (carregando) {
+        <div class="table-state">Carregando pacientes prioritários...</div>
+      } @else if (!erro && resumo?.pacientesPrioritarios?.length === 0) {
+        <div class="table-state">Nenhum paciente prioritário encontrado.</div>
+      } @else if (!erro) {
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Paciente</th>
+                <th>Classificação</th>
+                <th>Faltas</th>
+                <th>Última Presença</th>
+                <th>Ação</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (paciente of resumo?.pacientesPrioritarios; track paciente.idPublico) {
+                <tr>
+                  <td>{{ paciente.nome }}</td>
+                  <td><span class="risk-badge" [class]="'risk-badge risk-' + paciente.classificacaoRisco.toLowerCase()">{{ paciente.classificacaoRisco }}</span></td>
+                  <td>{{ paciente.quantidadeFaltas }}</td>
+                  <td>{{ paciente.dataUltimaPresenca ? (paciente.dataUltimaPresenca | date: 'dd/MM/yyyy') : 'Sem presença registrada' }}</td>
+                  <td>
+                    <a class="view-button" [routerLink]="['/pacientes/detalhes', paciente.idPublico]" [attr.aria-label]="'Visualizar paciente ' + paciente.nome">
+                      <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
+                    </a>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <a class="see-all" routerLink="/pacientes">Ver todos os pacientes <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span></a>
+      }
+    </article>
+
+    <aside class="panel-card quick-actions" aria-labelledby="quick-actions-title">
+      <h2 id="quick-actions-title">Ações rápidas</h2>
+      <div class="quick-actions-grid">
+        @for (acao of acoesRapidas; track acao.titulo) {
+          <a class="quick-action" [routerLink]="acao.rota">
+            <span class="quick-icon material-symbols-outlined" aria-hidden="true">{{ acao.icone }}</span>
+            <strong>{{ acao.titulo }}</strong>
+          </a>
+        }
+      </div>
+
+    </aside>
+  </div>
+</section>

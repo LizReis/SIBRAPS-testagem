@@ -1,0 +1,182 @@
+<main class="page" *ngIf="detalhe as d">
+  <div *ngIf="sucesso" class="feedback-toast success" role="status">
+    <span>✓</span>
+    {{ sucesso }}
+    <button type="button" aria-label="Fechar mensagem" (click)="sucesso=''">
+      ×
+    </button>
+  </div>
+  <header class="patient-head">
+    <div class="identity"><span class="avatar">{{iniciais()}}</span>
+      <div>
+        <h1>{{p?.nome}} <span class="status">{{label(p?.statusPaciente)}}</span></h1>
+        <p>{{idade()}} anos • Acompanhamento {{label(p?.tipoAcompanhamento)}} • {{p?.usfReferencia?.nomeUsf || 'Unidade
+          não informada'}}</p>
+      </div>
+    </div>
+    <div class="head-actions"><a routerLink="/pacientes">Voltar</a><a *ngIf="podeEditar"
+        [routerLink]="['/pacientes/editar',id]" class="primary">Editar dados</a><button *ngIf="ativo&&podeGerenciar"
+        class="danger" (click)="modal='encerrar'">Encerrar acompanhamento</button></div>
+  </header>
+  <section class="summary">
+    <div><small>CLASSIFICAÇÃO ATUAL</small><b
+        [class]="d.classificacaoRisco.toLowerCase()">{{label(d.classificacaoRisco)}}</b></div>
+    <div><small>FALTAS</small><b>{{p?.countFaltas}}</b></div>
+    <div><small>ÚLTIMA PRESENÇA</small><b>{{data(p?.dataUltimaPresenca)}}</b></div>
+    <div><small>PRÓXIMO ATENDIMENTO</small><b>{{d.proximoAgendamento ? (d.proximoAgendamento.data|date:'dd/MM')+' •
+        '+d.proximoAgendamento.hora.slice(0,5) : 'Nenhum agendamento'}}</b></div>
+    <div><small>ATENÇÃO NECESSÁRIA</small><b>{{d.atencaoNecessaria}}</b></div>
+  </section>
+  <nav class="tabs"><a aria-current="page">Visão geral</a><a
+      [routerLink]="['/pacientes/detalhes',id,'historico']">Histórico</a><a
+      [routerLink]="['/pacientes/detalhes',id,'agendamentos']">Agendamentos</a></nav>
+  <div class="columns">
+    <div>
+      <section class="card">
+        <h2>Dados pessoais</h2>
+        <dl>
+          <div>
+            <dt>Nome completo</dt>
+            <dd>{{p?.nome}}</dd>
+          </div>
+          <div>
+            <dt>Nome da mãe</dt>
+            <dd>{{p?.nomeMae}}</dd>
+          </div>
+          <div>
+            <dt>Data de nascimento</dt>
+            <dd>{{data(p?.dataNascimento)}}</dd>
+          </div>
+          <div>
+            <dt>Sexo</dt>
+            <dd>{{label(p?.sexo)}}</dd>
+          </div>
+          <div>
+            <dt>Raça/Cor</dt>
+            <dd>{{label(p?.racacor)}}</dd>
+          </div>
+          <div>
+            <dt>Situação de rua</dt>
+            <dd>{{p?.situacaoRua?'Sim':'Não'}}</dd>
+          </div>
+        </dl>
+      </section>
+      <section class="card">
+        <h2>Documentos e vínculo</h2>
+        <dl>
+          <div>
+            <dt>CPF</dt>
+            <dd>{{mask(p?.cpf,'cpf')}}</dd>
+          </div>
+          <div>
+            <dt>CNS</dt>
+            <dd>{{mask(p?.cns,'cns')}}</dd>
+          </div>
+          <div>
+            <dt>Telefone</dt>
+            <dd>{{p?.telefone}}</dd>
+          </div>
+          <div>
+            <dt>Unidade</dt>
+            <dd>{{p?.usfReferencia?.nomeUsf}}</dd>
+          </div>
+          <div>
+            <dt>CAPS de referência</dt>
+            <dd>{{label(p?.capsReferencia)}}</dd>
+          </div>
+          <div>
+            <dt>Tipo de acompanhamento</dt>
+            <dd>{{label(p?.tipoAcompanhamento)}}</dd>
+          </div>
+          <div>
+            <dt>Profissional de referência</dt>
+            <dd>{{p?.profissionalReferencia?.nome || 'Não informado'}}</dd>
+          </div>
+        </dl>
+      </section>
+      <section class="card">
+        <h2>Endereço e referência territorial</h2>
+        <p *ngIf="p?.situacaoRua&&!p?.endereco">Paciente em situação de rua — endereço não informado.</p>
+        <dl *ngIf="p?.endereco as e">
+          <div>
+            <dt>CEP</dt>
+            <dd>{{e.cep}}</dd>
+          </div>
+          <div>
+            <dt>Cidade / UF</dt>
+            <dd>{{e.cidade}} / {{e.estado}}</dd>
+          </div>
+          <div>
+            <dt>Bairro</dt>
+            <dd>{{e.bairro}}</dd>
+          </div>
+          <div>
+            <dt>Logradouro</dt>
+            <dd>{{e.logradouro}}</dd>
+          </div>
+          <div>
+            <dt>Número</dt>
+            <dd>{{e.numero}}</dd>
+          </div>
+          <div>
+            <dt>Complemento</dt>
+            <dd>{{e.complemento||'Não informado'}}</dd>
+          </div>
+        </dl>
+      </section>
+    </div>
+    <aside>
+      <section class="card attention">
+        <h2>Situação do acompanhamento</h2>
+        <h3 [class.regular]="ativo && d.classificacaoRisco === 'VERDE'"
+          [class.alerta]="!(ativo && d.classificacaoRisco === 'VERDE')">{{d.atencaoNecessaria}}</h3>
+        <p>{{d.classificacaoRisco==='VERMELHO'?'Faltas recorrentes ou ausência conforme critérios do
+          sistema.':d.classificacaoRisco==='AMARELO'?'Acompanhe presença e próximos atendimentos.':'Sem alerta de busca
+          ativa no momento.'}}</p><button *ngIf="ativo&&d.classificacaoRisco==='VERMELHO'&&podeGerenciar"
+          class="primary" (click)="abrirBuscaAtiva()">
+          Registrar busca ativa
+        </button>
+      </section>
+      <section class="card quick">
+        <h2>Ações rápidas</h2><a [routerLink]="['/pacientes/detalhes',id,'historico']">Ver histórico completo</a><a
+          routerLink="/agenda/novo" [queryParams]="{pacienteId:id}">Novo agendamento</a><a *ngIf="podeEditar"
+          [routerLink]="['/pacientes/editar',id]">Atualizar contato</a>
+      </section>
+    </aside>
+  </div>
+</main>
+<p class="loading" aria-live="polite" *ngIf="carregando">Carregando paciente…</p>
+<p class="error" role="alert" *ngIf="erro">{{erro}}</p>
+<div class="backdrop" *ngIf="modal" role="dialog" aria-modal="true">
+  <section class="modal">
+    <h2>{{modal==='encerrar'?'Encerrar acompanhamento':'Registrar busca ativa'}}</h2><ng-container
+      *ngIf="modal==='encerrar'"><label>Motivo do encerramento<select [(ngModel)]="motivo">
+          <option value="">Selecione</option>
+          <option value="ALTA_TERAPEUTICA">Alta terapêutica</option>
+          <option value="TRANSFERENCIA_OUTRA_UNIDADE">Transferência para outra unidade</option>
+          <option value="ABANDONO_TRATAMENTO">Abandono de tratamento</option>
+          <option value="OBITO">Óbito</option>
+          <option value="OUTRO">Outro</option>
+        </select></label></ng-container><label *ngIf="modal==='busca'||motivo==='OUTRO'">
+      Descrição do registro
+
+      <textarea [(ngModel)]="descricao" maxlength="2000" placeholder="Descreva a ação realizada durante a busca ativa">
+  </textarea>
+    </label>
+
+    <p *ngIf="modal === 'busca' && erroModal" class="modal-error" role="alert">
+      {{ erroModal }}
+    </p>
+    <div><button (click)="modal=''">Cancelar</button><button class="danger" [disabled]="salvando"
+        (click)="modal==='encerrar'?encerrar():registrar()">
+
+        {{
+        salvando
+        ? 'Registrando...'
+        : modal === 'encerrar'
+        ? 'Confirmar encerramento'
+        : 'Registrar'
+        }}
+      </button></div>
+  </section>
+</div>

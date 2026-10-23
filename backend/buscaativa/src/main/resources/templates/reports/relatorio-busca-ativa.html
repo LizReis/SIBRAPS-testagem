@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="pt-BR">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SIBRAPS — Relatório de Busca Ativa</title>
+    <link
+        rel="stylesheet"
+        href="../../reports/relatorios-pdf.css"
+        th:remove="all"
+    >
+    <style th:utext="${css}"></style>
+</head>
+<body>
+<main class="report">
+    <header class="topbar">
+        <div class="brand">
+            <img th:src="${logo}" alt="SIBRAPS" />
+            <div>
+                <div class="brand-name">SIBRAPS</div>
+                <div class="brand-sub">Sistema Integrado de Busca Ativa da RAPS</div>
+            </div>
+        </div>
+        <div class="strap">Informação que<br />fortalece o cuidado</div>
+    </header>
+
+    <div class="page">
+        <section class="title-block">
+            <div class="title-row">
+                <h1>Relatório de Busca Ativa</h1>
+                <span class="title-rule"></span>
+            </div>
+            <p class="subtitle">Acompanhamento de pacientes em situação de vulnerabilidade</p>
+        </section>
+
+        <section class="filters">
+            <div class="filter">
+                <span class="icon-bubble" th:if="${iconeCalendario != null}">
+                    <img th:src="${iconeCalendario}" alt="" />
+                </span>
+                <div>
+                    <small>Período</small>
+                    <strong th:text="${PERIODO}">Últimos 6 meses</strong>
+                </div>
+            </div>
+
+            <div class="filter">
+                <span class="icon-bubble" th:if="${iconeProfissional != null}">
+                    <img th:src="${iconeProfissional}" alt="" />
+                </span>
+                <div>
+                    <small>Profissional</small>
+                    <strong th:text="${PROFISSIONAL}">Todos os profissionais</strong>
+                </div>
+            </div>
+
+            <div class="filter">
+                <span class="icon-bubble" th:if="${iconeGrupo != null}">
+                    <img th:src="${iconeGrupo}" alt="" />
+                </span>
+                <div>
+                    <small>Tipo de acompanhamento</small>
+                    <strong th:text="${TIPO_ACOMPANHAMENTO}">Individual e grupo</strong>
+                </div>
+            </div>
+        </section>
+
+        <section class="alert-box">
+            <span class="icon-bubble" th:if="${iconeAlerta != null}">
+                <img th:src="${iconeAlerta}" alt="" />
+            </span>
+            <div class="alert-copy">
+                <strong>Pacientes em situação de busca ativa</strong>
+                <span>Somente pacientes com classificação vermelha.</span>
+            </div>
+            <div class="alert-count">
+                <b th:text="${TOTAL}">0</b>
+                <small>paciente(s)</small>
+            </div>
+        </section>
+
+        <div class="table-wrap">
+            <table>
+                <colgroup>
+                    <col style="width:16%" />
+                    <col style="width:15%" />
+                    <col style="width:12%" />
+                    <col style="width:12%" />
+                    <col style="width:15%" />
+                    <col style="width:17%" />
+                    <col style="width:13%" />
+                </colgroup>
+                <thead>
+                <tr>
+                    <th>Nome completo</th>
+                    <th>CNS/CPF</th>
+                    <th>Último<br />atendimento</th>
+                    <th>Faltas<br />consecutivas</th>
+                    <th>Tipo de<br />acompanhamento</th>
+                    <th>Profissional de<br />referência</th>
+                    <th>Contato telefônico</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="paciente : ${pacientes}">
+                    <td th:text="${paciente.nomeCompleto}">Luciana Almeida</td>
+                    <td class="nowrap" th:text="${paciente.cnsCpf}">708-4012 3456 7890</td>
+                    <td th:text="${paciente.dataUltimoAtendimentoFormatada}">12/06/2026</td>
+                    <td class="center"><span class="missing" th:text="${paciente.faltasConsecutivas == null ? 0 : paciente.faltasConsecutivas}">4</span></td>
+                    <td th:text="${paciente.tipoAcompanhamento}">Individual</td>
+                    <td th:text="${paciente.profissionalReferencia}">Dra. Marina Costa</td>
+                    <td class="nowrap" th:text="${paciente.telefone}">(81) 99812-4471</td>
+                </tr>
+                <tr th:if="${#lists.isEmpty(pacientes)}">
+                    <td colspan="7" class="center">Nenhum paciente encontrado para os filtros selecionados.</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <section class="notes">
+            <span class="icon-bubble blue" th:if="${iconeDocumento != null}">
+                <img th:src="${iconeDocumento}" alt="" />
+            </span>
+            <div class="notes-copy">
+                <h2>Observações</h2>
+                <ul>
+                    <li>Lista limitada a pacientes classificados com sinal de alerta (vermelho).</li>
+                    <li>Recomenda-se contato ativo e registro das tentativas de abordagem no sistema.</li>
+                    <li>Em caso de não localização, seguir o protocolo da equipe de referência.</li>
+                </ul>
+            </div>
+        </section>
+    </div>
+
+    <footer class="footer">
+        <div class="footer-brand"><strong>SIBRAPS</strong></div>
+        <span>Sistema Integrado de Busca Ativa da RAPS</span>
+        <div class="footer-right">
+            <b>Página <span class="page-number"></span></b>
+            <span>Gerado em <span th:text="${GERADO_EM}">14/09/2026 às 23:38</span></span>
+        </div>
+    </footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,207 @@
+<main class="container">
+
+  <section class="page-header">
+    <h1>{{ modoEdicao ? 'Editar Profissional' : 'Cadastrar Profissional' }}</h1>
+    <p>
+      {{
+        modoEdicao
+          ? 'Atualize os dados do profissional.'
+          : 'Preencha os dados abaixo para cadastrar um novo profissional.'
+      }}
+    </p>
+  </section>
+
+  <div class="alert-erro" *ngIf="erroGeral">{{ erroGeral }}</div>
+  <div class="loading-message" *ngIf="carregando">Carregando dados do profissional...</div>
+
+  <form
+    class="form-layout"
+    [formGroup]="profissionalForm"
+    (ngSubmit)="salvarProfissional()"
+    *ngIf="!carregando"
+  >
+    <section class="form-card">
+      <h2><i class="bi bi-person-vcard"></i> Dados do Profissional</h2>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="nome">Nome completo <b>*</b></label>
+          <input
+            id="nome"
+            type="text"
+            formControlName="nome"
+            placeholder="Digite o nome completo"
+          />
+          <small *ngIf="campoInvalido('nome') || errosPorCampo['nome']">
+            {{ mensagemErro('nome', 'Digite o nome do profissional.') }}
+          </small>
+        </div>
+
+        <div class="form-group">
+          <label for="email">E-mail <b>*</b></label>
+          <input
+            id="email"
+            type="email"
+            formControlName="email"
+            placeholder="Digite o e-mail"
+          />
+          <small *ngIf="campoInvalido('email') || errosPorCampo['email']">
+            {{ mensagemErro('email', 'Informe um e-mail válido.') }}
+          </small>
+        </div>
+
+        <div class="form-group">
+          <label for="senha">
+            {{ modoEdicao ? 'Nova senha (opcional)' : 'Senha' }}
+            <b *ngIf="!modoEdicao">*</b>
+          </label>
+          <div class="password-field">
+            <input
+              id="senha"
+              [type]="mostrarSenha ? 'text' : 'password'"
+              formControlName="senha"
+              [placeholder]="modoEdicao ? 'Deixe em branco para manter a atual' : 'Digite a senha'"
+            />
+            <button
+              type="button"
+              (click)="alternarVisibilidadeSenha()"
+              [attr.aria-label]="mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'"
+            >
+              <i class="bi" [ngClass]="mostrarSenha ? 'bi-eye-slash' : 'bi-eye'"></i>
+            </button>
+          </div>
+          <small *ngIf="campoInvalido('senha') || errosPorCampo['senha']">
+            {{ mensagemErro('senha', 'A senha deve possuir pelo menos 6 caracteres.') }}
+          </small>
+        </div>
+
+        <div class="form-group">
+          <label for="confirmarSenha">
+            {{ modoEdicao ? 'Confirmar nova senha' : 'Confirmar senha' }}
+            <b *ngIf="!modoEdicao">*</b>
+          </label>
+          <div class="password-field">
+            <input
+              id="confirmarSenha"
+              [type]="mostrarConfirmacaoSenha ? 'text' : 'password'"
+              formControlName="confirmarSenha"
+              [placeholder]="modoEdicao ? 'Repita a nova senha' : 'Repita a senha'"
+            />
+            <button
+              type="button"
+              (click)="alternarVisibilidadeConfirmacao()"
+              [attr.aria-label]="
+                mostrarConfirmacaoSenha
+                  ? 'Ocultar confirmação de senha'
+                  : 'Mostrar confirmação de senha'
+              "
+            >
+              <i class="bi" [ngClass]="mostrarConfirmacaoSenha ? 'bi-eye-slash' : 'bi-eye'"></i>
+            </button>
+          </div>
+          <small
+            *ngIf="
+              campoInvalido('confirmarSenha') &&
+              !profissionalForm.hasError('senhasDiferentes')
+            "
+          >
+            Confirme a senha.
+          </small>
+          <small
+            *ngIf="
+              profissionalForm.hasError('senhasDiferentes') &&
+              profissionalForm.get('confirmarSenha')?.touched
+            "
+          >
+            As senhas não coincidem.
+          </small>
+          <small *ngIf="errosPorCampo['confirmarSenha']">
+            {{ errosPorCampo['confirmarSenha'] }}
+          </small>
+        </div>
+
+        <div class="form-group">
+          <label for="tipoUsuario">Cargo / Função <b>*</b></label>
+          <select id="tipoUsuario" formControlName="tipoUsuario">
+            <option [ngValue]="null" disabled>Selecione um cargo</option>
+            <option *ngFor="let tipo of tipoUsuarioOptions" [value]="tipo">
+              {{ labelEnum(tipo) }}
+            </option>
+          </select>
+          <small *ngIf="campoInvalido('tipoUsuario') || errosPorCampo['tipoUsuario']">
+            {{ mensagemErro('tipoUsuario', 'O tipo de usuário deve ser selecionado.') }}
+          </small>
+        </div>
+
+        <div class="form-group">
+          <label for="unidadeAtuacao">Unidade de atuação <b>*</b></label>
+          <select id="unidadeAtuacao" formControlName="unidadeAtuacao">
+            <option [ngValue]="null" disabled>Selecione a unidade</option>
+            <option *ngFor="let unidade of unidadeAtuacaoOptions" [value]="unidade.valor">
+              {{ unidade.label }}
+            </option>
+          </select>
+          <small *ngIf="campoInvalido('unidadeAtuacao') || errosPorCampo['unidadeAtuacao']">
+            {{ mensagemErro('unidadeAtuacao', 'A unidade de atuação deve ser informada.') }}
+          </small>
+        </div>
+      </div>
+
+      <footer class="form-actions">
+        <button
+          type="button"
+          class="btn btn-cancel"
+          (click)="cancelar()"
+          [disabled]="salvando"
+        >
+          Cancelar
+        </button>
+        <button
+          type="submit"
+          class="btn btn-save"
+          [disabled]="
+            profissionalForm.invalid ||
+            profissionalForm.hasError('senhasDiferentes') ||
+            salvando
+          "
+        >
+          {{ salvando ? 'Salvando...' : modoEdicao ? 'Salvar alterações' : 'Salvar profissional' }}
+        </button>
+      </footer>
+    </section>
+
+    <aside class="info-card">
+      <h2>
+        <i class="bi" [ngClass]="modoEdicao ? 'bi-shield-exclamation' : 'bi-info-circle'"></i>
+        {{ modoEdicao ? 'Importante' : 'Orientações' }}
+      </h2>
+
+      <ul *ngIf="!modoEdicao">
+        <li>
+          <i class="bi bi-asterisk"></i>
+          <span>Campos com <b>*</b> são obrigatórios.</span>
+        </li>
+        <li>
+          <i class="bi bi-lock"></i>
+          <span>A senha deve conter no mínimo 6 caracteres.</span>
+        </li>
+        <li>
+          <i class="bi bi-building"></i>
+          <span>Selecione corretamente o cargo e a unidade de atuação.</span>
+        </li>
+      </ul>
+
+      <ul *ngIf="modoEdicao">
+        <li>
+          <i class="bi bi-lock"></i>
+          <span>Deixe os campos de senha em branco para manter a senha atual.</span>
+        </li>
+        <li>
+          <i class="bi bi-shield-check"></i>
+          <span>Todas as alterações serão aplicadas após salvar.</span>
+        </li>
+      </ul>
+    </aside>
+  </form>
+
+</main>

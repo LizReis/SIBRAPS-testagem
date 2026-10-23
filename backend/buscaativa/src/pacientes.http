@@ -1,0 +1,1953 @@
+# =================================================================================================
+# SIBRAPS-PET — SUÍTE MANUAL DE API PARA REST CLIENT (VS CODE)
+# Arquivo-alvo: backend/buscaativa/src/pacientes.http
+# Backend analisado: LizReis/SIBRAPS-PET — branch main
+#
+# COMO EXECUTAR
+# 1) Inicie o backend em backend/buscaativa com o perfil dev.
+# 2) Execute os três logins da seção 02.
+# 3) Execute /me para capturar os UUIDs dos perfis.
+# 4) Execute a listagem de unidades e confirme que existe pelo menos uma USF.
+# 5) Execute as requisições na ordem indicada dentro de cada cenário.
+#
+# OBSERVAÇÃO SOBRE VARIÁVEIS DINÂMICAS
+# O REST Client resolve os tokens e IDs pelas respostas nomeadas, por exemplo:
+#   {{loginAdmin.response.body.$.token}}
+# Os scripts > {% ... %} também salvam os valores como variáveis globais.
+#
+# OBSERVAÇÃO SOBRE DATAS
+# As macros {{$localDatetime ...}} dependem de versão atual da extensão REST Client.
+# Caso não funcionem, substitua manualmente hoje/ontem/amanhã por datas no formato AAAA-MM-DD.
+# =================================================================================================
+
+@baseUrl = 
+
+# Credenciais criadas automaticamente por DevConfig no perfil dev
+@adminEmail = admin@pet.com
+@adminSenha = 123456
+@profissionalEmail = profissional@pet.com
+@profissionalSenha = 123456
+@recepcaoEmail = recepcao@pet.com
+@recepcaoSenha = 123456
+
+# Tokens: execute primeiro as requisições nomeadas loginAdmin, loginProfissional e loginRecepcao
+@adminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJidXNjYWF0aXZhLWFwaSIsInN1YiI6ImFkbWluQHBldC5jb20iLCJleHAiOjE3ODQ3NTUzNTF9.4pJwYBzfQydNzuxm7AdKxSCEuQ3QFGcxjOCV5wYXqMU
+@profissionalToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJidXNjYWF0aXZhLWFwaSIsInN1YiI6InByb2Zpc3Npb25hbEBwZXQuY29tIiwiZXhwIjoxNzg0NzU1OTExfQ.6mzXJ7HxOU8o-Fkhh2V6-wIFDI0mkyWTm0C88JWka40
+@recepcaoToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJidXNjYWF0aXZhLWFwaSIsInN1YiI6InJlY2VwY2FvQHBldC5jb20iLCJleHAiOjE3ODQ3NTU5NDB9.xFGOjibTgVC1UThIyx6MD9dmJRz76CqsqC1r5skjRAM
+
+# IDs públicos: execute /me de cada perfil ou a listagem de usuários
+@adminIdPublico = {{meAdmin.response.body.$.idPublico}}
+@profissionalIdPublico = 91b5777d-4380-4607-ba0c-a9722ad90c6a
+@recepcaoIdPublico = {{meRecepcao.response.body.$.idPublico}}
+@usuarioTesteIdPublico = a05220f1-0666-41a9-bef5-53b8f6a8de75
+@profissional2IdPublico = 7318e9cc-b38e-4912-b6cd-7a9a307333fa
+
+# Unidade: execute listarUnidades e confirme que response.body[0] é uma USF válida
+@usfId = {{listarUnidades.response.body.$[0].id}}
+
+# Pacientes
+@pacienteIdPublico = cd42297f-d79e-47bb-bc64-b71e905323a3
+@pacienteRuaIdPublico = de0e67d6-42ea-4970-93bc-6ec33dc18a34
+@pacienteRiscoIdPublico = {{criarPacienteRisco.response.body.$.idPublico}}
+
+# Disponibilidade e bloqueio
+@disponibilidadeId = 1
+@disponibilidadeProf2Id = 4
+@bloqueioId = 1
+
+# Agendamentos
+@agendamentoId = {{criarAgendamentoPassado.response.body.$.id}}
+@agendamentoVersion = {{criarAgendamentoPassado.response.body.$.version}}
+@agendamentoFalta2Id = {{criarAgendamentoFalta2.response.body.$.id}}
+@agendamentoFalta3Id = {{criarAgendamentoFalta3.response.body.$.id}}
+@agendamentoOriginalRemarcacaoId = {{criarOriginalRemarcacao.response.body.$.id}}
+@agendamentoRemarcadoId = {{criarRemarcacao.response.body.$.id}}
+
+# Datas
+@hoje = 2026-07-22
+@ontem = 2026-07-21
+@amanha = 2026-07-23
+
+# Ajuste manualmente para corresponder ao dia da semana de @amanha.
+# Exemplo em 22/07/2026: WEDNESDAY
+@diaSemanaAgenda = WEDNESDAY
+
+# Documentos válidos usados nesta suíte
+@cpfPacienteFixo = 52998224725
+@cnsPacienteFixo = 700000000000005
+@cpfPacienteRua = 11144477735
+@cnsPacienteRua = 800000000000001
+@cpfPacienteRisco = 12345678909
+@cnsPacienteRisco = 900000000000008
+
+
+# =================================================================================================
+# 00 — PRÉ-REQUISITOS E OBSERVAÇÕES
+# =================================================================================================
+
+# PERFIL DEV
+# DevConfig cria três contas em cada inicialização do H2 em memória:
+# - ADMINISTRADOR: admin@pet.com / 123456
+# - PROFISSIONAL: profissional@pet.com / 123456
+# - RECEPCAO: recepcao@pet.com / 123456
+#
+# O application.properties ativa o perfil dev e o banco H2 é em memória.
+# Reiniciar o backend apaga a massa criada por esta suíte.
+#
+# UNIDADES DE SAÚDE
+# Não existe endpoint POST para criar USF. O endpoint GET depende da tabela tb_usf_referencia,
+# alimentada pelo serviço de sincronização. Se GET /api/unidades-saude retornar [], o cadastro
+# válido de paciente ficará bloqueado. Preencha uma USF somente no ambiente de desenvolvimento.
+#
+# STATUS REAIS DE VALIDAÇÃO
+# - Bean Validation (@Valid): 422 Unprocessable Entity, conforme ResourceExceptionHandler.
+# - Regra de negócio/ValidationException/DatabaseException: 400.
+# - Recurso duplicado: 409.
+# - Não encontrado: 404 em ResourceNotFoundException; alguns fluxos usam DatabaseException e retornam 400.
+# - Sem permissão: 403.
+# - Sem token/token inválido: a configuração não define AuthenticationEntryPoint customizado e desativa
+#   usuário anônimo; validar na execução. A tendência da configuração atual é 403, embora APIs REST
+#   normalmente usem 401 para ausência/invalidade de autenticação.
+#
+# FALHA DE PRIVACIDADE ENCONTRADA
+# AuthController imprime a senha do login no console.
+# SecurityFilter imprime Authorization, token recebido e parte do token extraído.
+# O REST Client não consegue provar ausência de senha/token nos logs: inspecione o terminal do backend.
+
+
+# =================================================================================================
+# 01 — INICIALIZAÇÃO E CRIAÇÃO DE USUÁRIOS
+# =================================================================================================
+
+### 01.01 — Criar usuário de teste como ADMINISTRADOR
+# Objetivo: validar RF23 — cadastro com nome, e-mail, senha, perfil e unidade.
+# Esperado: 201 Created; senha deve ser null/ausente na resposta.
+# Requisitos: RF23, RNF05, RNF06, RNF07.
+# @name criarUsuarioTeste
+POST {{baseUrl}}/api/usuarios
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "idPublico": null,
+  "nome": "TESTE REST RECEPCAO",
+  "email": "teste.rest.recepcao@pet.com",
+  "tipoUsuario": "RECEPCAO",
+  "unidadeAtuacao": "USF",
+  "senha": "123456"
+}
+
+
+### 01.02 — Criar segundo profissional para testes de isolamento/autorização
+# Objetivo: preparar teste de alteração/exclusão de recurso pertencente a outro profissional.
+# Esperado: 201 Created.
+# Requisitos: RF23, RNF06.
+# @name criarProfissional2
+POST {{baseUrl}}/api/usuarios
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "idPublico": null,
+  "nome": "TESTE REST PROFISSIONAL 2",
+  "email": "teste.rest.profissional2@pet.com",
+  "tipoUsuario": "PROFISSIONAL",
+  "unidadeAtuacao": "CAPS_AD",
+  "senha": "123456"
+}
+
+
+### 01.03 — Tentar criar usuário sem token
+# Objetivo: confirmar proteção do endpoint de criação.
+# Esperado pela configuração atual: 403. Convencionalmente, ausência de autenticação deveria ser 401.
+# Requisitos: RF01, RF23, RNF05, RNF06.
+POST {{baseUrl}}/api/usuarios
+Content-Type: application/json
+
+{
+  "nome": "TESTE SEM TOKEN",
+  "email": "sem.token@pet.com",
+  "tipoUsuario": "RECEPCAO",
+  "unidadeAtuacao": "USF",
+  "senha": "123456"
+}
+
+### 01.04 — Tentar criar usuário como PROFISSIONAL
+# Objetivo: validar matriz de autorização.
+# Esperado: 403 Forbidden.
+# Requisitos: RF23, RNF06.
+POST {{baseUrl}}/api/usuarios
+Authorization: Bearer {{profissionalToken}}
+Content-Type: application/json
+
+{
+  "nome": "TESTE NAO AUTORIZADO",
+  "email": "prof.nao.autorizado@pet.com",
+  "tipoUsuario": "RECEPCAO",
+  "unidadeAtuacao": "USF",
+  "senha": "123456"
+}
+
+### 01.05 — Tentar criar usuário como RECEPCAO
+# Objetivo: validar matriz de autorização.
+# Esperado: 403 Forbidden.
+# Requisitos: RF23, RNF06.
+POST {{baseUrl}}/api/usuarios
+Authorization: Bearer {{recepcaoToken}}
+Content-Type: application/json
+
+{
+  "nome": "TESTE NAO AUTORIZADO",
+  "email": "recepcao.nao.autorizada@pet.com",
+  "tipoUsuario": "PROFISSIONAL",
+  "unidadeAtuacao": "CAPS_II",
+  "senha": "123456"
+}
+
+### 01.06 — E-mail duplicado
+# Objetivo: validar rejeição de duplicidade.
+# Esperado: 409 Conflict; mensagem "E-mail já cadastrado no sistema!".
+# Requisitos: RF23, RF14.
+POST {{baseUrl}}/api/usuarios
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nome": "DUPLICADO",
+  "email": "{{adminEmail}}",
+  "tipoUsuario": "ADMINISTRADOR",
+  "unidadeAtuacao": "USF",
+  "senha": "123456"
+}
+
+### 01.07 — Usuário sem campos obrigatórios
+# Objetivo: validar Bean Validation.
+# Esperado: 422 Unprocessable Entity.
+# Requisitos: RF23, RF14.
+POST {{baseUrl}}/api/usuarios
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nome": "",
+  "email": "",
+  "tipoUsuario": null,
+  "unidadeAtuacao": null,
+  "senha": ""
+}
+
+### 01.08 — Senha menor que seis caracteres
+# Objetivo: validar @Size(min = 6).
+# Esperado: 422 Unprocessable Entity.
+# Requisitos: RF23, RF14.
+POST {{baseUrl}}/api/usuarios
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nome": "TESTE SENHA CURTA",
+  "email": "senha.curta@pet.com",
+  "tipoUsuario": "RECEPCAO",
+  "unidadeAtuacao": "USF",
+  "senha": "12345"
+}
+
+
+# =================================================================================================
+# 02 — LOGIN/AUTENTICAÇÃO
+# =================================================================================================
+
+### 02.01 — Login ADMINISTRADOR válido
+# Objetivo: confirmar retorno de token e tipo Bearer.
+# Esperado: 200 OK; body.token preenchido; body.tipo = "Bearer".
+# Requisitos: RF01, RNF05.
+# @name loginAdmin
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{adminEmail}}",
+  "senha": "{{adminSenha}}"
+}
+
+
+### 02.02 — Login PROFISSIONAL válido
+# Objetivo: autenticar perfil PROFISSIONAL.
+# Esperado: 200 OK com token Bearer.
+# Requisitos: RF01, RNF05, RNF06.
+# @name loginProfissional
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{profissionalEmail}}",
+  "senha": "{{profissionalSenha}}"
+}
+
+
+### 02.03 — Login RECEPCAO válido
+# Objetivo: autenticar perfil RECEPCAO.
+# Esperado: 200 OK com token Bearer.
+# Requisitos: RF01, RNF05, RNF06.
+# @name loginRecepcao
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{recepcaoEmail}}",
+  "senha": "{{recepcaoSenha}}"
+}
+
+
+### 02.04 — Login com senha inválida
+# Objetivo: impedir autenticação com credencial incorreta.
+# Resultado a conferir: 401 ou 403. Não há handler explícito de AuthenticationException no projeto.
+# FALHA se retornar 200 ou 500.
+# Requisitos: RF01, RNF05.
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{adminEmail}}",
+  "senha": "senha-incorreta"
+}
+
+### 02.05 — Login com e-mail inexistente
+# Objetivo: impedir autenticação de conta inexistente sem revelar detalhes sensíveis.
+# Resultado a conferir: 401 ou 403. FALHA se 200 ou 500.
+# Requisitos: RF01, RNF05, RNF07.
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "nao.existe@pet.com",
+  "senha": "123456"
+}
+
+### 02.06 — Login sem body válido
+# Objetivo: verificar robustez do endpoint, que não usa @Valid em LoginDTO.
+# Resultado provável: 4xx; FALHA se 500.
+# Requisitos: RF01, RNF16.
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{}
+
+
+# =================================================================================================
+# 03 — SEGURANÇA E CONTROLE DE ACESSO
+# =================================================================================================
+
+### 03.01 — Rota protegida sem token
+# Objetivo: confirmar que qualquer rota fora das exceções exige autenticação.
+# Esperado pela configuração atual: 403; registrar se 401.
+# Requisitos: RF01, RNF05.
+GET {{baseUrl}}/api/usuarios
+
+### 03.02 — Rota protegida com token inválido
+# Objetivo: rejeitar token adulterado.
+# Esperado: 401 ou 403. FALHA se 200 ou 500.
+# Requisitos: RF01, RNF05.
+GET {{baseUrl}}/api/usuarios
+Authorization: Bearer token-invalido
+
+### 03.03 — Token ADMINISTRADOR em rota autenticada
+# Objetivo: confirmar autenticação do ADMIN.
+# Esperado: 200 OK.
+# Requisitos: RF01, RNF06.
+GET {{baseUrl}}/api/usuarios/me
+Authorization: Bearer {{adminToken}}
+
+### 03.04 — Token PROFISSIONAL em rota autenticada
+# Objetivo: confirmar autenticação do PROFISSIONAL.
+# Esperado: 200 OK.
+# Requisitos: RF01, RNF06.
+GET {{baseUrl}}/api/usuarios/me
+Authorization: Bearer {{profissionalToken}}
+
+### 03.05 — Token RECEPCAO em rota autenticada
+# Objetivo: confirmar autenticação da RECEPCAO.
+# Esperado: 200 OK.
+# Requisitos: RF01, RNF06.
+GET {{baseUrl}}/api/usuarios/me
+Authorization: Bearer {{recepcaoToken}}
+
+# MATRIZ DE AUTORIZAÇÃO OBSERVADA NO CÓDIGO
+# Endpoint/ação                                      ADMIN   PROFISSIONAL   RECEPCAO   sem token
+# GET usuários, usuário/{id}, /me                    200     200            200        401/403
+# POST/PUT/DELETE usuários                           sim     403            403        401/403
+# GET/listar/buscar pacientes                        200     200            200        401/403
+# POST/PUT/DELETE(inativar) pacientes                sim     403            403        401/403
+# GET busca ativa                                    200     200            200        401/403
+# PATCH encerrar paciente                            sim     sim            403        401/403
+# PATCH reativar paciente                            sim     403            403        401/403
+# POST/DELETE disponibilidade e bloqueio             sim     sim            403        401/403
+# GET disponibilidade e bloqueio                     sim     sim            sim        401/403
+# POST agendamento                                   sim     403            sim        401/403
+# GET agenda/vagas                                   sim     sim            sim        401/403
+# PATCH status/frequência                            sim     sim            sim        401/403
+#
+# GAP RNF06: RF22 citado no roteiro pede editar/inativar por PROFISSIONAL/ADMIN/RECEPCAO,
+# mas PacienteController restringe POST, PUT e DELETE exclusivamente a ADMINISTRADOR.
+#
+# FALHA RNF07: AuthController imprime senha; SecurityFilter imprime token/header Authorization.
+# Inspeção: execute um login e observe o terminal do Spring Boot.
+
+
+# =================================================================================================
+# 04 — USUÁRIOS
+# =================================================================================================
+
+### 04.01 — Listar usuários como ADMIN
+# Objetivo: listar usuários e capturar IDs dos dados iniciais.
+# Esperado: 200; respostas não devem conter hash/senha.
+# Requisitos: RF23, RNF07.
+# @name listarUsuarios
+GET {{baseUrl}}/api/usuarios
+Authorization: Bearer {{adminToken}}
+
+> {%
+client.test("Nenhuma senha deve ser exposta", function () {
+  const usuarios = Array.isArray(response.body) ? response.body : [];
+  usuarios.forEach(function (u) {
+    client.assert(u.senha === null || u.senha === undefined,
+      "FALHA RNF07: senha devolvida para " + u.email);
+  });
+});
+(response.body || []).forEach(function (u) {
+  if (u.email === "admin@pet.com") client.global.set("adminIdPublico", u.idPublico);
+  if (u.email === "profissional@pet.com") client.global.set("profissionalIdPublico", u.idPublico);
+  if (u.email === "recepcao@pet.com") client.global.set("recepcaoIdPublico", u.idPublico);
+});
+%}
+
+### 04.02 — Consultar /me como ADMIN
+# Objetivo: retornar apenas os dados do usuário autenticado.
+# Esperado: 200 e e-mail admin@pet.com; senha null.
+# Requisitos: RF23, RNF05, RNF07.
+# @name meAdmin
+GET {{baseUrl}}/api/usuarios/me
+Authorization: Bearer {{adminToken}}
+
+> {%
+client.assert(response.body.email === "admin@pet.com", "Usuário de /me incorreto.");
+client.assert(response.body.senha === null || response.body.senha === undefined, "Senha exposta.");
+client.global.set("adminIdPublico", response.body.idPublico);
+%}
+
+### 04.03 — Consultar /me como PROFISSIONAL
+# Objetivo: capturar UUID público do profissional.
+# Esperado: 200 e e-mail profissional@pet.com.
+# Requisitos: RF23.
+# @name meProfissional
+GET {{baseUrl}}/api/usuarios/me
+Authorization: Bearer {{profissionalToken}}
+
+> {%
+client.global.set("profissionalIdPublico", response.body.idPublico);
+%}
+
+### 04.04 — Consultar /me como RECEPCAO
+# Objetivo: capturar UUID público da recepção.
+# Esperado: 200 e e-mail recepcao@pet.com.
+# Requisitos: RF23.
+# @name meRecepcao
+GET {{baseUrl}}/api/usuarios/me
+Authorization: Bearer {{recepcaoToken}}
+
+> {%
+client.global.set("recepcaoIdPublico", response.body.idPublico);
+%}
+
+### 04.05 — Buscar usuário por ID público
+# Objetivo: validar consulta individual.
+# Esperado: 200; senha null.
+# Requisitos: RF23.
+GET {{baseUrl}}/api/usuarios/{{usuarioTesteIdPublico}}
+Authorization: Bearer {{adminToken}}
+
+### 04.06 — Buscar usuário inexistente
+# Objetivo: validar tratamento de não encontrado.
+# Esperado: 404.
+# Requisitos: RF23, RF14.
+GET {{baseUrl}}/api/usuarios/00000000-0000-0000-0000-000000000099
+Authorization: Bearer {{adminToken}}
+
+### 04.07 — Editar usuário
+# Objetivo: atualizar nome, e-mail, perfil e unidade sem alterar senha.
+# Esperado: 200; senha null.
+# Requisitos: RF23.
+PUT {{baseUrl}}/api/usuarios/{{usuarioTesteIdPublico}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nome": "TESTE REST RECEPCAO EDITADO",
+  "email": "teste.rest.recepcao@pet.com",
+  "tipoUsuario": "RECEPCAO",
+  "unidadeAtuacao": "CAPS_II",
+  "senha": null
+}
+
+### 04.08 — Editar usuário como PROFISSIONAL
+# Objetivo: confirmar bloqueio.
+# Esperado: 403.
+# Requisitos: RF23, RNF06.
+PUT {{baseUrl}}/api/usuarios/{{usuarioTesteIdPublico}}
+Authorization: Bearer {{profissionalToken}}
+Content-Type: application/json
+
+{
+  "nome": "ALTERACAO INDEVIDA",
+  "email": "teste.rest.recepcao@pet.com",
+  "tipoUsuario": "ADMINISTRADOR",
+  "unidadeAtuacao": "USF",
+  "senha": null
+}
+
+### 04.09 — Excluir usuário de teste
+# ATENÇÃO: esta requisição altera dados. Execute somente em ambiente de desenvolvimento.
+# Objetivo: validar exclusão por ADMIN.
+# Esperado: 204 No Content.
+# Requisitos: RF23, RNF06.
+DELETE {{baseUrl}}/api/usuarios/{{usuarioTesteIdPublico}}
+Authorization: Bearer {{adminToken}}
+
+
+# =================================================================================================
+# 05 — UNIDADES DE SAÚDE
+# =================================================================================================
+
+### 05.01 — Listar unidades de saúde
+# Objetivo: obter uma USF válida para o cadastro de pacientes.
+# Esperado: 200. Para seguir, a lista precisa conter ao menos um objeto com id.
+# Requisitos relacionados: RF22.
+# @name listarUnidades
+GET {{baseUrl}}/api/unidades-saude
+Authorization: Bearer {{adminToken}}
+
+> {%
+client.test("Endpoint de unidades respondeu", function () {
+  client.assert(response.status === 200, "Esperado HTTP 200.");
+});
+if (Array.isArray(response.body) && response.body.length > 0) {
+  client.global.set("usfId", response.body[0].id);
+} else {
+  client.log("BLOQUEIO: nenhuma USF retornada. Não existe POST de unidade no backend.");
+}
+%}
+
+### 05.02 — Listar unidades sem token
+# Objetivo: confirmar proteção da rota.
+# Esperado pela configuração atual: 403; registrar se 401.
+# Requisitos: RNF05.
+GET {{baseUrl}}/api/unidades-saude
+
+# FALHA/GAP: não existe endpoint de criação, edição, consulta individual ou exclusão de USF.
+# A suíte só consegue listar e reutilizar uma unidade previamente sincronizada/persistida.
+
+
+# =================================================================================================
+# 06 — PACIENTES
+# =================================================================================================
+
+### 06.01 — Criar paciente com endereço fixo
+# Objetivo: cadastrar todos os campos efetivamente obrigatórios de PacienteDTO.
+# Esperado: 201; statusPaciente deve ser ATIVO; copiar/capturar idPublico.
+# Requisitos: RF22, RF14, RF15.
+# @name criarPacienteFixo
+POST {{baseUrl}}/api/pacientes?ignorarSimilaridade=false
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "idPublico": null,
+  "nome": "PACIENTE TESTE API",
+  "nomeMae": "MAE PACIENTE TESTE API",
+  "dataNascimento": "1990-05-10",
+  "dataUltimaPresenca": null,
+  "sexo": "FEMININO",
+  "racacor": "PARDA",
+  "cns": "{{cnsPacienteFixo}}",
+  "cpf": "{{cpfPacienteFixo}}",
+  "telefone": "75999990001",
+  "endereco": {
+    "id": null,
+    "cidade": "Santo Antônio de Jesus",
+    "estado": "BA",
+    "bairro": "Centro",
+    "logradouro": "Rua Teste REST",
+    "numero": "100",
+    "complemento": "Próximo ao IFBA",
+    "cep": "44570000"
+  },
+  "situacaoRua": false,
+  "tipoAcompanhamento": "INDIVIDUAL",
+  "countFaltas": null,
+  "statusPaciente": null,
+  "usfReferencia": {
+    "id": {{usfId}}
+  },
+  "capsReferencia": "CAPS_AD"
+}
+
+
+
+### 06.02 — Criar paciente em situação de rua com ponto de referência
+# Objetivo: validar cenário de rua usando Endereco como equipamento/ponto de apoio.
+# Esperado: 201.
+# Requisitos: RF22, RF08.
+# @name criarPacienteRua
+POST {{baseUrl}}/api/pacientes?ignorarSimilaridade=false
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nome": "PACIENTE TESTE RUA",
+  "nomeMae": "MAE PACIENTE TESTE RUA",
+  "dataNascimento": "1985-08-20",
+  "dataUltimaPresenca": null,
+  "sexo": "MASCULINO",
+  "racacor": "PRETA",
+  "cns": "{{cnsPacienteRua}}",
+  "cpf": "{{cpfPacienteRua}}",
+  "telefone": "75999990002",
+  "endereco": {
+    "cidade": "Santo Antônio de Jesus",
+    "estado": "BA",
+    "bairro": "Centro",
+    "logradouro": "",
+    "numero": "",
+    "complemento": "Praça Padre Mateus, próximo ao coreto",
+    "cep": ""
+  },
+  "situacaoRua": true,
+  "tipoAcompanhamento": "INDIVIDUAL",
+  "usfReferencia": {
+    "id": {{usfId}}
+  },
+  "capsReferencia": "CAPS_AD"
+}
+
+
+### 06.03 — Situação de rua sem endereço
+# Objetivo: comparar implementação com requisito que admite ausência de endereço para situação de rua.
+# Resultado real esperado pelo DTO: 422, pois endereco possui @NotNull sem exceção para situacaoRua=true.
+# FALHA/GAP RF22: a regra condicional "rua sem endereço" não foi implementada.
+POST {{baseUrl}}/api/pacientes
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nome": "PACIENTE RUA SEM ENDERECO",
+  "nomeMae": "MAE TESTE",
+  "dataNascimento": "1991-01-01",
+  "sexo": "NAO_INFORMADO",
+  "racacor": "NAO_INFORMADO",
+  "cns": "700000000000005",
+  "cpf": "39053344705",
+  "telefone": "75999990003",
+  "endereco": null,
+  "situacaoRua": true,
+  "tipoAcompanhamento": "INDIVIDUAL",
+  "usfReferencia": {
+    "id": {{usfId}}
+  },
+  "capsReferencia": "CAPS_II"
+}
+
+### 06.04 — Listar pacientes
+# Objetivo: validar listagem.
+# Esperado: 200.
+# Requisitos: RF22, RF03.
+GET {{baseUrl}}/api/pacientes
+Authorization: Bearer {{adminToken}}
+
+### 06.05 — Buscar paciente por ID
+# Objetivo: validar consulta individual.
+# Esperado: 200.
+# Requisitos: RF22.
+GET {{baseUrl}}/api/pacientes/{{pacienteIdPublico}}
+Authorization: Bearer {{adminToken}}
+
+### 06.06 — Buscar por CPF sem formatação
+# Objetivo: validar RF03 e normalização de documento.
+# Esperado: 200.
+# Requisitos: RF03.
+GET {{baseUrl}}/api/pacientes/busca/cpf/{{cpfPacienteFixo}}
+Authorization: Bearer {{adminToken}}
+
+### 06.07 — Buscar por CPF com formatação
+# Objetivo: validar DocumentoUtil.normalizarCPF no path.
+# Esperado: 200, desde que o cliente/servidor aceite os caracteres do path.
+# Requisitos: RF03.
+GET {{baseUrl}}/api/pacientes/busca/cpf/529.982.247-25
+Authorization: Bearer {{adminToken}}
+
+### 06.08 — Buscar por CNS sem formatação
+# Objetivo: validar RF03.
+# Esperado: 200.
+# Requisitos: RF03.
+GET {{baseUrl}}/api/pacientes/busca/cns/{{cnsPacienteFixo}}
+Authorization: Bearer {{adminToken}}
+
+### 06.09 — Buscar por CNS formatado
+# Objetivo: confirmar normalização na busca. O cadastro não aceita CNS formatado, mas a busca normaliza.
+# Esperado: 200.
+# Requisitos: RF03.
+GET {{baseUrl}}/api/pacientes/busca/cns/700-0000-0000-0005
+Authorization: Bearer {{adminToken}}
+
+### 06.10 — Buscar por nome completo
+# Objetivo: validar busca case-insensitive contendo o termo.
+# Esperado: 200 e lista com PACIENTE TESTE API.
+# Requisitos: RF03.
+GET {{baseUrl}}/api/pacientes/busca/nome?q=PACIENTE%20TESTE%20API
+Authorization: Bearer {{adminToken}}
+
+### 06.11 — Buscar por nome parcial com três caracteres
+# Objetivo: validar busca parcial.
+# Esperado: 200.
+# Requisitos: RF03.
+GET {{baseUrl}}/api/pacientes/busca/nome?q=PAC
+Authorization: Bearer {{adminToken}}
+
+### 06.12 — Buscar nome com menos de três caracteres
+# Objetivo: verificar requisito de mínimo de três caracteres.
+# Comportamento real esperado: 200, pois não há validação de tamanho no controller/service.
+# FALHA/GAP RF03 se o requisito exigir rejeição: deveria retornar 400/422.
+GET {{baseUrl}}/api/pacientes/busca/nome?q=PA
+Authorization: Bearer {{adminToken}}
+
+### 06.13 — Buscar CPF inexistente
+# Objetivo: validar retorno de não encontrado.
+# Esperado: 404.
+# Requisitos: RF03.
+GET {{baseUrl}}/api/pacientes/busca/cpf/93541134780
+Authorization: Bearer {{adminToken}}
+
+### 06.14 — Buscar CNS inexistente
+# Objetivo: validar retorno de não encontrado.
+# Esperado: 404.
+# Requisitos: RF03.
+GET {{baseUrl}}/api/pacientes/busca/cns/700000000000027
+Authorization: Bearer {{adminToken}}
+
+### 06.15 — Editar paciente como ADMIN
+# Objetivo: atualizar dados cadastrais.
+# Esperado pretendido: 200.
+# POSSÍVEL BUG: validarPacienteDuplicado compara p.getId() (Long) com idPublico (UUID), então a edição
+# do próprio paciente pode retornar 409 por CPF/CNS duplicado.
+# Requisitos: RF22, RF15.
+PUT {{baseUrl}}/api/pacientes/{{pacienteIdPublico}}?ignorarSimilaridade=false
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nome": "PACIENTE TESTE API EDITADO",
+  "nomeMae": "MAE PACIENTE TESTE API",
+  "dataNascimento": "1990-05-10",
+  "dataUltimaPresenca": null,
+  "sexo": "FEMININO",
+  "racacor": "PARDA",
+  "cns": "{{cnsPacienteFixo}}",
+  "cpf": "{{cpfPacienteFixo}}",
+  "telefone": "75999990999",
+  "endereco": {
+    "cidade": "Santo Antônio de Jesus",
+    "estado": "BA",
+    "bairro": "Centro",
+    "logradouro": "Rua Teste REST",
+    "numero": "101",
+    "complemento": "Editado",
+    "cep": "44570000"
+  },
+  "situacaoRua": false,
+  "tipoAcompanhamento": "INDIVIDUAL",
+  "usfReferencia": {
+    "id": {{usfId}}
+  },
+  "capsReferencia": "CAPS_AD"
+}
+
+### 06.16 — Editar paciente como PROFISSIONAL
+# Objetivo: comparar autorização real com RF22 solicitado.
+# Resultado real: 403.
+# FALHA/GAP RF22 caso PROFISSIONAL devesse editar.
+PUT {{baseUrl}}/api/pacientes/{{pacienteIdPublico}}
+Authorization: Bearer {{profissionalToken}}
+Content-Type: application/json
+
+{
+  "nome": "ALTERACAO PROFISSIONAL",
+  "nomeMae": "MAE PACIENTE TESTE API",
+  "dataNascimento": "1990-05-10",
+  "sexo": "FEMININO",
+  "racacor": "PARDA",
+  "cns": "{{cnsPacienteFixo}}",
+  "cpf": "{{cpfPacienteFixo}}",
+  "telefone": "75999990001",
+  "endereco": {"cidade": "SAJ"},
+  "situacaoRua": false,
+  "tipoAcompanhamento": "INDIVIDUAL",
+  "usfReferencia": {"id": {{usfId}}},
+  "capsReferencia": "CAPS_AD"
+}
+
+### 06.17 — Editar paciente como RECEPCAO
+# Objetivo: comparar autorização real com RF22 solicitado.
+# Resultado real: 403.
+# FALHA/GAP RF22 caso RECEPCAO devesse editar.
+PUT {{baseUrl}}/api/pacientes/{{pacienteIdPublico}}
+Authorization: Bearer {{recepcaoToken}}
+Content-Type: application/json
+
+{
+  "nome": "ALTERACAO RECEPCAO",
+  "nomeMae": "MAE PACIENTE TESTE API",
+  "dataNascimento": "1990-05-10",
+  "sexo": "FEMININO",
+  "racacor": "PARDA",
+  "cns": "{{cnsPacienteFixo}}",
+  "cpf": "{{cpfPacienteFixo}}",
+  "telefone": "75999990001",
+  "endereco": {"cidade": "SAJ"},
+  "situacaoRua": false,
+  "tipoAcompanhamento": "INDIVIDUAL",
+  "usfReferencia": {"id": {{usfId}}},
+  "capsReferencia": "CAPS_AD"
+}
+
+### 06.18 — Paciente sem nome
+# Objetivo: validar RF14.
+# Esperado: 422; conferir mensagem do campo nome.
+POST {{baseUrl}}/api/pacientes
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nome": "",
+  "nomeMae": "MAE TESTE",
+  "dataNascimento": "1990-01-01",
+  "sexo": "FEMININO",
+  "racacor": "PARDA",
+  "cns": "700000000000005",
+  "cpf": "39053344705",
+  "telefone": "75999990004",
+  "endereco": {"cidade": "SAJ"},
+  "situacaoRua": false,
+  "tipoAcompanhamento": "INDIVIDUAL",
+  "usfReferencia": {"id": {{usfId}}},
+  "capsReferencia": "CAPS_AD"
+}
+
+### 06.19 — Paciente sem nome da mãe
+# Objetivo: validar RF14.
+# Esperado: 422.
+POST {{baseUrl}}/api/pacientes
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nome": "PACIENTE SEM MAE",
+  "nomeMae": "",
+  "dataNascimento": "1990-01-01",
+  "sexo": "FEMININO",
+  "racacor": "PARDA",
+  "cns": "700000000000005",
+  "cpf": "39053344705",
+  "telefone": "75999990004",
+  "endereco": {"cidade": "SAJ"},
+  "situacaoRua": false,
+  "tipoAcompanhamento": "INDIVIDUAL",
+  "usfReferencia": {"id": {{usfId}}},
+  "capsReferencia": "CAPS_AD"
+}
+
+### 06.20 — Paciente sem data de nascimento
+# Objetivo: validar RF14.
+# Esperado: 422.
+POST {{baseUrl}}/api/pacientes
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nome": "PACIENTE SEM DATA",
+  "nomeMae": "MAE TESTE",
+  "dataNascimento": null,
+  "sexo": "FEMININO",
+  "racacor": "PARDA",
+  "cns": "700000000000005",
+  "cpf": "39053344705",
+  "telefone": "75999990004",
+  "endereco": {"cidade": "SAJ"},
+  "situacaoRua": false,
+  "tipoAcompanhamento": "INDIVIDUAL",
+  "usfReferencia": {"id": {{usfId}}},
+  "capsReferencia": "CAPS_AD"
+}
+
+### 06.21 — Data de nascimento futura
+# Objetivo: validar @PastOrPresent.
+# Esperado: 422.
+POST {{baseUrl}}/api/pacientes
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nome": "PACIENTE DATA FUTURA",
+  "nomeMae": "MAE TESTE",
+  "dataNascimento": "2099-01-01",
+  "sexo": "FEMININO",
+  "racacor": "PARDA",
+  "cns": "700000000000005",
+  "cpf": "39053344705",
+  "telefone": "75999990004",
+  "endereco": {"cidade": "SAJ"},
+  "situacaoRua": false,
+  "tipoAcompanhamento": "INDIVIDUAL",
+  "usfReferencia": {"id": {{usfId}}},
+  "capsReferencia": "CAPS_AD"
+}
+
+### 06.22 — Enum sexo inválido
+# Objetivo: validar desserialização.
+# Esperado: 400 Bad Request.
+POST {{baseUrl}}/api/pacientes
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nome": "PACIENTE ENUM INVALIDO",
+  "nomeMae": "MAE TESTE",
+  "dataNascimento": "1990-01-01",
+  "sexo": "INVALIDO",
+  "racacor": "PARDA",
+  "cns": "700000000000005",
+  "cpf": "39053344705",
+  "telefone": "75999990004",
+  "endereco": {"cidade": "SAJ"},
+  "situacaoRua": false,
+  "tipoAcompanhamento": "INDIVIDUAL",
+  "usfReferencia": {"id": {{usfId}}},
+  "capsReferencia": "CAPS_AD"
+}
+
+### 06.23 — CNS inválido
+# Objetivo: validar anotação @CNS.
+# Esperado: 422.
+POST {{baseUrl}}/api/pacientes
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nome": "PACIENTE CNS INVALIDO",
+  "nomeMae": "MAE TESTE",
+  "dataNascimento": "1990-01-01",
+  "sexo": "FEMININO",
+  "racacor": "PARDA",
+  "cns": "123",
+  "cpf": "39053344705",
+  "telefone": "75999990004",
+  "endereco": {"cidade": "SAJ"},
+  "situacaoRua": false,
+  "tipoAcompanhamento": "INDIVIDUAL",
+  "usfReferencia": {"id": {{usfId}}},
+  "capsReferencia": "CAPS_AD"
+}
+
+### 06.24 — CPF inválido
+# Objetivo: validar @CPF.
+# Esperado: 422.
+POST {{baseUrl}}/api/pacientes
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nome": "PACIENTE CPF INVALIDO",
+  "nomeMae": "MAE TESTE",
+  "dataNascimento": "1990-01-01",
+  "sexo": "FEMININO",
+  "racacor": "PARDA",
+  "cns": "700000000000005",
+  "cpf": "11111111111",
+  "telefone": "75999990004",
+  "endereco": {"cidade": "SAJ"},
+  "situacaoRua": false,
+  "tipoAcompanhamento": "INDIVIDUAL",
+  "usfReferencia": {"id": {{usfId}}},
+  "capsReferencia": "CAPS_AD"
+}
+
+### 06.25 — CPF duplicado
+# Objetivo: validar duplicidade.
+# Esperado: 409, mensagem simples "Já existe um paciente com este CPF.".
+# Requisitos: RF15, RF14.
+POST {{baseUrl}}/api/pacientes
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nome": "PACIENTE CPF DUPLICADO",
+  "nomeMae": "OUTRA MAE",
+  "dataNascimento": "1992-01-01",
+  "sexo": "FEMININO",
+  "racacor": "BRANCA",
+  "cns": "900000000000008",
+  "cpf": "{{cpfPacienteFixo}}",
+  "telefone": "75999990005",
+  "endereco": {"cidade": "SAJ"},
+  "situacaoRua": false,
+  "tipoAcompanhamento": "INDIVIDUAL",
+  "usfReferencia": {"id": {{usfId}}},
+  "capsReferencia": "CAPS_I"
+}
+
+### 06.26 — CNS duplicado
+# Objetivo: validar duplicidade.
+# Esperado: 409, mensagem simples "Já existe um paciente com este CNS.".
+# Requisitos: RF15, RF14.
+POST {{baseUrl}}/api/pacientes
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nome": "PACIENTE CNS DUPLICADO",
+  "nomeMae": "OUTRA MAE",
+  "dataNascimento": "1992-01-01",
+  "sexo": "FEMININO",
+  "racacor": "BRANCA",
+  "cns": "{{cnsPacienteFixo}}",
+  "cpf": "39053344705",
+  "telefone": "75999990005",
+  "endereco": {"cidade": "SAJ"},
+  "situacaoRua": false,
+  "tipoAcompanhamento": "INDIVIDUAL",
+  "usfReferencia": {"id": {{usfId}}},
+  "capsReferencia": "CAPS_I"
+}
+
+### 06.27 — Similaridade sem CPF/CNS e ignorarSimilaridade=false
+# Objetivo: alcançar a regra nome + mãe + nascimento.
+# Resultado real: 422 antes do service, porque CPF e CNS são @NotBlank.
+# FALHA/GAP RF15: o ramo de similaridade sem documentos é inalcançável pela API validada.
+POST {{baseUrl}}/api/pacientes?ignorarSimilaridade=false
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nome": "PACIENTE TESTE API",
+  "nomeMae": "MAE PACIENTE TESTE API",
+  "dataNascimento": "1990-05-10",
+  "sexo": "FEMININO",
+  "racacor": "PARDA",
+  "cns": "",
+  "cpf": "",
+  "telefone": "75999990006",
+  "endereco": {"cidade": "SAJ"},
+  "situacaoRua": false,
+  "tipoAcompanhamento": "INDIVIDUAL",
+  "usfReferencia": {"id": {{usfId}}},
+  "capsReferencia": "CAPS_AD"
+}
+
+### 06.28 — Similaridade sem CPF/CNS e ignorarSimilaridade=true
+# Objetivo: testar bypass solicitado.
+# Resultado real: 422 pelo mesmo motivo; parâmetro não consegue contornar @NotBlank.
+# FALHA/GAP RF15.
+POST {{baseUrl}}/api/pacientes?ignorarSimilaridade=true
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nome": "PACIENTE TESTE API",
+  "nomeMae": "MAE PACIENTE TESTE API",
+  "dataNascimento": "1990-05-10",
+  "sexo": "FEMININO",
+  "racacor": "PARDA",
+  "cns": "",
+  "cpf": "",
+  "telefone": "75999990006",
+  "endereco": {"cidade": "SAJ"},
+  "situacaoRua": false,
+  "tipoAcompanhamento": "INDIVIDUAL",
+  "usfReferencia": {"id": {{usfId}}},
+  "capsReferencia": "CAPS_AD"
+}
+
+### 06.29 — Inativar paciente como PROFISSIONAL
+# Objetivo: comparar permissão real.
+# Resultado real: 403.
+# Requisitos: RF22, RNF06.
+DELETE {{baseUrl}}/api/pacientes/{{pacienteIdPublico}}
+Authorization: Bearer {{profissionalToken}}
+
+### 06.30 — Inativar paciente como RECEPCAO
+# Objetivo: comparar permissão real.
+# Resultado real: 403.
+# Requisitos: RF22, RNF06.
+DELETE {{baseUrl}}/api/pacientes/{{pacienteIdPublico}}
+Authorization: Bearer {{recepcaoToken}}
+
+### 06.31 — Inativar paciente sem token
+# Objetivo: validar segurança.
+# Esperado: 401/403.
+DELETE {{baseUrl}}/api/pacientes/{{pacienteIdPublico}}
+
+# ATENÇÃO: a inativação válida por ADMIN está na seção 07, após os testes de risco/busca ativa.
+#
+# FALHA/GAP RF24: não foi encontrado endpoint de histórico do paciente no backend.
+# Hibernate Envers/auditoria em entidades não substitui um contrato REST de histórico.
+
+
+# =================================================================================================
+# 07 — BUSCA ATIVA, FALTAS, RISCO E ENCERRAMENTO
+# =================================================================================================
+
+### 07.01 — Criar paciente dedicado aos testes de risco
+# Objetivo: não destruir o paciente principal.
+# Esperado: 201.
+# Requisitos: RF09, RF10, RF02, RF08, RF16.
+# @name criarPacienteRisco
+POST {{baseUrl}}/api/pacientes
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nome": "PACIENTE TESTE RISCO",
+  "nomeMae": "MAE PACIENTE TESTE RISCO",
+  "dataNascimento": "1980-03-15",
+  "dataUltimaPresenca": null,
+  "sexo": "MASCULINO",
+  "racacor": "PARDA",
+  "cns": "{{cnsPacienteRisco}}",
+  "cpf": "{{cpfPacienteRisco}}",
+  "telefone": "75999990007",
+  "endereco": {
+    "cidade": "Santo Antônio de Jesus",
+    "estado": "BA",
+    "bairro": "Centro",
+    "logradouro": "Rua Busca Ativa",
+    "numero": "3",
+    "complemento": "Casa azul",
+    "cep": "44570000"
+  },
+  "situacaoRua": false,
+  "tipoAcompanhamento": "INDIVIDUAL",
+  "usfReferencia": {"id": {{usfId}}},
+  "capsReferencia": "CAPS_AD"
+}
+
+
+
+### 07.02 — Consultar busca ativa antes das faltas
+# Objetivo: estabelecer baseline.
+# Esperado: 200; paciente novo não deve aparecer.
+# Requisitos: RF10, RF02.
+GET {{baseUrl}}/api/pacientes/busca-ativa
+Authorization: Bearer {{adminToken}}
+
+### 07.03 — Consultar paciente após uma falta
+# Execute antes: 09.05 e 09.06.
+# Objetivo: verificar countFaltas = 1.
+# Esperado: 200; paciente ainda não deve estar em busca ativa vermelha.
+# Requisitos: RF09.
+GET {{baseUrl}}/api/pacientes/{{pacienteRiscoIdPublico}}
+Authorization: Bearer {{adminToken}}
+
+### 07.04 — Consultar paciente após duas faltas
+# Execute antes: 09.07 e 09.08.
+# Objetivo: verificar countFaltas = 2.
+# Regra interna: classificação AMARELO.
+# GAP de contrato: PacienteDTO não expõe classificacaoRisco; a cor amarela não é confirmável via endpoint.
+# Requisitos: RF09, RF10.
+GET {{baseUrl}}/api/pacientes/{{pacienteRiscoIdPublico}}
+Authorization: Bearer {{adminToken}}
+
+### 07.05 — Consultar paciente e busca ativa após três faltas
+# Execute antes: 09.09 e 09.10.
+# Objetivo: verificar countFaltas = 3 e inclusão na busca ativa.
+# Esperado: paciente ATIVO e VERMELHO aparece em /busca-ativa.
+# Requisitos: RF09, RF10, RF02.
+GET {{baseUrl}}/api/pacientes/{{pacienteRiscoIdPublico}}
+Authorization: Bearer {{adminToken}}
+
+###
+GET {{baseUrl}}/api/pacientes/busca-ativa
+Authorization: Bearer {{adminToken}}
+
+> {%
+const lista = Array.isArray(response.body) ? response.body : [];
+const item = lista.find(p => p.idPublico === "{{pacienteRiscoIdPublico}}");
+client.test("Paciente vermelho aparece na busca ativa", function () {
+  client.assert(item, "Paciente de risco não apareceu.");
+  client.assert(item.classificacaoRisco === "VERMELHO", "Risco deveria ser VERMELHO.");
+  client.assert(item.faltasConsecutivas >= 3, "Faltas consecutivas abaixo de 3.");
+});
+if (item) {
+  client.test("Campos disponíveis do RF02", function () {
+    client.assert(item.nome, "nome ausente");
+    client.assert(item.idPublico, "idPublico ausente");
+    client.assert(item.faltasConsecutivas !== undefined, "faltasConsecutivas ausente");
+  });
+}
+%}
+
+# FALHA/GAP RF02: AlertaBuscaAtivaDTO NÃO retorna CNS, tipoAcompanhamento nem dataUltimaPresenca.
+# Campos retornados: idPublico, nome, classificacaoRisco, faltasConsecutivas, alerta,
+# localBusca e avisoAdicional.
+
+### 07.06 — Registrar presença após faltas e consultar paciente
+# Execute primeiro 09.11.
+# Objetivo: confirmar countFaltas = 0 e dataUltimaPresenca atualizada.
+# Comportamento real: dataUltimaPresenca recebe LocalDate.now(), não a data do agendamento.
+# Requisitos: RF09, RF06.
+GET {{baseUrl}}/api/pacientes/{{pacienteRiscoIdPublico}}
+Authorization: Bearer {{adminToken}}
+
+### 07.07 — Busca ativa após presença
+# Objetivo: confirmar remoção do paciente após risco recalculado.
+# Esperado: paciente não aparece se deixou de ser VERMELHO.
+# Requisitos: RF09, RF10.
+GET {{baseUrl}}/api/pacientes/busca-ativa
+Authorization: Bearer {{adminToken}}
+
+### 07.08 — Encerrar com ALTA_TERAPEUTICA como PROFISSIONAL
+# ATENÇÃO: esta requisição altera dados. Execute somente em ambiente de desenvolvimento.
+# Objetivo: validar RF16 e permissão PROFISSIONAL.
+# Esperado: 204; paciente deixa de aparecer na busca ativa.
+# Requisitos: RF16, RNF06.
+PATCH {{baseUrl}}/api/pacientes/{{pacienteRiscoIdPublico}}/encerrar
+Authorization: Bearer {{profissionalToken}}
+Content-Type: application/json
+
+{
+  "motivo": "ALTA_TERAPEUTICA",
+  "statusPaciente": "ALTA_TERAPEUTICA",
+  "descricao": "Alta registrada pelo teste REST."
+}
+
+### 07.09 — Tentar encerrar como RECEPCAO
+# Objetivo: confirmar bloqueio.
+# Esperado: 403.
+# Requisitos: RF16, RNF06.
+PATCH {{baseUrl}}/api/pacientes/{{pacienteRuaIdPublico}}/encerrar
+Authorization: Bearer {{recepcaoToken}}
+Content-Type: application/json
+
+{
+  "motivo": "TRANSFERENCIA_OUTRA_UNIDADE",
+  "statusPaciente": "TRANSFERIDO",
+  "descricao": "Teste não autorizado."
+}
+
+### 07.10 — Motivo OUTRO sem descrição
+# Objetivo: validar regra condicional.
+# Esperado: 400; "Descrição obrigatória...".
+# Requisitos: RF16, RF14.
+PATCH {{baseUrl}}/api/pacientes/{{pacienteRuaIdPublico}}/encerrar
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "motivo": "OUTRO",
+  "statusPaciente": "OUTRO",
+  "descricao": ""
+}
+
+### 07.11 — Motivo OUTRO com descrição
+# ATENÇÃO: esta requisição altera dados. Execute somente em ambiente de desenvolvimento.
+# Objetivo: validar encerramento com descrição.
+# Esperado: 204.
+# Requisitos: RF16.
+PATCH {{baseUrl}}/api/pacientes/{{pacienteRuaIdPublico}}/encerrar
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "motivo": "OUTRO",
+  "statusPaciente": "OUTRO",
+  "descricao": "Mudança de município informada pela equipe."
+}
+
+### 07.12 — Encerrar com mesmo status
+# Objetivo: validar regra contra repetição.
+# Esperado: 400.
+# Requisitos: RF16.
+PATCH {{baseUrl}}/api/pacientes/{{pacienteRuaIdPublico}}/encerrar
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "motivo": "OUTRO",
+  "statusPaciente": "OUTRO",
+  "descricao": "Repetição."
+}
+
+### 07.13 — Tentar usar status ATIVO no encerramento
+# Objetivo: testar mensagem/regra "não deve ter status ATIVO".
+# POSSÍVEL BUG: o código só rejeita quando o status novo é igual ao atual; não rejeita ATIVO explicitamente.
+# Em paciente encerrado, esta chamada pode retornar 204 e reativar indevidamente fora do endpoint /reativar.
+# Requisitos: RF16, RNF09.
+PATCH {{baseUrl}}/api/pacientes/{{pacienteRuaIdPublico}}/encerrar
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "motivo": "OUTRO",
+  "statusPaciente": "ATIVO",
+  "descricao": "TESTE DE BUG — status ATIVO em encerrar."
+}
+
+### 07.14 — Reativar sem motivo
+# Objetivo: validar @NotBlank.
+# Esperado: 422.
+# Requisitos: RF16.
+PATCH {{baseUrl}}/api/pacientes/{{pacienteRiscoIdPublico}}/reativar
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "motivo": ""
+}
+
+### 07.15 — Reativar como PROFISSIONAL
+# Objetivo: confirmar restrição exclusiva a ADMIN.
+# Esperado: 403.
+# Requisitos: RF16, RNF06.
+PATCH {{baseUrl}}/api/pacientes/{{pacienteRiscoIdPublico}}/reativar
+Authorization: Bearer {{profissionalToken}}
+Content-Type: application/json
+
+{
+  "motivo": "Retorno ao tratamento."
+}
+
+### 07.16 — Reativar como RECEPCAO
+# Objetivo: confirmar restrição exclusiva a ADMIN.
+# Esperado: 403.
+# Requisitos: RF16, RNF06.
+PATCH {{baseUrl}}/api/pacientes/{{pacienteRiscoIdPublico}}/reativar
+Authorization: Bearer {{recepcaoToken}}
+Content-Type: application/json
+
+{
+  "motivo": "Retorno ao tratamento."
+}
+
+### 07.17 — Reativar como ADMIN
+# ATENÇÃO: esta requisição altera dados. Execute somente em ambiente de desenvolvimento.
+# Objetivo: validar reativação.
+# Esperado: 204; status volta a ATIVO.
+# Requisitos: RF16.
+PATCH {{baseUrl}}/api/pacientes/{{pacienteRiscoIdPublico}}/reativar
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "motivo": "Paciente retomou acompanhamento."
+}
+
+### 07.18 — Inativar paciente vermelho/ativo como ADMIN
+# ATENÇÃO: esta requisição altera dados. Execute somente em ambiente de desenvolvimento.
+# Objetivo: confirmar que INATIVO deixa de aparecer na busca ativa.
+# Esperado: 204.
+# Requisitos: RF22, RF10.
+DELETE {{baseUrl}}/api/pacientes/{{pacienteRiscoIdPublico}}
+Authorization: Bearer {{adminToken}}
+
+### 07.19 — Consultar busca ativa após inativação/encerramento
+# Objetivo: confirmar filtro StatusPaciente.ATIVO + ClassificacaoRisco.VERMELHO.
+# Esperado: paciente inativo/encerrado não aparece.
+# Requisitos: RF10, RF16.
+GET {{baseUrl}}/api/pacientes/busca-ativa
+Authorization: Bearer {{adminToken}}
+
+# RF13
+# FALHA/GAP RF13: os critérios estão fixos em PacienteServiceImpl e não há endpoint de configuração
+# por unidade/perfil ADMIN:
+# - GRUPO_TERAPEUTICO: amarelo >15 dias; vermelho >30 dias;
+# - INDIVIDUAL e AMBOS: amarelo >60 dias; vermelho >120 dias;
+# - faltas amarelo >=2; vermelho >=3.
+# POSSÍVEL GAP: AMBOS cai no mesmo ramo de INDIVIDUAL.
+#
+# Auditoria de encerramento/reativação
+# Entidades possuem campos e Envers, mas não existe endpoint de auditoria para conferir data,
+# usuário, motivo de reativação ou quem visualizou/encaminhou uma busca ativa.
+# Classificação: NÃO VERIFICÁVEL VIA REST CLIENT sem endpoint.
+
+
+# =================================================================================================
+# 08 — DISPONIBILIDADE E BLOQUEIOS
+# =================================================================================================
+
+### 08.01 — Criar disponibilidade para o profissional alvo como ADMIN
+# Objetivo: cadastrar disponibilidade semanal MANHA.
+# Ajuste @diaSemanaAgenda para o dia da semana de @amanha.
+# Esperado: 200 OK (controller não retorna 201).
+# Requisitos: RF04.
+# @name criarDisponibilidade
+POST {{baseUrl}}/api/disponibilidade-config/disponibilidade
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "id": null,
+  "usuarioId": "{{profissionalIdPublico}}",
+  "diaSemana": "{{diaSemanaAgenda}}",
+  "turno": "MANHA",
+  "capacidade": 2
+}
+
+
+### 08.02 — Criar disponibilidade TARDE como o próprio PROFISSIONAL
+# Objetivo: confirmar que profissional cadastra a própria disponibilidade.
+# O usuarioId enviado é ignorado para não-admin; o usuário alvo será o logado.
+# Esperado: 200.
+# Requisitos: RF04, RNF06.
+POST {{baseUrl}}/api/disponibilidade-config/disponibilidade
+Authorization: Bearer {{profissionalToken}}
+Content-Type: application/json
+
+{
+  "id": null,
+  "usuarioId": "{{profissional2IdPublico}}",
+  "diaSemana": "{{diaSemanaAgenda}}",
+  "turno": "TARDE",
+  "capacidade": 2
+}
+
+### 08.03 — Duplicidade profissional + dia + turno
+# Objetivo: validar unicidade.
+# Esperado: 409.
+# Requisitos: RF04, RNF09.
+POST {{baseUrl}}/api/disponibilidade-config/disponibilidade
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "id": null,
+  "usuarioId": "{{profissionalIdPublico}}",
+  "diaSemana": "{{diaSemanaAgenda}}",
+  "turno": "MANHA",
+  "capacidade": 5
+}
+
+### 08.04 — Atualizar disponibilidade pelo mesmo POST informando id
+# Objetivo: testar implementação de edição sem PUT.
+# Esperado: 200 e capacidade 3.
+# Requisitos: RF04.
+POST {{baseUrl}}/api/disponibilidade-config/disponibilidade
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "id": {{disponibilidadeId}},
+  "usuarioId": "{{profissionalIdPublico}}",
+  "diaSemana": "{{diaSemanaAgenda}}",
+  "turno": "MANHA",
+  "capacidade": 3
+}
+
+### 08.05 — Capacidade negativa
+# Objetivo: verificar validação de domínio.
+# Comportamento real provável: 200, pois DTO só possui @NotNull e não @Positive.
+# POSSÍVEL BUG RF04 se capacidade deve ser positiva.
+POST {{baseUrl}}/api/disponibilidade-config/disponibilidade
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "id": null,
+  "usuarioId": "{{profissionalIdPublico}}",
+  "diaSemana": "SUNDAY",
+  "turno": "MANHA",
+  "capacidade": -1
+}
+
+### 08.06 — Listar disponibilidade como ADMIN escolhendo profissional
+# Objetivo: listar recursos de um profissional alvo.
+# Esperado: 200.
+# Requisitos: RF04.
+GET {{baseUrl}}/api/disponibilidade-config/disponibilidade?usuarioId={{profissionalIdPublico}}
+Authorization: Bearer {{adminToken}}
+
+### 08.07 — Listar como PROFISSIONAL tentando escolher outro
+# Objetivo: confirmar isolamento de leitura.
+# Comportamento esperado pelo service: 200, mas retorna apenas os recursos do usuário logado.
+# Requisitos: RF04, RNF06.
+GET {{baseUrl}}/api/disponibilidade-config/disponibilidade?usuarioId={{profissional2IdPublico}}
+Authorization: Bearer {{profissionalToken}}
+
+### 08.08 — Listar como RECEPCAO
+# Objetivo: validar permissão de leitura.
+# Esperado: 200; sem usuarioId, UsuarioContextService retorna a própria recepção.
+# Isso tende a retornar [] e não permite à recepção escolher profissional alvo, pois só ADMIN usa usuarioId.
+# POSSÍVEL GAP funcional na consulta de agenda.
+GET {{baseUrl}}/api/disponibilidade-config/disponibilidade?usuarioId={{profissionalIdPublico}}
+Authorization: Bearer {{recepcaoToken}}
+
+### 08.09 — Criar disponibilidade para profissional 2
+# Objetivo: preparar teste de exclusão indevida por outro profissional.
+# Esperado: 200.
+# @name criarDisponibilidadeProf2
+POST {{baseUrl}}/api/disponibilidade-config/disponibilidade
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "id": null,
+  "usuarioId": "{{profissional2IdPublico}}",
+  "diaSemana": "{{diaSemanaAgenda}}",
+  "turno": "MANHA",
+  "capacidade": 2
+}
+
+
+### 08.10 — PROFISSIONAL tenta excluir disponibilidade de outro profissional
+# ATENÇÃO: esta requisição altera dados. Execute somente em ambiente de desenvolvimento.
+# Objetivo: verificar autorização por propriedade.
+# Resultado provável: 204, pois deletarDisponibilidade(id) não valida dono.
+# FALHA RNF06 se a exclusão ocorrer.
+DELETE {{baseUrl}}/api/disponibilidade-config/disponibilidade/{{disponibilidadeProf2Id}}
+Authorization: Bearer {{profissionalToken}}
+
+### 08.11 — RECEPCAO tenta excluir disponibilidade
+# Objetivo: confirmar bloqueio por perfil.
+# Esperado: 403.
+DELETE {{baseUrl}}/api/disponibilidade-config/disponibilidade/{{disponibilidadeId}}
+Authorization: Bearer {{recepcaoToken}}
+
+### 08.12 — Criar bloqueio de agenda
+# Objetivo: bloquear a data de amanhã.
+# Esperado: 200.
+# Requisitos: RF04.
+# @name criarBloqueio
+POST {{baseUrl}}/api/bloqueioAgenda-config
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "id": null,
+  "usuarioId": "{{profissionalIdPublico}}",
+  "dataInicio": "2026-07-23",
+  "dataFim": "2026-07-23",
+  "motivoBloqueio": "TESTE REST — reunião de equipe"
+}
+
+
+### 08.13 — Listar bloqueios
+# Objetivo: confirmar persistência.
+# Esperado: 200.
+# Requisitos: RF04.
+GET {{baseUrl}}/api/bloqueioAgenda-config?usuarioId={{profissionalIdPublico}}
+Authorization: Bearer {{adminToken}}
+
+### 08.14 — Consultar vagas em data bloqueada
+# Objetivo: validar retorno zero em MANHA e TARDE.
+# Esperado: 200; {"MANHA":0,"TARDE":0}.
+# Requisitos: RF04.
+GET {{baseUrl}}/api/agendamentos/vagas?usuarioId={{profissionalIdPublico}}&data={{amanha}}
+Authorization: Bearer {{adminToken}}
+
+### 08.15 — Excluir bloqueio
+# ATENÇÃO: esta requisição altera dados. Execute somente em ambiente de desenvolvimento.
+# Objetivo: reabrir a data.
+# Esperado: 204.
+# Requisitos: RF04.
+DELETE {{baseUrl}}/api/bloqueioAgenda-config/{{bloqueioId}}
+Authorization: Bearer {{adminToken}}
+
+### 08.16 — Consultar vagas após remover bloqueio
+# Objetivo: conferir capacidade configurada menos ocupação.
+# Esperado: 200; MANHA deve refletir capacidade se @diaSemanaAgenda corresponder a @amanha.
+# Requisitos: RF04.
+GET {{baseUrl}}/api/agendamentos/vagas?usuarioId={{profissionalIdPublico}}&data={{amanha}}
+Authorization: Bearer {{adminToken}}
+
+### 08.17 — Excluir disponibilidade principal
+# ATENÇÃO: esta requisição altera dados. Execute somente em ambiente de desenvolvimento.
+# Execute apenas depois de concluir os testes de vagas/agendamento.
+# Esperado: 204.
+DELETE {{baseUrl}}/api/disponibilidade-config/disponibilidade/{{disponibilidadeId}}
+Authorization: Bearer {{adminToken}}
+
+
+# =================================================================================================
+# 09 — AGENDAMENTOS, AGENDA, VAGAS, PRESENÇA, FALTA E REMARCAÇÃO
+# =================================================================================================
+
+### 09.01 — Criar agendamento passado para teste de frequência
+# Objetivo: cadastrar agendamento válido.
+# Esperado: 201; situação definida pelo service como AGENDADO; capturar id/version.
+# Requisitos: RF05, RF06.
+# @name criarAgendamentoPassado
+POST {{baseUrl}}/api/agendamentos
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "id": null,
+  "usuarioId": "{{profissionalIdPublico}}",
+  "nomeProfissional": null,
+  "pacienteId": "{{pacienteRiscoIdPublico}}",
+  "nomePaciente": null,
+  "tipoAcompanhamento": null,
+  "dataAgendamento": "{{ontem}}",
+  "turnoAgendamento": "MANHA",
+  "horaAtendimento": "08:00:00",
+  "situacaoAtendimento": 1,
+  "agendamentoOriginalId": null,
+  "version": null
+}
+
+
+
+### 09.02 — Criar agendamento como PROFISSIONAL
+# Objetivo: confirmar matriz de autorização.
+# Esperado: 403.
+# Requisitos: RF05, RNF06.
+POST {{baseUrl}}/api/agendamentos
+Authorization: Bearer {{profissionalToken}}
+Content-Type: application/json
+
+{
+  "usuarioId": "{{profissionalIdPublico}}",
+  "pacienteId": "{{pacienteRiscoIdPublico}}",
+  "dataAgendamento": "{{amanha}}",
+  "turnoAgendamento": "MANHA",
+  "horaAtendimento": "09:00:00"
+}
+
+### 09.03 — Criar agendamento como RECEPCAO
+# Objetivo: validar perfil permitido.
+# Esperado: 201.
+# Requisitos: RF05, RNF06.
+POST {{baseUrl}}/api/agendamentos
+Authorization: Bearer {{recepcaoToken}}
+Content-Type: application/json
+
+{
+  "usuarioId": "{{profissionalIdPublico}}",
+  "pacienteId": "{{pacienteIdPublico}}",
+  "dataAgendamento": "{{amanha}}",
+  "turnoAgendamento": "MANHA",
+  "horaAtendimento": "09:00:00"
+}
+
+# POSSÍVEL BUG RF04/RF05:
+# AgendamentoServiceImpl.save não consulta disponibilidade, bloqueios, capacidade ou conflito de horário.
+# Assim, a criação pode retornar 201 mesmo com data bloqueada, sem disponibilidade ou turno lotado.
+# O endpoint /vagas calcula corretamente, mas não é usado para impedir o POST.
+
+### 09.04 — Consultar agenda como ADMIN sem profissionalId
+# Objetivo: listar todos os agendamentos da data.
+# Esperado: 200.
+# Requisitos: RF05.
+GET {{baseUrl}}/api/agendamentos/agenda/{{ontem}}
+Authorization: Bearer {{adminToken}}
+
+### 09.05 — Registrar primeira FALTA
+# Objetivo: atualizar status de atendimento passado.
+# Esperado: 200; situacaoAtendimento=FALTOU; version incrementada.
+# Requisitos: RF06, RF09.
+# @name marcarFalta1
+PATCH {{baseUrl}}/api/agendamentos/{{agendamentoId}}/status?novoStatus=FALTOU&version={{agendamentoVersion}}
+Authorization: Bearer {{profissionalToken}}
+
+> {%
+client.global.set("agendamentoVersionAposFalta", response.body.version);
+%}
+
+### 09.06 — Repetir FALTOU com versão atual
+# Objetivo: confirmar idempotência lógica; contador não deve incrementar novamente.
+# Esperado: 200; service retorna sem alteração quando statusAnterior == novoStatus.
+# Requisitos: RF06, RF09.
+PATCH {{baseUrl}}/api/agendamentos/{{agendamentoId}}/status?novoStatus=FALTOU&version={{marcarFalta1.response.body.$.version}}
+Authorization: Bearer {{profissionalToken}}
+
+### 09.07 — Criar segundo agendamento passado
+# Objetivo: preparar segunda falta consecutiva.
+# Esperado: 201.
+# @name criarAgendamentoFalta2
+POST {{baseUrl}}/api/agendamentos
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "usuarioId": "{{profissionalIdPublico}}",
+  "pacienteId": "{{pacienteRiscoIdPublico}}",
+  "dataAgendamento": "{{ontem}}",
+  "turnoAgendamento": "MANHA",
+  "horaAtendimento": "08:30:00"
+}
+
+### 09.08 — Registrar segunda FALTA
+# Objetivo: countFaltas=2 e risco interno AMARELO.
+# Esperado: 200.
+# @name marcarFalta2
+PATCH {{baseUrl}}/api/agendamentos/{{agendamentoFalta2Id}}/status?novoStatus=FALTOU&version={{criarAgendamentoFalta2.response.body.$.version}}
+Authorization: Bearer {{profissionalToken}}
+
+### 09.09 — Criar terceiro agendamento passado
+# Objetivo: preparar risco vermelho.
+# Esperado: 201.
+# @name criarAgendamentoFalta3
+POST {{baseUrl}}/api/agendamentos
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "usuarioId": "{{profissionalIdPublico}}",
+  "pacienteId": "{{pacienteRiscoIdPublico}}",
+  "dataAgendamento": "{{ontem}}",
+  "turnoAgendamento": "MANHA",
+  "horaAtendimento": "09:00:00"
+}
+
+### 09.10 — Registrar terceira FALTA
+# Objetivo: countFaltas=3 e risco VERMELHO.
+# Esperado: 200; depois execute 07.05.
+# @name marcarFalta3
+PATCH {{baseUrl}}/api/agendamentos/{{agendamentoFalta3Id}}/status?novoStatus=FALTOU&version={{criarAgendamentoFalta3.response.body.$.version}}
+Authorization: Bearer {{profissionalToken}}
+
+### 09.11 — Alterar FALTOU para PRESENTE
+# Objetivo: zerar faltas e atualizar última presença.
+# Esperado: 200; depois execute 07.06 e 07.07.
+# Requisitos: RF06, RF09.
+PATCH {{baseUrl}}/api/agendamentos/{{agendamentoId}}/status?novoStatus=PRESENTE&version={{marcarFalta1.response.body.$.version}}
+Authorization: Bearer {{profissionalToken}}
+
+### 09.12 — Tentar registrar frequência em data futura
+# Objetivo: validar bloqueio temporal.
+# Esperado: 400; mensagem "Não é permitido registrar presença ou falta...".
+# Pré-requisito: execute 09.03 e copie o id retornado, caso não use um request nomeado.
+# Requisitos: RF06.
+# Substitua ID_AGENDAMENTO_FUTURO pelo id retornado em 09.03.
+PATCH {{baseUrl}}/api/agendamentos/ID_AGENDAMENTO_FUTURO/status?novoStatus=PRESENTE
+Authorization: Bearer {{profissionalToken}}
+
+### 09.13 — Conflito otimista com versão antiga
+# Objetivo:
+# 1) versão original veio de criarAgendamentoPassado;
+# 2) marcarFalta1 atualizou;
+# 3) esta chamada reutiliza a versão original.
+# Esperado: 409 Conflict.
+# Requisitos: RF06, RNF09.
+PATCH {{baseUrl}}/api/agendamentos/{{agendamentoId}}/status?novoStatus=CANCELADO&version={{criarAgendamentoPassado.response.body.$.version}}
+Authorization: Bearer {{adminToken}}
+
+### 09.14 — Atualizar status como RECEPCAO
+# Objetivo: confirmar permissão real.
+# Esperado no código: 200.
+# Avaliar se RECEPCAO deveria registrar presença/falta segundo RNF06.
+PATCH {{baseUrl}}/api/agendamentos/{{agendamentoFalta2Id}}/status?novoStatus=PRESENTE&version={{marcarFalta2.response.body.$.version}}
+Authorization: Bearer {{recepcaoToken}}
+
+### 09.15 — Consultar agenda como PROFISSIONAL com profissionalId de outro
+# Objetivo: confirmar que profissional vê apenas a própria agenda.
+# Esperado: 200; o service ignora profissionalId para PROFISSIONAL.
+# Requisitos: RF05, RNF06.
+GET {{baseUrl}}/api/agendamentos/agenda/{{ontem}}?profissionalId={{profissional2IdPublico}}
+Authorization: Bearer {{profissionalToken}}
+
+### 09.16 — Consultar agenda como ADMIN com profissionalId
+# Objetivo: filtrar agenda do profissional alvo.
+# Esperado: 200.
+# Requisitos: RF05.
+GET {{baseUrl}}/api/agendamentos/agenda/{{ontem}}?profissionalId={{profissionalIdPublico}}
+Authorization: Bearer {{adminToken}}
+
+### 09.17 — Consultar agenda como RECEPCAO sem profissionalId
+# Objetivo: listar toda a agenda da data.
+# Esperado: 200.
+# Requisitos: RF05.
+GET {{baseUrl}}/api/agendamentos/agenda/{{ontem}}
+Authorization: Bearer {{recepcaoToken}}
+
+# CONTRATO DA AGENDA
+# AgendamentoDTO retorna:
+# id, usuarioId, nomeProfissional, pacienteId, nomePaciente, tipoAcompanhamento,
+# dataAgendamento, turnoAgendamento, horaAtendimento, situacaoAtendimento,
+# agendamentoOriginalId e version.
+# Isso cobre paciente, profissional, data/hora, acompanhamento e situação, desde que o Mapper preencha os nomes.
+
+### 09.18 — Criar consulta original para remarcação
+# Objetivo: preparar RF08.
+# Esperado: 201.
+# @name criarOriginalRemarcacao
+POST {{baseUrl}}/api/agendamentos
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "usuarioId": "{{profissionalIdPublico}}",
+  "pacienteId": "{{pacienteRuaIdPublico}}",
+  "dataAgendamento": "{{ontem}}",
+  "turnoAgendamento": "TARDE",
+  "horaAtendimento": "14:00:00"
+}
+
+### 09.19 — Registrar falta na consulta original
+# Objetivo: primeira falta antes da remarcação.
+# Esperado: 200.
+PATCH {{baseUrl}}/api/agendamentos/{{agendamentoOriginalRemarcacaoId}}/status?novoStatus=FALTOU&version={{criarOriginalRemarcacao.response.body.$.version}}
+Authorization: Bearer {{profissionalToken}}
+
+### 09.20 — Pedir três sugestões de remarcação
+# Objetivo: testar datas disponíveis.
+# Esperado: 200 com até três datas futuras.
+# Requisitos: RF05/RF08.
+GET {{baseUrl}}/api/agendamentos/{{agendamentoOriginalRemarcacaoId}}/remarcacao
+Authorization: Bearer {{recepcaoToken}}
+
+### 09.21 — Criar remarcação vinculada
+# Objetivo: criar novo agendamento ligado ao original.
+# IMPORTANTE: embora AgendamentoDTO tenha agendamentoOriginalId, o service usa o campo id para localizar
+# o original. Por isso, este teste envia id = agendamento original.
+# Esperado: 201; original muda para REMARCADO_ORIGEM e novo fica REMARCADO.
+# POSSÍVEL BUG/GAP de contrato: agendamentoOriginalId é ignorado no save.
+# @name criarRemarcacao
+POST {{baseUrl}}/api/agendamentos
+Authorization: Bearer {{recepcaoToken}}
+Content-Type: application/json
+
+{
+  "id": {{agendamentoOriginalRemarcacaoId}},
+  "usuarioId": "{{profissionalIdPublico}}",
+  "pacienteId": "{{pacienteRuaIdPublico}}",
+  "dataAgendamento": "{{ontem}}",
+  "turnoAgendamento": "TARDE",
+  "horaAtendimento": "15:00:00",
+  "agendamentoOriginalId": {{agendamentoOriginalRemarcacaoId}}
+}
+
+> {%
+if (response.body && response.body.id) {
+  client.global.set("agendamentoRemarcadoId", response.body.id);
+}
+%}
+
+### 09.22 — Registrar falta na consulta remarcada
+# Objetivo: acionar gatilho de visita/busca em ponto de referência.
+# Esperado: 200. Depois, acumule faltas até VERMELHO e consulte /busca-ativa.
+# Requisitos: RF08.
+PATCH {{baseUrl}}/api/agendamentos/{{agendamentoRemarcadoId}}/status?novoStatus=FALTOU&version={{criarRemarcacao.response.body.$.version}}
+Authorization: Bearer {{profissionalToken}}
+
+### 09.23 — Consultar busca ativa após falta em remarcação
+# Objetivo: verificar alerta:
+# - situacaoRua=false: "Visita domiciliar necessária" + endereço;
+# - situacaoRua=true: "Busca em ponto de referência necessária" + complemento;
+# - rua sem complemento: avisoAdicional.
+# ATENÇÃO: o endpoint só lista ATIVOS e VERMELHOS. O gatilho sozinho não basta para aparecer.
+# Requisitos: RF08, RF10, RF02.
+GET {{baseUrl}}/api/pacientes/busca-ativa
+Authorization: Bearer {{adminToken}}
+
+### 09.24 — Lotar turno e consultar vagas
+# Objetivo: criar agendamentos até a capacidade e consultar /vagas.
+# Execute POSTs adicionais como 09.03 para @amanha/MANHA e então execute:
+GET {{baseUrl}}/api/agendamentos/vagas?usuarioId={{profissionalIdPublico}}&data={{amanha}}
+Authorization: Bearer {{adminToken}}
+
+# NÃO TESTÁVEL VIA REST CLIENT — parte frontend do RF05:
+# funcionamento offline, IndexedDB, service worker e sincronização no navegador.
+# Exige inspeção e testes do frontend, DevTools/Application/Network e cenário offline real.
+
+
+# =================================================================================================
+# 10 — MATRIZ DE REQUISITOS, GAPS E RESULTADO FINAL
+# =================================================================================================
+
+# REQUISITOS FUNCIONAIS
+# RF01 — TESTÁVEL: logins, token, sem token, token inválido e três perfis.
+# RF02 — PARCIAL: busca ativa existe, mas contrato não devolve CNS, acompanhamento e última presença.
+# RF03 — TESTÁVEL: CPF, CNS, nome completo/parcial; GAP mínimo de três caracteres.
+# RF04 — PARCIAL: CRUD básico/vagas/bloqueio; POST de agendamento não aplica capacidade/bloqueio.
+# RF05 — PARCIAL: agenda REST testável; offline/IndexedDB/service worker não testável via REST Client.
+# RF06 — TESTÁVEL: presença, falta, data futura, idempotência e versão otimista.
+# RF08 — PARCIAL: remarcação/gatilho; auditoria de visualização/encaminhamento sem endpoint.
+# RF09 — TESTÁVEL: faltas e presença; cor amarela não exposta no PacienteDTO.
+# RF10 — PARCIAL: vermelho testável pela busca ativa; amarelo não exposto; AMBOS usa limites de individual.
+# RF13 — NÃO IMPLEMENTADO: limites fixos; sem endpoint de configuração.
+# RF14 — TESTÁVEL: mensagens em 422/400/409; avaliar clareza da resposta real.
+# RF15 — PARCIAL/FALHA: duplicidade por documentos existe; similaridade sem documentos é bloqueada por @NotBlank.
+# RF16 — TESTÁVEL/PARCIAL: encerrar e reativar; sem endpoint de auditoria; possível bypass com status ATIVO.
+# RF22 — PARCIAL: CRUD existe, mas escrita/inativação só para ADMIN.
+# RF23 — TESTÁVEL: CRUD de usuários; respostas usam senha null.
+# RF24 — NÃO IMPLEMENTADO: nenhum endpoint de histórico do paciente encontrado.
+
+# MATRIZ DE RNFs
+# RNF01 | NÃO TESTÁVEL VIA REST CLIENT       | Interface simples exige avaliação de UI/usabilidade.
+# RNF04 | PARCIALMENTE TESTADO               | API web responde HTTP; frontend completo não é validado.
+# RNF05 | TESTADO VIA REST CLIENT            | JWT, rotas protegidas e cenários negativos; logs exigem inspeção manual.
+# RNF06 | TESTADO VIA REST CLIENT            | Matriz por perfil; foram identificados gaps de propriedade/permissão.
+# RNF07 | PARCIALMENTE TESTADO               | Respostas sem senha; FALHA: senha/token aparecem em logs.
+# RNF08 | NÃO IMPLEMENTADO/SEM EVIDÊNCIA     | Sem endpoints específicos de consentimento, base legal, retenção ou direitos LGPD.
+# RNF09 | PARCIALMENTE TESTADO               | @Version em agendamento; demais concorrências/integridade não cobertas.
+# RNF11 | NÃO TESTÁVEL VIA REST CLIENT       | Organização do código exige revisão estática.
+# RNF12 | NÃO TESTÁVEL VIA REST CLIENT       | Escalabilidade exige carga, métricas e arquitetura.
+# RNF13 | NÃO TESTÁVEL VIA REST CLIENT       | Compatibilidade Chrome/Firefox/Edge exige testes de navegador.
+# RNF14 | NÃO TESTÁVEL VIA REST CLIENT       | Java/Spring Boot verificados no código, não pela execução HTTP isolada.
+# RNF15 | NÃO TESTÁVEL VIA REST CLIENT       | Custo/licenças exigem análise de dependências/infra.
+# RNF16 | PARCIALMENTE TESTADO               | Erros, validações e idempotência; sem teste de resiliência/carga.
+# RNF17 | PARCIALMENTE TESTADO               | Envers/campos existem; sem endpoint para consultar trilha de auditoria.
+# RNF18 | NÃO IMPLEMENTADO/SEM EVIDÊNCIA     | README atual não documenta implantação do backend.
+# RNF20 | NÃO TESTÁVEL VIA REST CLIENT       | Responsividade exige testes de frontend/dispositivos.
+
+# -------------------------------------------------------------------------------------------------
+# 1. TESTES PRONTOS PARA EXECUTAR
+# -------------------------------------------------------------------------------------------------
+# - Login e autenticação dos três perfis.
+# - Matriz de acesso sem token, token inválido e perfis permitidos/proibidos.
+# - CRUD e validações de usuário.
+# - Listagem de unidades.
+# - Cadastro, consulta, busca, edição, validações, duplicidades e inativação de paciente.
+# - Disponibilidade, duplicidade, atualização, listagem, exclusão e teste de propriedade.
+# - Bloqueio, vagas bloqueadas/desbloqueadas e listagem.
+# - Agendamento, agenda, frequência, repetição de status, data futura e conflito de versão.
+# - Faltas, risco vermelho, busca ativa, remarcação, gatilho de visita, encerramento e reativação.
+
+# -------------------------------------------------------------------------------------------------
+# 2. PRÉ-REQUISITOS/DADOS QUE PRECISAM SER PREENCHIDOS
+# -------------------------------------------------------------------------------------------------
+# - Backend rodando em {{baseUrl}} com perfil dev.
+# - Executar loginAdmin/loginProfissional/loginRecepcao.
+# - Executar meAdmin/meProfissional/meRecepcao.
+# - Executar listarUnidades e garantir que exista response.body[0].id.
+# - Ajustar @diaSemanaAgenda para o dia da semana de @amanha.
+# - Em 09.12, substituir ID_AGENDAMENTO_FUTURO pelo id retornado no agendamento futuro.
+# - Evitar repetir cadastros após reiniciar apenas parcialmente; o H2 em memória é zerado ao reiniciar.
+
+# -------------------------------------------------------------------------------------------------
+# 3. REQUISITOS NÃO IMPLEMENTADOS OU NÃO VERIFICÁVEIS
+# -------------------------------------------------------------------------------------------------
+# - RF24: sem endpoint de histórico.
+# - RF13: sem configuração dos seis critérios; valores fixos no service.
+# - Auditoria: sem endpoint de consulta de Envers/usuário/data/motivo.
+# - Offline, IndexedDB, service worker, sincronização, responsividade e navegadores: frontend.
+# - LGPD: sem endpoints/evidências suficientes para ciclo de dados e direitos do titular.
+# - Criação/edição de USF: inexistente na API.
+# - Classificação AMARELO: não exposta pelo PacienteDTO.
+# - Busca ativa não expõe todos os campos exigidos no RF02.
+
+# -------------------------------------------------------------------------------------------------
+# 4. POSSÍVEIS BUGS ENCONTRADOS NO CÓDIGO
+# -------------------------------------------------------------------------------------------------
+# - AuthController imprime e-mail e SENHA em texto puro no console.
+# - SecurityFilter imprime header Authorization e token.
+# - Edição de paciente pode acusar o próprio CPF/CNS como duplicado: compara Long id com UUID idPublico.
+# - Similaridade sem CPF/CNS é inalcançável por @NotBlank nos dois documentos.
+# - Paciente em situação de rua continua obrigado a enviar Endereco.
+# - Busca por nome não exige três caracteres; q vazio pode listar todos.
+# - Encerramento não bloqueia statusPaciente=ATIVO explicitamente.
+# - Profissional pode excluir disponibilidade/bloqueio de outro usuário se souber o ID numérico.
+# - Delete de disponibilidade/bloqueio não verifica existência/dono no service.
+# - Capacidade aceita zero/valor negativo por falta de @Positive.
+# - POST de agendamento não verifica bloqueio, disponibilidade, capacidade nem colisão de horário.
+# - Campo agendamentoOriginalId do DTO é ignorado; remarcação usa o campo id como original.
+# - dataUltimaPresenca é gravada com a data atual, não com dataAgendamento.
+# - AMBOS utiliza limites de ausência do acompanhamento INDIVIDUAL.
+# - Ausência/token inválido pode resultar em 403 em vez de 401 por falta de AuthenticationEntryPoint explícito.

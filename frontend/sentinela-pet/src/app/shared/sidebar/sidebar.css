@@ -1,0 +1,117 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+
+:host { 
+    display:block; 
+    height:100%; 
+}
+
+.sidebar { 
+    display:flex; 
+    flex-direction:column; 
+    height:100%; width:284px; 
+    background:linear-gradient(180deg,var(--sibrasp-navy-800) 0%,var(--sibrasp-navy-950) 42%,var(--sibrasp-navy-900) 100%);
+    box-shadow:4px 0 24px rgba(6,41,89,.22); 
+    overflow:hidden; 
+}
+.logo-container { 
+    padding: 40px 22px 10px; 
+    text-align:center; 
+    color:#fff; 
+}
+
+.logo-icon { 
+    font-size:62px; 
+    display:block; 
+    margin-bottom:8px; 
+}
+
+.logo-container strong { 
+    display:block; 
+    font-size:1.75rem; 
+    letter-spacing:7px; 
+    font-weight:900; 
+    margin-bottom:10px; 
+}
+
+.logo-container p { 
+    font-size:.78rem; 
+    line-height:1.35; 
+    color:rgba(255,255,255,.84)
+}
+
+.nav-menu { 
+    flex:1; 
+    display:flex; 
+    flex-direction:column; 
+    gap:12px; 
+    padding:20px 12px; 
+    border-top:1px solid rgba(255,255,255,.23); 
+}
+
+.nav-link,.logout-btn { 
+    display:flex; 
+    align-items:center; 
+    gap:18px; 
+    min-height:64px; 
+    padding:0 20px; 
+    border-radius:10px; 
+    color:#fff; 
+    font-weight:700; 
+    font-size:1rem; 
+    text-decoration:none; 
+    transition:background .2s, transform .2s; 
+}
+
+.nav-link:hover,.logout-btn:hover { 
+    background:rgba(255,255,255,.09); 
+}
+
+.nav-link.active { 
+    background:linear-gradient(135deg,var(--sibrasp-active),#174b9d); 
+    box-shadow:0 12px 22px rgba(0,0,0,.14); 
+}
+
+.nav-icon,.logout-icon { 
+    font-size:30px; 
+    color:#fff; 
+}
+
+.logout-container { 
+    padding:18px 16px 24px; 
+    border-top:1px solid rgba(255,255,255,.23); 
+}
+
+.logout-btn {
+    width:100%; 
+    background:transparent; 
+    border:0; cursor:pointer; 
+}
+
+@media (max-width:768px){ 
+    :host{position:fixed; inset:0 auto 0 0; z-index:999; transform:translateX(-100%); transition:transform .25s ease;} :host.open{transform:translateX(0);} .sidebar{width:284px; max-width:86vw;} 
+}
+
+/* Efeito decorativo de fundo */
+.sidebar::before {
+  content: '';
+  position: absolute;
+  top: -60px;
+  right: -60px;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  pointer-events: none;
+}
+
+.sidebar::after {
+  content: '';
+  position: absolute;
+  bottom: 80px;
+  left: -40px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  pointer-events: none;
+}

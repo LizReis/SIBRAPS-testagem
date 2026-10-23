@@ -1,0 +1,191 @@
+<main class="container">
+
+  <section class="page-header">
+    <div>
+      <h1>Profissionais</h1>
+      <p>Visualize, pesquise e gerencie os profissionais cadastrados no sistema.</p>
+    </div>
+
+    <button *ngIf="podeGerenciar" class="btn-new" (click)="cadastrarNovoProfissional()">
+      <i class="bi bi-plus-lg"></i> Cadastrar novo profissional
+    </button>
+  </section>
+
+  <section class="summary-grid" aria-label="Resumo de usuários">
+    <article class="summary-card">
+      <span class="summary-icon"><i class="bi bi-people"></i></span>
+      <div>
+        <span class="summary-label">Total de usuários</span>
+        <strong>{{ totalUsuarios }}</strong>
+        <small>Usuários cadastrados</small>
+      </div>
+    </article>
+
+    <article class="summary-card">
+      <span class="summary-icon"><i class="bi bi-shield-check"></i></span>
+      <div>
+        <span class="summary-label">Administradores</span>
+        <strong>{{ quantidadePorTipo('ADMINISTRADOR') }}</strong>
+        <small>Com acesso administrativo</small>
+      </div>
+    </article>
+
+    <article class="summary-card">
+      <span class="summary-icon"><i class="bi bi-person-badge"></i></span>
+      <div>
+        <span class="summary-label">Profissionais</span>
+        <strong>{{ quantidadePorTipo('PROFISSIONAL') }}</strong>
+        <small>Atendimento e gestão assistencial</small>
+      </div>
+    </article>
+
+    <article class="summary-card">
+      <span class="summary-icon"><i class="bi bi-headset"></i></span>
+      <div>
+        <span class="summary-label">Recepção</span>
+        <strong>{{ quantidadePorTipo('RECEPCAO') }}</strong>
+        <small>Apoio administrativo</small>
+      </div>
+    </article>
+  </section>
+
+  <section class="filter-card">
+    <label class="search-field">
+      <i class="bi bi-search"></i>
+      <input
+        type="search"
+        placeholder="Buscar por nome ou e-mail..."
+        [(ngModel)]="termoPesquisa"
+        (ngModelChange)="filtrosAlterados()"
+        aria-label="Buscar por nome ou e-mail"
+      />
+    </label>
+
+    <select
+      [(ngModel)]="tipoUsuarioSelecionado"
+      (ngModelChange)="filtrosAlterados()"
+      aria-label="Filtrar por cargo"
+    >
+      <option value="">Todos os cargos</option>
+      <option *ngFor="let tipo of tipoUsuarioOptions" [value]="tipo">
+        {{ labelEnum(tipo) }}
+      </option>
+    </select>
+
+    <select
+      [(ngModel)]="unidadeSelecionada"
+      (ngModelChange)="filtrosAlterados()"
+      aria-label="Filtrar por unidade"
+    >
+      <option value="">Todas as unidades</option>
+      <option *ngFor="let unidade of unidadesDisponiveis" [value]="unidade.valor">
+        {{ unidade.label }}
+      </option>
+    </select>
+  </section>
+
+  <div class="alert-erro" *ngIf="erro">{{ erro }}</div>
+  <div class="loading-message" *ngIf="carregando">Carregando profissionais...</div>
+
+  <section class="table-card" *ngIf="!carregando && profissionaisFiltrados.length">
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>Cargo / Função</th>
+            <th>Unidade</th>
+            <th>E-mail</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          <tr *ngFor="let profissional of profissionaisPaginados">
+            <td data-label="Nome">
+              <div class="person-cell">
+                <span class="avatar">{{ iniciais(profissional.nome) }}</span>
+                <strong>{{ profissional.nome }}</strong>
+              </div>
+            </td>
+
+            <td data-label="Cargo / Função">
+              {{ labelEnum(profissional.tipoUsuario) }}
+            </td>
+
+            <td data-label="Unidade">
+              {{ profissional.usfAtuacao?.nomeUsf || labelEnum(profissional.unidadeAtuacao) }}
+            </td>
+
+            <td data-label="E-mail" class="email">
+              {{ profissional.email }}
+            </td>
+
+            <td data-label="Ações">
+              <div class="actions">
+                <button
+                  class="action details"
+                  (click)="verDetalhes(profissional.idPublico!)"
+                >
+                  <i class="bi bi-person-vcard"></i> Detalhes
+                </button>
+
+                <button
+                  *ngIf="podeGerenciar"
+                  class="action edit"
+                  (click)="editarProfissional(profissional.idPublico!)"
+                >
+                  <i class="bi bi-pencil"></i> Editar
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <footer class="pagination" *ngIf="totalPaginas > 0">
+      <span>
+        Mostrando {{ primeiroRegistro }} a {{ ultimoRegistro }} de
+        {{ profissionaisFiltrados.length }} profissionais
+      </span>
+
+      <nav aria-label="Paginação de profissionais">
+        <button
+          type="button"
+          (click)="irParaPagina(paginaAtual - 1)"
+          [disabled]="paginaAtual === 1"
+          aria-label="Página anterior"
+        >
+          <i class="bi bi-chevron-left"></i>
+        </button>
+
+        <button
+          type="button"
+          *ngFor="let pagina of paginas"
+          (click)="irParaPagina(pagina)"
+          [class.active]="paginaAtual === pagina"
+          [attr.aria-current]="paginaAtual === pagina ? 'page' : null"
+        >
+          {{ pagina }}
+        </button>
+
+        <button
+          type="button"
+          (click)="irParaPagina(paginaAtual + 1)"
+          [disabled]="paginaAtual === totalPaginas"
+          aria-label="Próxima página"
+        >
+          <i class="bi bi-chevron-right"></i>
+        </button>
+      </nav>
+    </footer>
+  </section>
+
+  <div class="empty-message" *ngIf="!carregando && !profissionaisFiltrados.length">
+    <i class="bi bi-people"></i>
+    <strong>Nenhum profissional encontrado.</strong>
+    <span>Tente ajustar os termos da busca ou os filtros.</span>
+  </div>
+
+</main>

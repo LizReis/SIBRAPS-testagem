@@ -1,0 +1,88 @@
+<main class="groups-page">
+    <header class="page-header">
+        <div>
+            <h1>Grupos Terapêuticos</h1>
+            <p>Acompanhe as sessões de hoje, consulte outras datas e gerencie os participantes.</p>
+        </div><a routerLink="/grupos-terapeuticos/novo" class="primary-button"><i class="bi bi-calendar-plus"
+                aria-hidden="true"></i> Agendar grupo</a>
+    </header>
+    <section class="metrics" aria-label="Resumo das sessões">
+        <article><span>{{ dataEhHoje ? 'GRUPOS HOJE' : 'GRUPOS NA DATA' }}</span><strong>{{ sessoes.length }}</strong>
+        </article>
+        <article><span>AGENDADOS</span><strong>{{ totalAgendadas }}</strong></article>
+        <article class="warning"><span>EM ANDAMENTO</span><strong>{{ totalAndamento }}</strong></article>
+        <article class="success"><span>REALIZADOS</span><strong>{{ totalRealizadas }}</strong></article>
+    </section>
+    <section class="toolbar card">
+        <div class="date-control"><label for="dataReferencia">Data de referência</label>
+            <div><button type="button" (click)="mudarDia(-1)" aria-label="Dia anterior"><i
+                        class="bi bi-chevron-left"></i></button><input id="dataReferencia" type="date"
+                    [(ngModel)]="dataSelecionada" (change)="carregar()"><button type="button" (click)="mudarDia(1)"
+                    aria-label="Próximo dia"><i class="bi bi-chevron-right"></i></button><button type="button"
+                    class="today" (click)="irParaHoje()">Hoje</button></div>
+        </div>
+        <div class="filters"><label><span>Status</span><select [(ngModel)]="filtroStatus">
+                    <option value="">Todos os status</option>
+                    <option value="AGENDADO">Agendada</option>
+                    <option value="EM_ANDAMENTO">Em andamento</option>
+                    <option value="REALIZADO">Realizada</option>
+                    <option value="CANCELADO">Cancelada</option>
+                </select></label><label><span>Coordenador</span><select [(ngModel)]="filtroCoordenador">
+                    <option value="">Todos os coordenadores</option>@for (nome of coordenadores; track nome) { <option
+                        [value]="nome">{{ nome }}</option> }
+                </select></label><label><span>Tema</span>
+                <div class="search"><i class="bi bi-search"></i><input type="search" [(ngModel)]="buscaTema"
+                        placeholder="Buscar tema..."></div>
+            </label></div>
+    </section>
+    @if (erro) { <div class="feedback error" role="alert">{{ erro }} <button type="button" (click)="carregar()">Tentar
+            novamente</button></div> }
+    <section class="sessions-section">
+        <h2>{{ dataEhHoje ? 'Sessões de hoje' : 'Sessões do dia' }}</h2>
+        <p class="date-label">{{ formatarData(dataSelecionada, true) }}</p>
+        @if (carregando) { <div class="feedback">Carregando sessões...</div> } @else if (!erro) {
+        <div class="table-card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>HORÁRIO</th>
+                        <th>TEMA</th>
+                        <th>COORDENADOR</th>
+                        <th>INSCRITOS</th>
+                        <th>PRESENÇAS</th>
+                        <th>STATUS</th>
+                        <th>AÇÃO</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (sessao of sessoesFiltradas; track sessao.id) { <tr>
+                        <td>{{ sessao.horario.slice(0,5) }}</td>
+                        <td><strong>{{ sessao.temaGrupo }}</strong></td>
+                        <td>{{ sessao.nomeCoordenador }}</td>
+                        <td>{{ sessao.quantidadeParticipantes }}</td>
+                        <td>{{ sessao.quantidadePresencasConfirmadas }}</td>
+                        <td><span class="status" [class]="'status '+classeStatus(sessao)">{{ labelStatus(sessao)
+                                }}</span></td>
+                        <td><button type="button" class="outline-button" (click)="abrirSessao(sessao)">{{
+                                sessaoEditavel(sessao) ? 'Gerenciar' : 'Ver detalhes' }}</button></td>
+                    </tr> }
+                    @empty { <tr>
+                        <td colspan="7" class="empty">Nenhuma sessão de grupo terapêutico agendada para esta data.</td>
+                    </tr> }
+                </tbody>
+            </table>
+        </div>
+        }
+    </section>
+    <section class="upcoming">
+        <h2>Próximas sessões</h2>
+        <p>Visualização rápida das próximas datas</p>
+        <div class="upcoming-grid">@for (sessao of proximasSessoes; track sessao.id) { <article class="card"><time
+                    [attr.datetime]="sessao.dataSessao">{{ formatarData(sessao.dataSessao) }}</time>
+                <div><strong>{{ sessao.horario.slice(0,5) }} • {{ sessao.temaGrupo }}</strong><span>Coordenador: {{
+                        sessao.nomeCoordenador }}</span><b>{{ sessao.quantidadeParticipantes }} {{
+                        sessao.quantidadeParticipantes === 1 ? 'inscrito' : 'inscritos' }}</b></div>
+            </article> } @empty { @if (!carregando) { <p class="empty-upcoming">Nenhuma sessão futura encontrada nos
+                próximos 60 dias.</p> } }</div>
+    </section>
+</main>

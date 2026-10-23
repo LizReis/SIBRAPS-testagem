@@ -1,0 +1,806 @@
+.agenda-page {
+    padding: 56px clamp(20px, 4vw, 64px);
+    background: #f4f7fb;
+    min-height: 100%;
+    color: #0f1b3d
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 24px
+}
+
+.page-title h1 {
+    margin: 0 0 8px;
+    font-size: 32px;
+    font-weight: 700;
+    color: #0b163f
+}
+
+.page-title p {
+    margin: 0;
+    color: #53627d
+}
+
+.toolbar-card,
+.card {
+    background: #fff;
+    border: 1px solid #e4eaf3;
+    border-radius: 18px;
+    box-shadow: 0 14px 34px rgba(11, 31, 68, .08)
+}
+
+.toolbar-card {
+    display: flex;
+    align-items: end;
+    gap: 22px;
+    padding: 22px;
+    margin-bottom: 24px
+}
+
+.field,
+.view-switch {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    color: #5a6680;
+    font-weight: 600;
+    font-size: 13px
+}
+
+.field-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 46px;
+    border: 1px solid #d8e1ef;
+    border-radius: 10px;
+    padding: 0 12px;
+    background: #fbfdff
+}
+
+.field-control .material-symbols-outlined {
+    font-size: 20px;
+    color: #004aad
+}
+
+.field-control select {
+    border: 0;
+    background: transparent;
+    min-width: 260px;
+    outline: 0;
+    color: #101936;
+    font-weight: 700
+}
+
+.field-control strong {
+    color: #101936
+}
+
+.segmented {
+    display: flex;
+    background: #f0f4fa;
+    border: 1px solid #dfe6f1;
+    border-radius: 10px;
+    padding: 3px
+}
+
+.segmented button {
+    border: 0;
+    background: transparent;
+    padding: 11px 28px;
+    border-radius: 8px;
+    font-weight: 700;
+    color: #1b2948;
+    cursor: pointer
+}
+
+.segmented button.active {
+    background: #004aad;
+    color: #fff;
+    box-shadow: 0 8px 18px rgba(0, 74, 173, .22)
+}
+
+.toolbar-actions {
+    display: flex;
+    gap: 10px;
+    margin-left: auto
+}
+
+.btn {
+    border: 0;
+    border-radius: 10px;
+    padding: 13px 20px;
+    font-weight: 800;
+    cursor: pointer
+}
+
+.btn-config {
+    background: #eef3fa;
+    color: #1b2948
+}
+
+.btn-new {
+    background: #004aad;
+    color: #fff;
+    box-shadow: 0 8px 18px rgba(0, 74, 173, .24)
+}
+
+.agenda-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 310px;
+    gap: 22px
+}
+
+.agenda-main {
+    padding: 22px;
+    position: relative;
+    overflow: visible
+}
+
+.agenda-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: center;
+    border-bottom: 1px solid #edf1f6;
+    padding-bottom: 18px;
+    margin-bottom: 18px
+}
+
+.agenda-head h2 {
+    margin: 0 0 6px;
+    font-size: 20px;
+    text-transform: capitalize
+}
+
+.agenda-head p {
+    margin: 0;
+    color: #65718a
+}
+
+.period-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px
+}
+
+.period-nav button,
+.calendar-card header button {
+    border: 0;
+    background: #eef4fb;
+    color: #0d2454;
+    border-radius: 10px;
+    min-width: 38px;
+    height: 38px;
+    font-weight: 900;
+    cursor: pointer
+}
+
+.period-nav .today {
+    padding: 0 16px;
+    background: #dff0ff;
+    color: #004aad
+}
+
+.loading-message,
+.empty-message,
+.alert-erro {
+    padding: 18px;
+    border-radius: 14px;
+    background: #eef5ff;
+    color: #0b4aa2;
+    font-weight: 700
+}
+
+.alert-erro {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 18px;
+    background: #fff1f2;
+    color: #9f1239
+}
+
+.alert-erro button {
+    border: 1px solid #fecdd3;
+    background: #fff;
+    border-radius: 9px;
+    padding: 8px 12px;
+    color: #9f1239;
+    font-weight: 800
+}
+
+.day-view {
+    position: relative
+}
+
+.hour-block {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    min-height: 64px;
+    border-top: 1px solid #edf1f6
+}
+
+.hour-block:last-child {
+    border-bottom: 1px solid #edf1f6
+}
+
+.time-label {
+    padding-top: 10px;
+    padding-right: 16px;
+    color: #0f1b3d;
+    font-weight: 800;
+    text-align: right
+}
+
+.hour-content {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    min-height: 64px;
+    padding: 8px 0 8px 16px;
+    border-left: 1px solid #e7edf6
+}
+
+.appointment-card {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 14px;
+    background: #fbfcfe;
+    border: 1px solid #e8eef6;
+    border-radius: 14px;
+    padding: 14px 16px;
+    box-shadow: 0 4px 12px rgba(15, 35, 80, .04);
+    z-index: 2
+}
+
+.appointment-time {
+    color: #004aad;
+    font-size: 16px;
+    font-weight: 900
+}
+
+.appointment-main {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    min-width: 0
+}
+
+.appointment-main strong {
+    color: #101936;
+    font-size: 16px;
+    overflow-wrap: anywhere
+}
+
+.appointment-meta-text {
+    color: #53627d;
+    font-size: 13px;
+    overflow-wrap: anywhere
+}
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: max-content;
+    white-space: nowrap;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 900;
+    position: relative;
+    overflow: hidden
+}
+
+.badge::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: 0 0 auto
+}
+
+.status-presente {
+    background: #bbf7d0;
+    color: #14532d
+}
+
+.status-agendado {
+    background: #bfdbfe;
+    color: #1d4ed8
+}
+
+.status-faltou {
+    background: #fecaca;
+    color: #991b1b
+}
+
+.status-remarcado {
+    background: #fed7aa;
+    color: #9a3412
+}
+
+.status-cancelado {
+    background: #d1d5db;
+    color: #1f2937
+}
+
+.status-remarcado-origem {
+    background: #ddd6fe;
+    color: #4c1d95
+}
+
+.status-neutro {
+    background: #e2e8f0;
+    color: #334155
+}
+
+.pattern-presente {
+    background-image: linear-gradient(135deg, rgba(255, 255, 255, .28) 25%, transparent 25%)
+}
+
+.pattern-agendado {
+    background-image: repeating-linear-gradient(45deg, rgba(29, 78, 216, .18) 0 4px, transparent 4px 8px)
+}
+
+.pattern-faltou {
+    background-image: repeating-linear-gradient(45deg, rgba(153, 27, 27, .16) 0 3px, transparent 3px 7px), repeating-linear-gradient(-45deg, rgba(153, 27, 27, .12) 0 3px, transparent 3px 7px)
+}
+
+.pattern-remarcado {
+    background-image: radial-gradient(rgba(154, 52, 18, .26) 1.4px, transparent 1.4px);
+    background-size: 7px 7px
+}
+
+.pattern-cancelado {
+    background-image: repeating-linear-gradient(0deg, rgba(31, 41, 55, .16) 0 3px, transparent 3px 7px)
+}
+
+.pattern-remarcado-origem {
+    background-image: linear-gradient(45deg, rgba(76, 29, 149, .18) 25%, transparent 25%), linear-gradient(-45deg, rgba(76, 29, 149, .18) 25%, transparent 25%);
+    background-size: 8px 8px
+}
+
+.appointment-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px
+}
+
+.action-btn {
+    border: 1px solid transparent;
+    border-radius: 10px;
+    min-height: 38px;
+    padding: 0 12px;
+    font-weight: 900;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px
+}
+
+.action-btn .material-symbols-outlined {
+    font-size: 18px
+}
+
+.action-presente {
+    background: #dcfce7;
+    color: #166534;
+    border-color: #86efac
+}
+
+.action-faltou {
+    background: #fee2e2;
+    color: #991b1b;
+    border-color: #fca5a5
+}
+
+.action-remarcar {
+    background: #dbeafe;
+    color: #1d4ed8;
+    border-color: #93c5fd
+}
+
+.action-btn:hover:not(:disabled) {
+    filter: brightness(.97);
+    transform: translateY(-1px)
+}
+
+.action-btn:disabled {
+    opacity: .55;
+    cursor: not-allowed
+}
+
+.now-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    border-top: 1px dashed #ef4444;
+    z-index: 1;
+    pointer-events: none
+}
+
+.now-line span {
+    position: absolute;
+    left: -54px;
+    top: -10px;
+    background: #ef4444;
+    color: #fff;
+    border-radius: 5px;
+    padding: 2px 6px;
+    font-size: 12px
+}
+
+.week-view {
+    display: flex;
+    flex-direction: column;
+    gap: 14px
+}
+
+.week-day-row {
+    background: #fbfcfe;
+    border: 1px solid #e8eef6;
+    border-radius: 16px;
+    padding: 14px
+}
+
+.week-day-row.selected-day {
+    box-shadow: inset 4px 0 #004aad
+}
+
+.week-day-row.today-day .week-day-header h3::after {
+    content: "Hoje";
+    font-size: 11px;
+    margin-left: 8px;
+    background: #e0f2fe;
+    color: #075985;
+    border-radius: 999px;
+    padding: 3px 7px
+}
+
+.week-day-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px
+}
+
+.week-day-header h3 {
+    margin: 0;
+    text-transform: capitalize
+}
+
+.week-day-header span {
+    color: #64748b;
+    font-weight: 700
+}
+
+.week-day-header strong {
+    color: #004aad
+}
+
+.week-day-appointments {
+    display: flex;
+    flex-direction: column;
+    gap: 10px
+}
+
+.week-appointment {
+    grid-template-columns: 64px minmax(0, 1fr) auto;
+    background: #fff
+}
+
+.mini-empty {
+    color: #64748b;
+    margin: 8px 0
+}
+
+.month-view {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(110px, 1fr));
+    gap: 8px;
+    overflow: auto
+}
+
+.month-weekdays {
+    display: contents
+}
+
+.month-weekdays span {
+    font-weight: 900;
+    text-align: center;
+    color: #64748b
+}
+
+.month-cell {
+    min-height: 126px;
+    text-align: left;
+    background: #fbfcfe;
+    border: 1px solid #e8eef6;
+    border-radius: 12px;
+    padding: 10px;
+    cursor: pointer;
+    color: #111827;
+    overflow: hidden
+}
+
+.month-cell.outside {
+    opacity: .46
+}
+
+.month-cell.selected {
+    outline: 2px solid #004aad
+}
+
+.month-cell strong {
+    display: block;
+    margin-bottom: 4px
+}
+
+.count,
+.more-count {
+    display: block;
+    color: #004aad;
+    font-weight: 800;
+    font-size: 12px
+}
+
+.month-item {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
+    color: #475569;
+    margin-top: 4px
+}
+
+.month-item i,
+.legend-item i {
+    display: inline-block;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    padding: 0;
+    margin-right: 8px;
+    border: 2px solid currentColor;
+    vertical-align: -2px
+}
+
+.agenda-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 16px
+}
+
+.calendar-card,
+.summary-card,
+.legend-card {
+    padding: 18px
+}
+
+.calendar-card header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px
+}
+
+.calendar-card h2,
+.summary-card h2,
+.legend-card h2 {
+    font-size: 20px;
+    margin: 0;
+    text-transform: capitalize
+}
+
+.calendar-weekdays,
+.calendar-card {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px
+}
+
+.calendar-card header {
+    grid-column: 1/-1
+}
+
+.calendar-weekdays {
+    grid-column: 1/-1
+}
+
+.calendar-weekdays span {
+    text-align: center;
+    color: #64748b;
+    font-weight: 800;
+    font-size: 12px
+}
+
+.calendar-day {
+    height: 34px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: #17213d;
+    cursor: pointer
+}
+
+.calendar-day.outside {
+    color: #a8b2c4
+}
+
+.calendar-day.today {
+    box-shadow: inset 0 0 0 1px #004aad
+}
+
+.calendar-day.selected {
+    background: #004aad;
+    color: #fff;
+    font-weight: 900
+}
+
+.summary-card {
+    display: flex;
+    flex-direction: column
+}
+
+.summary-card h2 {
+    margin-bottom: 14px
+}
+
+
+.summary-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 0;
+    border-bottom: 1px solid #edf1f6;
+     color: #34415e;
+    font-size: 14px;
+    letter-spacing: .01em
+}
+
+.summary-line span {
+    min-width: 0;
+    overflow-wrap: anywhere
+}
+
+.summary-line strong {
+    color: #253450;
+    font-weight: 800;
+    text-align: right
+}
+
+.summary-line.total {
+    padding-top: 0;
+    border-bottom: 0;
+    color: #0f1b3d;
+    font-weight: 900
+}
+
+.summary-line.total strong {
+    color: #0f1b3d;
+    font-size: 16px;
+    font-weight: 900
+}
+
+.summary-divider {
+    height: 1px;
+    margin: 2px 0 4px;
+    background: #dfe6f1
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    color: #34415e;
+    font-weight: 800
+}
+
+button:focus-visible,
+select:focus-visible {
+    outline: 3px solid rgba(0, 74, 173, .35);
+    outline-offset: 2px
+}
+
+@media(max-width:1100px) {
+    .agenda-layout {
+        grid-template-columns: 1fr
+    }
+
+    .agenda-sidebar {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr)
+    }
+}
+
+@media(max-width:760px) {
+    .agenda-page {
+        padding: 28px 14px
+    }
+
+    .toolbar-card,
+    .page-header,
+    .agenda-head {
+        flex-direction: column;
+        align-items: stretch
+    }
+
+    .toolbar-actions {
+        margin-left: 0;
+        flex-wrap: wrap
+    }
+
+    .field-control select {
+        min-width: 0;
+        width: 100%
+    }
+
+    .segmented button {
+        flex: 1;
+        padding: 11px 14px
+    }
+
+    .agenda-sidebar {
+        display: flex
+    }
+
+    .hour-block {
+        grid-template-columns: 54px minmax(0, 1fr)
+    }
+
+    .time-label {
+        padding-right: 10px;
+        font-size: 13px
+    }
+
+    .hour-content {
+        padding-left: 10px
+    }
+
+    .appointment-card,
+    .week-appointment {
+        grid-template-columns: 1fr
+    }
+
+    .appointment-actions {
+        justify-content: flex-start
+    }
+
+    .action-btn {
+        min-height: 42px
+    }
+
+    .week-day-header {
+        align-items: flex-start;
+        flex-direction: column
+    }
+
+    .month-view {
+        grid-template-columns: repeat(7, 150px)
+    }
+
+    .now-line span {
+        left: -48px
+    }
+
+    .btn {
+        flex: 1
+    }
+}

@@ -1,0 +1,401 @@
+:host {
+    display: block;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+.historico-container {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px;
+    color: #0f172a;
+}
+
+.page-header {
+    margin-bottom: 20px;
+}
+
+.link-voltar {
+    min-height: 44px;
+    margin: 0 0 8px -10px;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #475569;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.link-voltar:hover {
+    background: #e2e8f0;
+    color: #003fa3;
+}
+
+.titulo-linha {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.avatar {
+    width: 54px;
+    height: 54px;
+    min-width: 54px;
+    flex: 0 0 54px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: #e5effb;
+    color: #123e70;
+    font-weight: 800;
+}
+
+h1 {
+    margin: 0;
+    font-size: 28px;
+}
+
+.page-header p {
+    margin: 6px 0 0;
+    color: #64748b;
+}
+
+.risco-badge,
+.tipo-badge {
+    display: inline-flex;
+    padding: 5px 11px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    overflow-wrap: anywhere;
+}
+
+.risco-verde {
+    color: #166534;
+    background: #dcfce7;
+}
+
+.risco-amarelo {
+    color: #854d0e;
+    background: #fef9c3;
+}
+
+.risco-vermelho {
+    color: #991b1b;
+    background: #fee2e2;
+}
+
+.tabs {
+    display: flex;
+    gap: 28px;
+    overflow-x: auto;
+    white-space: nowrap;
+    border-bottom: 1px solid #d5dfeb;
+    margin-bottom: 20px;
+}
+
+.tabs a {
+    flex: 0 0 auto;
+    padding: 14px 3px;
+    color: #65758b;
+    font-weight: 700;
+}
+
+.tabs a[aria-current] {
+    color: #1751d0;
+    border-bottom: 3px solid #1751d0;
+}
+
+.situacao-card,
+.timeline-card,
+.indicador,
+.estado-card {
+    background: #fff;
+    border: 1px solid #d7e0eb;
+    border-radius: 14px;
+    box-shadow: 0 3px 12px rgba(15, 23, 42, .05);
+}
+
+.situacao-card {
+    padding: 22px;
+    margin-bottom: 22px;
+    border-left: 5px solid #003fa3;
+}
+
+.situacao-card h2,
+.timeline-card h2 {
+    margin: 0 0 18px;
+    font-size: 18px;
+}
+
+.situacao-card h2 span {
+    color: #005bf0;
+}
+
+.situacao-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px 26px;
+}
+
+.situacao-grid div {
+    min-width: 0;
+}
+
+.situacao-grid span {
+    display: block;
+    margin-bottom: 4px;
+    color: #64748b;
+    font-size: 13px;
+}
+
+.situacao-grid strong {
+    overflow-wrap: anywhere;
+}
+
+.indicadores {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
+}
+
+.indicador {
+    padding: 20px;
+    min-height: 100px;
+}
+
+.indicador strong {
+    display: block;
+    margin-bottom: 6px;
+    color: #003fa3;
+    font-size: 28px;
+}
+
+.indicador span {
+    color: #64748b;
+    font-size: 14px;
+}
+
+.timeline-card {
+    padding: 22px;
+}
+
+.timeline {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.timeline li {
+    --evento-cor: #64748b;
+    position: relative;
+    padding: 0 0 26px 38px;
+}
+
+.timeline li:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    top: 16px;
+    bottom: -2px;
+    left: 8px;
+    width: 2px;
+    background: #dbe3ed;
+}
+
+.marcador {
+    position: absolute;
+    top: 4px;
+    left: 0;
+    width: 18px;
+    height: 18px;
+    border: 4px solid #fff;
+    border-radius: 50%;
+    background: var(--evento-cor);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--evento-cor) 30%, white);
+}
+
+.evento-cabecalho {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.evento-cabecalho h3 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.tipo-badge {
+    color: var(--evento-cor);
+    background: color-mix(in srgb, var(--evento-cor) 12%, white);
+    border: 1px solid color-mix(in srgb, var(--evento-cor) 35%, white);
+}
+
+.metadados {
+    margin: 5px 0 0;
+    color: #64748b;
+    font-size: 13px;
+}
+
+.metadados.secundario {
+    margin-top: 3px;
+}
+
+.descricao {
+    margin: 7px 0 0;
+    color: #475569;
+    line-height: 1.5;
+}
+
+.evento-falta {
+    --evento-cor: #dc2626 !important;
+}
+
+.evento-presenca {
+    --evento-cor: #15803d !important;
+}
+
+.evento-consulta-agendada {
+    --evento-cor: #2563eb !important;
+}
+
+.evento-remarcacao {
+    --evento-cor: #c2410c !important;
+}
+
+.evento-busca-ativa {
+    --evento-cor: #7c3aed !important;
+}
+
+.evento-participacao-grupo-terapeutico {
+    --evento-cor: #0f766e !important;
+}
+
+.vazio {
+    padding: 30px;
+    margin: 0;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #64748b;
+    text-align: center;
+}
+
+.estado-card {
+    display: grid;
+    justify-items: center;
+    gap: 14px;
+    padding: 36px;
+    text-align: center;
+}
+
+.estado-erro {
+    color: #991b1b;
+    border-color: #fecaca;
+}
+
+.estado-acoes {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+}
+
+.spinner {
+    width: 32px;
+    height: 32px;
+    border: 4px solid #dbeafe;
+    border-top-color: #003fa3;
+    border-radius: 50%;
+    animation: girar .8s linear infinite;
+}
+
+.btn {
+    min-height: 44px;
+    padding: 10px 16px;
+    border: 0;
+    border-radius: 9px;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.btn-primario {
+    background: #003fa3;
+    color: #fff;
+}
+
+.btn-secundario {
+    background: #e2e8f0;
+    color: #334155;
+}
+
+button:focus-visible {
+    outline: 3px solid rgba(0, 91, 240, .4);
+    outline-offset: 2px;
+}
+
+@keyframes girar {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (max-width: 900px) {
+
+    .situacao-grid,
+    .indicadores {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .spinner {
+        animation: none;
+    }
+}
+
+@media (max-width: 600px) {
+    .historico-container {
+        padding: 4px;
+    }
+
+    .titulo-linha h1 {
+        font-size: 24px;
+    }
+
+
+    .situacao-grid,
+    .indicadores {
+        grid-template-columns: 1fr;
+    }
+
+    .situacao-card,
+    .timeline-card {
+        padding: 18px;
+    }
+
+    .timeline li {
+        padding-left: 32px;
+    }
+
+    .indicador {
+        min-height: 86px;
+    }
+
+    .indicador strong {
+        font-size: 24px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .spinner {
+        animation: none;
+    }
+}

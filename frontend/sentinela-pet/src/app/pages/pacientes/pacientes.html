@@ -1,0 +1,86 @@
+<main class="page">
+  <header class="page-head">
+    <div>
+      <h1>Pacientes</h1>
+      <p>Consulte, filtre e acompanhe os pacientes cadastrados na unidade.</p>
+    </div><a *ngIf="podeCadastrar" routerLink="/pacientes/novo" class="primary">+ Cadastrar novo paciente</a>
+  </header>
+  <section class="filters" aria-label="Filtros de pacientes"><label>Buscar paciente<input [(ngModel)]="termo"
+        (input)="pesquisar()" placeholder="Nome, CPF ou CNS"></label><label>Classificação<select
+        [(ngModel)]="classificacao" (change)="filtrar()">
+        <option value="">Todas</option>
+        <option>VERDE</option>
+        <option>AMARELO</option>
+        <option>VERMELHO</option>
+      </select></label><label>Status<select [(ngModel)]="status" (change)="filtrar()">
+        <option value="">Todos</option>
+        <option value="ATIVO">Ativos</option>
+        <option value="ALTA_TERAPEUTICA">Alta terapêutica</option>
+        <option value="TRANSFERIDO">Transferido</option>
+        <option value="ABANDONO_TRATAMENTO">Abandono de tratamento</option>
+        <option value="OBITO">Óbito</option>
+        <option value="OUTRO">Outro</option>
+        <option value="INATIVO">Inativo</option>
+      </select></label><label>Acompanhamento<select [(ngModel)]="acompanhamento" (change)="filtrar()">
+        <option value="">Todos</option>
+        <option value="INDIVIDUAL">Individual</option>
+        <option value="GRUPO_TERAPEUTICO">Grupo terapêutico</option>
+        <option value="AMBOS">Ambos</option>
+      </select></label><button (click)="limpar()">Limpar</button></section>
+  <section class="metrics" *ngIf="dados">
+    <article><small>PACIENTES ATIVOS</small><strong>{{dados.resumo.pacientesAtivos}}</strong></article>
+    <article><small>EM ATENÇÃO</small><strong class="yellow">{{dados.resumo.emAtencao}}</strong></article>
+    <article><small>BUSCA ATIVA</small><strong class="red">{{dados.resumo.buscaAtiva}}</strong></article>
+    <article><small>SEM PRESENÇA RECENTE</small><strong>{{dados.resumo.semPresencaRecente}}</strong></article>
+  </section>
+  <section class="list">
+    <h2>Lista de pacientes <small>{{dados?.totalRegistros || 0}} registros</small></h2>
+    <div aria-live="polite" class="state" *ngIf="carregando">Carregando pacientes…</div>
+    <div class="table-wrap" *ngIf="!carregando">
+      <table>
+        <thead>
+          <tr>
+            <th>PACIENTE</th>
+            <th>DOCUMENTO</th>
+            <th>UNIDADE</th>
+            <th>FALTAS</th>
+            <th>CLASSIFICAÇÃO</th>
+            <th>ÚLTIMA PRESENÇA</th>
+            <th>AÇÕES</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let p of dados?.pacientes">
+            <td data-label="Paciente">
+              <div class="person"><span
+                  class="avatar">{{iniciais(p.nome)}}</span><span><b>{{p.nome}}</b><small>{{label(p.tipoAcompanhamento)}}</small></span>
+              </div>
+            </td>
+            <td data-label="Documento">{{documento(p)}}</td>
+            <td data-label="Unidade">{{p.unidade || 'Não informada'}}</td>
+            <td data-label="Faltas">{{p.countFaltas}}</td>
+            <td data-label="Classificação"><span class="badge"
+                [class]="'badge '+p.classificacaoRisco.toLowerCase()">{{label(p.classificacaoRisco)}}</span></td>
+            <td data-label="Última presença">{{p.dataUltimaPresenca ? (p.dataUltimaPresenca|date:'dd/MM/yyyy') : 'Sem
+              presença registrada'}}</td>
+            <td data-label="Ações" class="actions"><button
+                aria-label="Mais ações" aria-haspopup="menu" [attr.aria-expanded]="menu===p.idPublico"
+                (click)="$event.stopPropagation();menu=menu===p.idPublico?undefined:p.idPublico">•••</button>
+              <div class="menu" role="menu" *ngIf="menu===p.idPublico"><a role="menuitem"
+                  [routerLink]="['/pacientes/detalhes',p.idPublico]">Ver</a><a role="menuitem"
+                  *ngIf="podeEditar" [routerLink]="['/pacientes/editar',p.idPublico]">Editar</a><a role="menuitem"
+                  [routerLink]="['/pacientes/detalhes',p.idPublico,'historico']">Ver histórico</a></div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="empty" *ngIf="!dados?.pacientes?.length">Nenhum paciente encontrado.</p>
+    </div>
+    <footer *ngIf="dados && dados.totalRegistros"><span>Mostrando
+        {{pagina*tamanho+1}}–{{Math.min((pagina+1)*tamanho,dados.totalRegistros)}} de {{dados.totalRegistros}}</span>
+      <nav aria-label="Paginação"><button (click)="ir(pagina-1)" [disabled]="pagina===0">Anterior</button><span>Página
+          {{pagina+1}} de {{dados.totalPaginas}}</span><button (click)="ir(pagina+1)"
+          [disabled]="pagina+1>=dados.totalPaginas">Próxima</button></nav>
+    </footer>
+  </section>
+</main>

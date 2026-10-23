@@ -1,0 +1,610 @@
+:host {
+    display: block;
+    color: #102a4c
+}
+
+.detail-page {
+    max-width: 1400px;
+    margin: auto
+}
+
+.back {
+    display: inline-flex;
+    gap: 8px;
+    color: #1459dc;
+    margin-bottom: 18px
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    align-items: center;
+    margin-bottom: 22px
+}
+
+.page-header h1 {
+    font-size: 30px;
+    margin: 0
+}
+
+.page-header p,
+.panel>p,
+.occurrence header p,
+fieldset>p {
+    color: #687991;
+    margin-top: 6px
+}
+
+.card {
+    background: #fff;
+    border: 1px solid #dbe5f0;
+    border-radius: 12px;
+    box-shadow: 0 1px 4px #1231
+}
+
+.hero {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    padding: 16px 20px
+}
+
+.hero-item {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    padding: 12px;
+    border-right: 1px solid #e4eaf2
+}
+
+.hero-item:nth-child(4n) {
+    border-right: 0
+}
+
+.hero-item i,
+.metrics i {
+    font-size: 23px;
+    color: #1459dc
+}
+
+.hero-item span,
+.metrics span {
+    display: flex;
+    flex-direction: column;
+    gap: 4px
+}
+
+small {
+    color: #62738b;
+    font-size: 11px
+}
+
+.status {
+    padding: 10px 15px;
+    border-radius: 8px;
+    display: flex;
+    gap: 8px;
+    font-weight: 700
+}
+
+.agendado {
+    background: #edf4ff;
+    color: #1459dc
+}
+
+.em_andamento,
+.realizado {
+    background: #e6f7ec;
+    color: #137c46
+}
+
+.cancelado {
+    background: #ffebed;
+    color: #af2937
+}
+
+.tabs {
+    display: flex;
+    overflow-x: auto;
+    border-bottom: 1px solid #d9e2ed;
+    margin: 22px 0
+}
+
+.tabs button {
+    padding: 14px 22px;
+    white-space: nowrap;
+    color: #40516a
+}
+
+.tabs .active {
+    color: #075be8;
+    border-bottom: 2px solid #075be8
+}
+
+.metrics {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px
+}
+
+.metrics article {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 20px;
+    background: #fff;
+    border: 1px solid #dbe5f0;
+    border-radius: 12px
+}
+
+.metrics strong {
+    font-size: 22px
+}
+
+.metrics article:last-child strong {
+    font-size: 14px
+}
+
+.info-grid,
+.participants-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-top: 18px
+}
+
+.info,
+.panel,
+.quick,
+.occurrence {
+    padding: 20px
+}
+
+.info h2,
+.panel h2,
+.quick h2,
+.occurrence h2 {
+    font-size: 17px;
+    margin: 0
+}
+
+.info dl {
+    margin: 20px 0 0
+}
+
+.info dl div {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding: 8px 0
+}
+
+.info dt {
+    color: #657790
+}
+
+.info dd {
+    margin: 0
+}
+
+.quick {
+    margin-top: 18px
+}
+
+.quick>div {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 18px
+}
+
+.quick button,
+.past-session button,
+.attendance button {
+    border: 1px solid #8eb4f5;
+    border-radius: 7px;
+    padding: 10px;
+    color: #075be8
+}
+
+.search {
+    display: block;
+    position: relative;
+    margin: 18px 0
+}
+
+.search i {
+    position: absolute;
+    left: 12px;
+    top: 12px;
+    color: #718097
+}
+
+.search input,
+.patient-search input,
+.cancel-reason textarea {
+    width: 100%;
+    border: 1px solid #ccd8e7;
+    border-radius: 7px;
+    padding: 11px
+}
+
+.search input {
+    padding-left: 35px
+}
+
+.person,
+.selected {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    border-top: 1px solid #e6ecf3;
+    padding: 14px 4px
+}
+
+.avatar {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #eaf2ff;
+    color: #075be8;
+    font-weight: 700
+}
+
+.person em {
+    margin-left: auto
+}
+
+.panel fieldset,
+.choice {
+    border: 0;
+    padding: 0;
+    margin: 18px 0
+}
+
+.panel legend,
+.choice legend {
+    font-weight: 700;
+    margin-bottom: 10px
+}
+
+.panel legend b {
+    display: inline-grid;
+    place-items: center;
+    width: 23px;
+    height: 23px;
+    border-radius: 50%;
+    background: #075be8;
+    color: #fff
+}
+
+.patient-search {
+    display: flex;
+    gap: 8px
+}
+
+.patient-search button,
+.primary {
+    background: #075be8;
+    color: white;
+    border-radius: 7px;
+    padding: 10px 18px
+}
+
+.result {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    text-align: left;
+    border-bottom: 1px solid #e6ecf3
+}
+
+.past-session {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid #e6ecf3;
+    padding: 11px 0
+}
+
+.chosen {
+    background: #e8f8ee !important;
+    color: #0b793d !important;
+    border-color: #42b879 !important
+}
+
+.absent {
+    background: #fff0f0 !important;
+    color: #b42332 !important;
+    border-color: #ef6c78 !important
+}
+
+.message,
+.notice,
+.state {
+    padding: 14px;
+    border-radius: 8px;
+    margin: 12px 0
+}
+
+.error {
+    background: #ffeded;
+    color: #a51d2b
+}
+
+.success {
+    background: #e8f8ee;
+    color: #106b3b
+}
+
+.warning {
+    background: #fff6df;
+    color: #86570d
+}
+
+.message button {
+    text-decoration: underline
+}
+
+.occurrence header {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px
+}
+
+.occ-metrics {
+    display: flex;
+    gap: 10px
+}
+
+.occ-metrics span {
+    min-width: 120px;
+    padding: 10px 18px;
+    border: 1px solid #dce5ef;
+    border-radius: 9px;
+    display: flex;
+    flex-direction: column
+}
+
+.choice {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px
+}
+
+.choice legend {
+    grid-column: 1/-1
+}
+
+.choice label {
+    border: 1px solid #ccd8e7;
+    border-radius: 9px;
+    padding: 16px;
+    display: flex;
+    gap: 12px
+}
+
+.choice label span {
+    display: flex;
+    flex-direction: column
+}
+
+.attendance .person div {
+    margin-left: auto;
+    display: flex;
+    gap: 9px
+}
+
+.attendance button {
+    min-width: 130px
+}
+
+.cancel-reason {
+    display: flex;
+    flex-direction: column;
+    gap: 8px
+}
+
+.cancel-reason small {
+    text-align: right
+}
+
+.occurrence footer {
+    text-align: right
+}
+
+.primary:disabled {
+    opacity: .55
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden
+}
+
+.empty {
+    color: #687991;
+    text-align: center;
+    padding: 20px
+}
+
+.readonly {
+    margin-top: 18px
+}
+
+.result:focus-visible,
+.tabs button:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+    outline: 3px solid #8ab6ff;
+    outline-offset: 2px
+}
+
+@media(max-width:950px) {
+
+    .hero,
+    .metrics {
+        grid-template-columns: repeat(2, 1fr)
+    }
+
+    .hero-item:nth-child(2n) {
+        border-right: 0
+    }
+
+    .info-grid,
+    .participants-grid {
+        grid-template-columns: 1fr
+    }
+
+    .occurrence header {
+        flex-direction: column
+    }
+}
+
+@media(max-width:600px) {
+    .page-header {
+        align-items: flex-start;
+        flex-direction: column
+    }
+
+    .hero,
+    .metrics,
+    .choice {
+        grid-template-columns: 1fr
+    }
+
+    .hero-item {
+        border-right: 0
+    }
+
+    .quick>div {
+        grid-template-columns: 1fr
+    }
+
+    .occ-metrics {
+        overflow-x: auto
+    }
+
+    .past-session,
+    .person {
+        align-items: flex-start;
+        flex-wrap: wrap
+    }
+
+    .attendance .person div {
+        margin-left: 53px
+    }
+
+    .attendance button {
+        min-width: auto
+    }
+
+    .primary {
+        width: 100%
+    }
+}
+
+.header-actions,
+.readonly-title,
+.correction-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px
+}
+
+.edit-button {
+    background: #075be8;
+    color: #fff;
+    padding: 10px 15px;
+    border-radius: 8px
+}
+
+.person>span:nth-child(2) {
+    display: flex;
+    flex-direction: column
+}
+
+.remove {
+    margin-left: auto;
+    color: #a51d2b
+}
+
+.enrollment-mode label {
+    display: flex;
+    gap: 10px;
+    border: 1px solid #ccd8e7;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 8px 0
+}
+
+.enrollment-mode label span {
+    display: flex;
+    flex-direction: column
+}
+
+.frequency-buttons {
+    margin-left: auto;
+    display: flex;
+    gap: 8px
+}
+
+.frequency-buttons button,
+.edit-frequency,
+.correction-actions>button {
+    border: 1px solid #8eb4f5;
+    border-radius: 7px;
+    padding: 9px 14px
+}
+
+.dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    background: #071b3699;
+    z-index: 1200;
+    display: grid;
+    place-items: center;
+    padding: 16px
+}
+
+.dialog {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    width: min(520px, 100%)
+}
+
+.dialog h2 {
+    font-size: 19px
+}
+
+.dialog p {
+    color: #687991;
+    margin: 12px 0 22px
+}
+
+.dialog footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px
+}
+
+.dialog footer button {
+    padding: 10px 16px;
+    border-radius: 7px
+}
+
+.danger {
+    background: #b42332;
+    color: #fff
+}
+
+.correction-actions {
+    justify-content: flex-end;
+    margin-top: 18px
+}

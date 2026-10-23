@@ -1,0 +1,13 @@
+<div class="app-container">
+
+  <!-- Sidebar recebe a classe 'open' quando aberta -->
+   @if (isSidebarOpen() && isMobile()) { <div (click)="toggleSidebar()" class="sidebar-overlay" aria-hidden="true"></div> }
+  <app-sidebar [class.open]="isSidebarOpen()" class="app-sidebar"></app-sidebar>
+
+  <!-- Área principal -->
+  <div class="main-content">
+    <app-header (menuToggle)="toggleSidebar()"></app-header>
+    <main class="content-area"><router-outlet></router-outlet></main>
+  </div>
+
+</div>

@@ -1,0 +1,128 @@
+<main class="container">
+
+  <header class="page-header"><span class="title-icon" aria-hidden="true"><svg width="24" height="24"
+        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" />
+        <path d="M12 14v4M10 16h4" />
+      </svg></span>
+    <div>
+      <h1>{{ modoRemarcacao ? 'Remarcar Atendimento' : 'Novo Agendamento' }}</h1>
+      <p>{{ modoRemarcacao ? 'Escolha a nova data, o turno e o horário do atendimento.' : 'Siga os passos abaixo para
+        criar um agendamento de forma rápida e segura.' }}</p>
+    </div>
+  </header>
+  <div class="alert error" role="alert" *ngIf="erroGeral">{{erroGeral}}</div>
+  <div class="alert" aria-live="polite" *ngIf="carregandoRemarcacao">Carregando dados da remarcação...</div>
+  <div class="page-grid">
+    <div class="steps">
+      <section class="step-card">
+        <h2><span class="step-number">1</span>Selecionar paciente</h2>
+        <ng-container *ngIf="!pacienteSelecionado; else selected"><label for="busca">Paciente</label><input id="busca"
+            type="search" [(ngModel)]="termoPesquisaPaciente" (input)="pesquisarPaciente()"
+            placeholder="Buscar paciente por nome, CPF ou CNS">
+          <p class="helper">Digite 3 letras, um CPF com 11 dígitos ou CNS com 15 dígitos.</p>
+          <div class="results" role="listbox" *ngIf="resultadosPacientes.length"><button type="button" role="option"
+              aria-selected="false" *ngFor="let p of resultadosPacientes"
+              (click)="selecionarPaciente(p)"><span><strong>{{p.nome}}</strong><small>CPF: {{formatarCpf(p.cpf)}} <i
+                    *ngIf="p.cns">• CNS: {{p.cns}}</i></small><small
+                  *ngIf="p.dataNascimento">{{formatarData(p.dataNascimento)}} ({{idade(p.dataNascimento)}} anos) •
+                  {{labelEnum(p.tipoAcompanhamento)}}</small></span><b>Selecionar</b></button></div>
+          <p class="state" aria-live="polite" *ngIf="buscandoPaciente">Buscando pacientes...</p>
+          <p class="state" aria-live="polite" *ngIf="pesquisaRealizada&&!buscandoPaciente&&!resultadosPacientes.length">
+            Nenhum paciente encontrado.</p>
+        </ng-container>
+        <ng-template #selected>
+          <div class="selected"><span class="avatar" aria-hidden="true">♙</span><span
+              class="info"><strong>{{pacienteSelecionado!.nome}}</strong><small>CPF:
+                {{formatarCpf(pacienteSelecionado!.cpf)}} <i *ngIf="pacienteSelecionado!.cns">• CNS:
+                  {{pacienteSelecionado!.cns}}</i></small><small
+                *ngIf="pacienteSelecionado!.dataNascimento">{{formatarData(pacienteSelecionado!.dataNascimento)}}
+                ({{idade(pacienteSelecionado!.dataNascimento)}}
+                anos)</small><small>{{labelEnum(pacienteSelecionado!.tipoAcompanhamento)}}</small></span><b
+              class="badge">✓ Selecionado</b><button type="button" class="secondary" *ngIf="!modoRemarcacao"
+              (click)="trocarPaciente()">Trocar paciente</button><small *ngIf="modoRemarcacao">Somente leitura</small>
+          </div>
+        </ng-template>
+      </section>
+      <section class="step-card">
+        <h2><span class="step-number">2</span>Escolher profissional e data</h2>
+        <div class="fields">
+          <div><label for="prof">Profissional</label><select id="prof" [(ngModel)]="profissionalSelecionadoId"
+              (change)="onProfissionalOuDataAlterado()" [disabled]="modoRemarcacao">
+              <option [ngValue]="null">Selecione o profissional</option>
+              <option *ngFor="let p of profissionais" [value]="p.idPublico">{{p.nome}}</option>
+            </select></div>
+          <div><label for="data">Data do atendimento</label><input id="data" type="date" [(ngModel)]="dataSelecionada"
+              [min]="dataMinima" (change)="onProfissionalOuDataAlterado()"></div>
+        </div>
+        <div class="suggestions" *ngIf="modoRemarcacao&&sugestoesRemarcacao.length">Datas sugeridas: <button
+            type="button" *ngFor="let d of sugestoesRemarcacao"
+            (click)="selecionarDataSugerida(d)">{{formatarData(d)}}</button></div>
+        <p class="state" *ngIf="consultandoVagas">Consultando vagas disponíveis...</p>
+        <div class="turns" *ngIf="vagas&&!consultandoVagas"><button type="button" *ngFor="let t of ['MANHA','TARDE']"
+            [class.active]="turnoSelecionado===t" [disabled]="vagasDoTurno(t)<=0"
+            [attr.aria-pressed]="turnoSelecionado===t" (click)="selecionarTurno(t)"><span
+              aria-hidden="true">{{t==='MANHA'?'☀':'◐'}}</span><strong>{{labelEnum(t)}}</strong><small>{{vagasDoTurno(t)>0?vagasDoTurno(t)+'
+              vagas disponíveis':'Sem vagas disponíveis'}}</small><i *ngIf="turnoSelecionado===t">✓</i></button></div>
+      </section>
+      <section class="step-card">
+        <h2><span class="step-number">3</span>Selecionar horário disponível</h2>
+        <p class="state" *ngIf="!turnoSelecionado">Selecione profissional, data e turno para consultar os horários.</p>
+        <p class="state" *ngIf="consultandoHorarios">Consultando horários disponíveis...</p>
+        <p class="state error-text" role="alert" *ngIf="erroHorarios">{{erroHorarios}}</p>
+        <p class="state" *ngIf="turnoSelecionado&&!consultandoHorarios&&!erroHorarios&&!horarios.length">
+          {{mensagemHorarios()}}</p>
+        <div class="times" *ngIf="horarios.length"><button type="button" *ngFor="let h of horarios"
+            [disabled]="!h.disponivel" [class.active]="horaAtendimento===h.hora.slice(0,5)"
+            [attr.aria-pressed]="horaAtendimento===h.hora.slice(0,5)"
+            [attr.aria-label]="h.hora.slice(0,5)+(h.disponivel?' disponível':' indisponível')"
+            (click)="selecionarHorario(h)">{{h.hora.slice(0,5)}} <i
+              *ngIf="horaAtendimento===h.hora.slice(0,5)">✓</i><small *ngIf="!h.disponivel">Ocupado</small></button>
+        </div>
+      </section>
+    </div>
+    <aside class="summary">
+      <h2><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0757d3"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 5h6M9 3h6a1 1 0 0 1 1 1v2H8V4a1 1 0 0 1 1-1Z" />
+          <path d="M16 5h2a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2" />
+          <path d="m8 14 2 2 5-5" />
+        </svg>Resumo do agendamento</h2>
+      <dl>
+        <div>
+          <dt>Paciente</dt>
+          <dd><strong>{{pacienteSelecionado?.nome||'Não selecionado'}}</strong><small
+              *ngIf="pacienteSelecionado">{{pacienteSelecionado.cpf?formatarCpf(pacienteSelecionado.cpf):pacienteSelecionado.cns}}</small>
+          </dd>
+        </div>
+        <div>
+          <dt>Profissional</dt>
+          <dd><strong>{{profissionalSelecionado()?.nome||'Não selecionado'}}</strong><small
+              *ngIf="profissionalSelecionado()">{{labelEnum(profissionalSelecionado()?.unidadeAtuacao)}}</small></dd>
+        </div>
+        <div>
+          <dt>Data</dt>
+          <dd>{{formatarData(dataSelecionada)}}</dd>
+        </div>
+        <div>
+          <dt>Turno</dt>
+          <dd><strong>{{turnoSelecionado?labelEnum(turnoSelecionado):'Não selecionado'}}</strong><small
+              *ngIf="turnoSelecionado">{{vagasDoTurno(turnoSelecionado)}} vagas restantes</small></dd>
+        </div>
+        <div>
+          <dt>Horário</dt>
+          <dd>{{horaAtendimento||'Não selecionado'}}</dd>
+        </div>
+      </dl>
+      <p class="note">ⓘ Confira os dados antes de confirmar o agendamento.</p>
+    </aside>
+  </div>
+  <footer class="actions"><button type="button" class="cancel" (click)="cancelar()" [disabled]="salvando">×
+      Cancelar</button><button type="button" class="save" [disabled]="!podeConfirmar"
+      (click)="confirmarAgendamento()"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" />
+        <path d="m9 16 2 2 4-4" />
+      </svg>{{salvando?'Salvando...':(modoRemarcacao?'Confirmar remarcação':'Confirmar agendamento')}}</button></footer>
+</main>

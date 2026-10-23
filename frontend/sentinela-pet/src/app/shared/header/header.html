@@ -1,0 +1,18 @@
+<header class="header">
+  <!-- Botão Assistente Virtual -->
+  <button type="button" class="menu-button" aria-label="Abrir ou fechar menu lateral" (click)="toggleMenu()">
+    <span class="material-symbols-outlined" aria-hidden="true">menu</span>
+  </button>
+
+  <!-- Profile -->
+  <div class="header-actions">
+    <button type="button" class="notification-button" aria-label="Notificações">
+      <span class="material-symbols-outlined" aria-hidden="true">notifications</span>
+      @if (totalNotificacoes > 0) { <span class="notification-badge">{{ totalNotificacoes }}</span> }
+    </button>
+    @if (userName) { <div class="profile-info"><strong>{{ userName }}</strong><span>{{ userRole }}</span></div> }
+    <div class="profile-avatar" [style.background]="avatarColor" [attr.aria-label]="userName ? 'Avatar de ' + userName + ', ' + userRole : 'Avatar do usuário logado'">
+      <span class="avatar-initials">{{ userInitials }}</span>
+    </div>
+  </div>
+</header>

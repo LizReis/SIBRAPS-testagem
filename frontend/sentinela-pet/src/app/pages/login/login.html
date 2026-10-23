@@ -1,0 +1,146 @@
+<div class="login-page">
+
+  <div class="login-card">
+
+    <!-- Lado esquerdo -->
+    <div class="login-form-section">
+
+      <div class="login-content">
+
+        <h1 class="login-title">Login</h1>
+
+        <div class="subheader-container">
+          <ul class="subheader-flip">
+            <li>
+              <div>Gerencie sua <span>Unidade</span></div>
+            </li>
+            <li>
+              <div>Monitore sua <span>População</span></div>
+            </li>
+            <li>
+              <div>Fortaleça o <span>Cuidado</span></div>
+            </li>
+          </ul>
+        </div>
+
+        <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" novalidate autocomplete="on">
+
+          @if (errorMessage) {
+          <div class="error-box" aria-live="assertive">
+            <span class="material-symbols-outlined">
+              error
+            </span>
+
+            <span>{{ errorMessage }}</span>
+          </div>
+          }
+
+          <!-- EMAIL -->
+
+          <div class="input-group">
+
+            <label for="email">
+              Email
+            </label>
+
+            <input id="email" type="email" formControlName="email" placeholder="seuemail@exemplo.com"
+              autocomplete="username" required [readonly]="isLoading">
+
+            @if (loginForm.get('email')?.touched &&
+            loginForm.get('email')?.errors) {
+
+            <small class="field-error">
+
+              @if (loginForm.get('email')?.hasError('required')) {
+              Informe seu e-mail.
+              }
+
+              @if (loginForm.get('email')?.hasError('email')) {
+              Informe um e-mail válido.
+              }
+
+            </small>
+
+            }
+
+          </div>
+
+          <!-- SENHA -->
+
+          <div class="input-group">
+
+            <label for="password">
+              Senha
+            </label>
+
+            <input id="password" type="password" formControlName="password" placeholder="Sua senha"
+              autocomplete="current-password" required [readonly]="isLoading">
+
+            @if (loginForm.get('password')?.touched &&
+            loginForm.get('password')?.errors) {
+
+            <small class="field-error">
+
+              @if (loginForm.get('password')?.hasError('required')) {
+              Informe sua senha.
+              }
+
+              @if (loginForm.get('password')?.hasError('minlength')) {
+              A senha deve possuir pelo menos 4 caracteres.
+              }
+
+            </small>
+
+            }
+
+          </div>
+
+          <!-- BOTÃO -->
+
+          <button type="submit" class="btn-login" [disabled]="loginForm.invalid || isLoading">
+
+            <span class="material-symbols-outlined" [class.icon-spin]="isLoading">
+
+              {{ isLoading ? 'progress_activity' : 'login' }}
+
+            </span>
+
+            {{ isLoading ? 'Entrando...' : 'Entrar' }}
+
+          </button>
+
+        </form>
+
+      </div>
+
+    </div>
+
+    <!-- Lado direito -->
+
+    <div class="login-banner-section">
+
+      <div class="banner-content">
+
+        <div class="logo-circle">
+
+          <span class="material-symbols-outlined logo-icon">
+            diversity_1
+          </span>
+
+        </div>
+
+        <h2 class="logo-text">
+          SIBRAPS
+        </h2>
+
+        <p class="banner-description">
+          Sistema de Busca Ativa da Rede de Atenção Psicossocial
+        </p>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</div>

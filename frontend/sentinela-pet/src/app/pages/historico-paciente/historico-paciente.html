@@ -1,0 +1,92 @@
+<main class="historico-container">
+  <section *ngIf="carregando" class="estado-card" aria-live="polite">
+    <span class="spinner" aria-hidden="true"></span>
+    <p>Carregando histórico do paciente...</p>
+  </section>
+
+  <section *ngIf="erro && !carregando" class="estado-card estado-erro" role="alert">
+    <p>{{ erro }}</p>
+    <div class="estado-acoes">
+      <button type="button" class="btn btn-secundario" (click)="voltarParaDetalhes()">Voltar</button>
+      <button type="button" class="btn btn-primario" (click)="carregarHistorico()" *ngIf="idPublico">
+        Tentar novamente
+      </button>
+    </div>
+  </section>
+
+  <ng-container *ngIf="historico && !carregando">
+    <header class="page-header">
+      <button type="button" class="link-voltar" (click)="voltarParaDetalhes()">
+        <span aria-hidden="true">←</span> Voltar para os detalhes
+      </button>
+      <div class="titulo-linha">
+        <span class="avatar" aria-hidden="true">{{ iniciais() }}</span>
+        <h1>{{ historico.nomePaciente }}</h1>
+        <span class="risco-badge" [class]="'risco-badge risco-' + historico.classificacaoAtual.toLowerCase()">
+          {{ formatarEnum(historico.classificacaoAtual) }}
+        </span>
+      </div>
+      <p>Histórico completo do acompanhamento do paciente.</p>
+    </header>
+
+    <nav class="tabs" aria-label="Navegação do paciente">
+      <a [routerLink]="['/pacientes/detalhes', idPublico]">Visão geral</a>
+      <a aria-current="page">Histórico</a>
+      <a [routerLink]="['/pacientes/detalhes', idPublico, 'agendamentos']">Agendamentos</a>
+    </nav>
+
+    <section class="situacao-card" aria-labelledby="situacao-titulo">
+      <h2 id="situacao-titulo"><span aria-hidden="true">⌁</span> Situação atual</h2>
+      <div class="situacao-grid">
+        <div><span>Situação</span><strong>{{ formatarEnum(historico.statusPaciente) }}</strong></div>
+        <div><span>Classificação</span><strong>{{ formatarEnum(historico.classificacaoAtual) }}</strong></div>
+        <div><span>Tipo de acompanhamento</span><strong>{{ formatarEnum(historico.tipoAcompanhamento) }}</strong></div>
+        <div><span>Faltas consecutivas</span><strong>{{ historico.quantidadeFaltasAtual }}</strong></div>
+        <div>
+          <span>Última presença</span>
+          <strong>{{ historico.dataUltimaPresenca ? formatarDataHora(historico.dataUltimaPresenca) : 'Nenhuma presença registrada' }}</strong>
+        </div>
+        <div>
+          <span>Dias sem comparecer</span>
+          <strong>{{ historico.diasSemComparecer !== null && historico.diasSemComparecer !== undefined ? historico.diasSemComparecer : 'Não disponível' }}</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="indicadores" aria-label="Resumo do histórico">
+      <article class="indicador"><strong>{{ historico.totalConsultasAgendadas }}</strong><span>Consultas agendadas</span></article>
+      <article class="indicador"><strong>{{ historico.totalPresencas }}</strong><span>Presenças</span></article>
+      <article class="indicador"><strong>{{ historico.totalFaltas }}</strong><span>Faltas</span></article>
+      <article class="indicador"><strong>{{ historico.totalRemarcacoes }}</strong><span>Remarcações</span></article>
+      <article class="indicador"><strong>{{ historico.totalGruposTerapeuticos }}</strong><span>Grupos terapêuticos</span></article>
+      <article class="indicador"><strong>{{ historico.totalRegistrosBuscaAtiva }}</strong><span>Registros de busca ativa</span></article>
+    </section>
+
+    <section class="timeline-card" aria-labelledby="timeline-titulo">
+      <h2 id="timeline-titulo">Linha do tempo</h2>
+      <p *ngIf="historico.eventos.length === 0" class="vazio">
+        Nenhum evento foi registrado no histórico deste paciente.
+      </p>
+      <ol class="timeline" *ngIf="historico.eventos.length > 0">
+        <li *ngFor="let evento of historico.eventos" [class]="classeEvento(evento)">
+          <span class="marcador" aria-hidden="true"></span>
+          <article>
+            <div class="evento-cabecalho">
+              <h3>{{ evento.titulo }}</h3>
+              <span class="tipo-badge">{{ formatarEnum(evento.tipo) }}</span>
+            </div>
+            <p class="metadados">
+              <time [attr.datetime]="evento.ocorridoEm">{{ formatarDataHora(evento.ocorridoEm) }}</time>
+              <span *ngIf="evento.ocorridoEm"> às {{ formatarDataHora(evento.ocorridoEm, 'HH:mm') }}</span>
+              <span *ngIf="evento.nomeResponsavel"> — {{ evento.nomeResponsavel }}</span>
+            </p>
+            <p class="metadados secundario" *ngIf="evento.funcaoResponsavel || evento.nomeUnidade">
+              {{ formatarEnum(evento.funcaoResponsavel) }}<span *ngIf="evento.funcaoResponsavel && evento.nomeUnidade"> · </span>{{ formatarEnum(evento.nomeUnidade) }}
+            </p>
+            <p class="descricao" *ngIf="evento.descricao">{{ evento.descricao }}</p>
+          </article>
+        </li>
+      </ol>
+    </section>
+  </ng-container>
+</main>

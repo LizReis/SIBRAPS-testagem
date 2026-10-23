@@ -1,0 +1,328 @@
+:host {
+    display: block;
+    color: #102033
+}
+
+.modal-error {
+    margin: 8px 0 14px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #fff1f2;
+    border: 1px solid #fecdd3;
+    color: #b42334;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.feedback-toast {
+    position: fixed;
+    top: 90px;
+    right: 24px;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 280px;
+    max-width: 420px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.15);
+    font-weight: 600;
+}
+
+.feedback-toast.success {
+    background: #ecfdf3;
+    border: 1px solid #abefc6;
+    color: #067647;
+}
+
+.feedback-toast button {
+    margin-left: auto;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 18px;
+}
+
+.page {
+    max-width: 1280px;
+    margin: auto;
+    padding: 30px
+}
+
+.patient-head,
+.identity,
+.head-actions {
+    display: flex;
+    align-items: center
+}
+
+.patient-head {
+    justify-content: space-between;
+    gap: 20px
+}
+
+.identity {
+    gap: 15px
+}
+
+.avatar {
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: #e5effb;
+    color: #123e70;
+    font-weight: 800
+}
+
+.identity h1 {
+    margin: 0;
+    font-size: 29px
+}
+
+.identity p {
+    color: #64748b;
+    margin: 5px 0
+}
+
+.status {
+    font-size: 12px;
+    color: #078548;
+    background: #e4f5e9;
+    border-radius: 20px;
+    padding: 7px 14px
+}
+
+.head-actions {
+    gap: 10px
+}
+
+.head-actions a,
+.head-actions button,
+.quick a,
+.attention button {
+    border: 1px solid #bdcbe0;
+    border-radius: 9px;
+    padding: 12px 15px;
+    text-decoration: none;
+    font-weight: 700;
+    color: #123e70;
+    background: white
+}
+
+.head-actions .primary,
+.attention .primary {
+    background: #1654d4;
+    color: white
+}
+
+.head-actions .danger,
+.modal .danger {
+    background: #c83b4b;
+    color: white;
+    border: 0
+}
+
+.summary,
+.card {
+    background: white;
+    border: 1px solid #d3deeb;
+    border-radius: 14px;
+    box-shadow: 3px 5px #e7ecf2
+}
+
+.summary {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    padding: 21px;
+    margin: 20px 0
+}
+
+.summary small {
+    display: block;
+    color: #60728d;
+    font-weight: 700;
+    font-size: 11px
+}
+
+.summary b {
+    display: block;
+    margin-top: 12px
+}
+
+.vermelho {
+    color: #bd2e41
+}
+
+.amarelo {
+    color: #9c5c00
+}
+
+.verde {
+    color: #087e45
+}
+
+.tabs {
+    display: flex;
+    gap: 28px;
+    overflow-x: auto;
+    white-space: nowrap;
+    border-bottom: 1px solid #d5dfeb;
+    margin-bottom: 20px
+}
+
+.tabs a {
+    flex: 0 0 auto;
+    padding: 14px 3px;
+    text-decoration: none;
+    color: #65758b;
+    font-weight: 700
+}
+
+.tabs a[aria-current] {
+    color: #1751d0;
+    border-bottom: 3px solid #1751d0
+}
+
+.columns {
+    display: grid;
+    grid-template-columns: 2.2fr .8fr;
+    gap: 16px
+}
+
+.card {
+    padding: 19px;
+    margin-bottom: 16px
+}
+
+.card h2 {
+    font-size: 18px;
+    margin: 0 0 20px;
+    color: #123e70
+}
+
+.card dl {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 22px;
+    margin: 0
+}
+
+.card dt {
+    font-size: 11px;
+    color: #60728d;
+    font-weight: 700;
+    text-transform: uppercase
+}
+
+.card dd {
+    margin: 6px 0 0;
+    font-weight: 600
+}
+
+.attention h3.alerta {
+    color: #c33749
+}
+
+.attention h3.regular {
+    color: #087e45
+}
+
+.quick a {
+    display: block;
+    margin-top: 8px
+}
+
+.backdrop {
+    position: fixed;
+    inset: 0;
+    background: #10203399;
+    display: grid;
+    place-items: center;
+    z-index: 20
+}
+
+.modal {
+    width: min(480px, 90vw);
+    background: white;
+    border-radius: 14px;
+    padding: 25px
+}
+
+.modal label,
+.modal select,
+.modal textarea {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 10px 0
+}
+
+.modal select,
+.modal textarea {
+    padding: 12px
+}
+
+.modal textarea {
+    min-height: 100px
+}
+
+.modal>div {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px
+}
+
+.modal button {
+    padding: 11px;
+    border-radius: 8px;
+    border: 1px solid #bbb
+}
+
+.loading,
+.error {
+    text-align: center;
+    padding: 30px
+}
+
+.error {
+    color: #b42334
+}
+
+@media(max-width:900px) {
+    .patient-head {
+        align-items: flex-start;
+        flex-direction: column
+    }
+
+    .summary {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px
+    }
+
+    .columns {
+        grid-template-columns: 1fr
+    }
+}
+
+@media(max-width:600px) {
+    .page {
+        padding: 16px
+    }
+
+    .head-actions {
+        flex-wrap: wrap
+    }
+
+    .summary {
+        grid-template-columns: 1fr
+    }
+
+    .card dl {
+        grid-template-columns: 1fr
+    }
+
+}

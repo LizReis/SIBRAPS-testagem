@@ -1,0 +1,44 @@
+<aside class="sidebar">
+  <!-- Logo Space -->
+  <div class="logo-container">
+
+    <span class="material-symbols-outlined logo-icon">
+      diversity_1
+    </span>
+
+    <svg width="100%" viewBox="0 0 680 220" xmlns="http://www.w3.org/2000/svg">
+
+      <text x="340" y="20" text-anchor="middle" dominant-baseline="central"
+        font-family="'Playfair Display', Georgia, serif" font-size="56" font-weight="700" fill="#ffffff"
+        letter-spacing="8">
+        SIBRAPS
+      </text>
+
+      <line x1="200" y1="55" x2="480" y2="55" stroke="rgba(255,255,255,0.25)" stroke-width="0.8" />
+
+      <text x="340" y="75" text-anchor="middle" dominant-baseline="central" font-family="Georgia, serif" font-size="22"
+        fill="rgba(255,255,255,0.45)" letter-spacing="2">
+        SISTEMA DE BUSCA ATIVA DA RAPS!
+      </text>
+
+    </svg>
+  </div>
+
+  <!-- Navigation -->
+  <nav class="nav-menu" aria-label="Menu principal">
+    @for (item of menuItems; track item.route) {
+      <a [routerLink]="item.route" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: item.route === '/inicio' }" ariaCurrentWhenActive="page" class="nav-link">
+        <span class="material-symbols-outlined nav-icon" aria-hidden="true">{{ item.icon }}</span>
+        <span class="nav-label">{{ item.label }}</span>
+      </a>
+    }
+  </nav>
+
+  <!-- Logout -->
+  <div class="logout-container">
+    <button type="button" (click)="logout()" class="logout-btn">
+      <span class="material-symbols-outlined logout-icon" aria-hidden="true">logout</span>
+      <span class="nav-label">Sair</span>
+    </button>
+  </div>
+</aside>

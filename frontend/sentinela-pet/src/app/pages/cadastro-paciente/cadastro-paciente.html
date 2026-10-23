@@ -1,0 +1,262 @@
+<main class="container">
+
+  <header class="page-header">
+    <div class="page-title">
+      <span class="title-icon" aria-hidden="true">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+          <circle cx="8.5" cy="7" r="4" />
+          <path d="M19 8v6M16 11h6" />
+        </svg>
+      </span>
+      <div>
+        <h1>{{ modoEdicao ? 'Editar paciente' : 'Cadastrar paciente' }}</h1>
+        <p>{{ modoEdicao
+          ? 'Atualize os dados cadastrais e assistenciais do paciente.'
+          : 'Preencha os dados essenciais para iniciar o acompanhamento no SIBRAPS.' }}</p>
+      </div>
+    </div>
+  
+    <b>Campos com * são obrigatórios</b>
+  </header>
+
+  <div class="alert-erro" role="alert" *ngIf="erroGeral">{{ erroGeral }}</div>
+  <div class="loading-message" aria-live="polite" *ngIf="carregandoPaciente">
+    Carregando dados do paciente…
+  </div>
+
+
+  <form [formGroup]="pacienteForm" (ngSubmit)="salvarPaciente()" autocomplete="on">
+    <div class="form-main">
+      <section class="form-section" aria-labelledby="titulo-identificacao">
+        <h2 id="titulo-identificacao"><span class="step-number">1</span>Identificação</h2>
+        <div class="form-grid">
+          <label for="nome">Nome completo *
+            <input id="nome" name="patient-name" type="text" autocomplete="name"
+              formControlName="nome" placeholder="Digite o nome do paciente">
+            <small *ngIf="campoInvalido('nome') || errosPorCampo['nome']">
+              {{ mensagemErro('nome', 'Nome é obrigatório.') }}
+            </small>
+          </label>
+
+          <label for="nomeMae">Nome da mãe *
+            <input id="nomeMae" name="patient-mother-name" type="text" autocomplete="off"
+              formControlName="nomeMae" placeholder="Digite o nome da mãe">
+            <small *ngIf="campoInvalido('nomeMae') || errosPorCampo['nomeMae']">
+              {{ mensagemErro('nomeMae', 'Nome da mãe é obrigatório.') }}
+            </small>
+          </label>
+
+          <label for="dataNascimento">Data de nascimento *
+            <input id="dataNascimento" name="patient-birth-date" type="date" autocomplete="bday"
+              formControlName="dataNascimento">
+            <small *ngIf="campoInvalido('dataNascimento') || errosPorCampo['dataNascimento']">
+              {{ mensagemErro('dataNascimento', 'Data de nascimento é obrigatória.') }}
+            </small>
+          </label>
+
+          <label for="sexo">Sexo *
+            <select id="sexo" name="patient-sex" autocomplete="sex" formControlName="sexo">
+              <option value="" disabled>Selecione</option>
+              <option *ngFor="let sexo of sexoOptions" [value]="sexo">{{ labelEnum(sexo) }}</option>
+            </select>
+            <small *ngIf="campoInvalido('sexo') || errosPorCampo['sexo']">
+              {{ mensagemErro('sexo', 'Sexo é obrigatório.') }}
+            </small>
+          </label>
+
+          <label for="racacor">Raça/Cor *
+            <select id="racacor" name="patient-race" autocomplete="off" formControlName="racacor">
+              <option value="" disabled>Selecione</option>
+              <option *ngFor="let raca of racaCorOptions" [value]="raca">{{ labelEnum(raca) }}</option>
+            </select>
+            <small *ngIf="campoInvalido('racacor') || errosPorCampo['racacor']">
+              {{ mensagemErro('racacor', 'Raça/cor é obrigatória.') }}
+            </small>
+          </label>
+
+          <label for="situacaoRua">Situação de rua *
+            <select id="situacaoRua" name="patient-homeless-status" autocomplete="off"
+              formControlName="situacaoRua">
+              <option [ngValue]="null" disabled>Selecione</option>
+              <option [ngValue]="false">Não</option>
+              <option [ngValue]="true">Sim</option>
+            </select>
+            <small *ngIf="campoInvalido('situacaoRua')">Situação de rua é obrigatória.</small>
+          </label>
+        </div>
+      </section>
+
+      <section class="form-section" aria-labelledby="titulo-documentos">
+        <h2 id="titulo-documentos">
+          <span class="step-number">2</span>Documentos, contato e vínculo assistencial
+        </h2>
+        <div class="form-grid">
+          <label for="cpf">CPF *
+            <input id="cpf" name="patient-cpf" type="text" inputmode="numeric" autocomplete="off"
+              maxlength="14" placeholder="000.000.000-00" formControlName="cpf" (input)="aplicarMascaraCpf()">
+            <small *ngIf="campoInvalido('cpf') || errosPorCampo['cpf']">
+              {{ mensagemErro('cpf', 'CPF é obrigatório.') }}
+            </small>
+          </label>
+
+          <label for="cns">CNS *
+            <input id="cns" name="patient-cns" type="text" inputmode="numeric" autocomplete="off"
+              maxlength="15" placeholder="Digite somente números" formControlName="cns"
+              (input)="somenteNumerosCampo('cns', 15)">
+            <small *ngIf="campoInvalido('cns') || errosPorCampo['cns']">
+              {{ mensagemErro('cns', 'CNS é obrigatório.') }}
+            </small>
+          </label>
+
+          <label for="telefone">Telefone *
+            <input id="telefone" name="tel" type="tel" inputmode="tel" autocomplete="tel"
+              maxlength="15" placeholder="(00) 00000-0000" formControlName="telefone"
+              (input)="aplicarMascaraTelefone()">
+            <small *ngIf="campoInvalido('telefone') || errosPorCampo['telefone']">
+              {{ mensagemErro('telefone', 'Telefone é obrigatório.') }}
+            </small>
+          </label>
+
+          <label for="usfReferencia">Unidade de saúde *
+            <select id="usfReferencia" name="patient-health-unit" autocomplete="off"
+              formControlName="usfReferencia">
+              <option [ngValue]="null" disabled>Selecione a unidade</option>
+              <option *ngFor="let unidade of unidadesSaude" [ngValue]="unidade">{{ unidade.nomeUsf }}</option>
+            </select>
+            <small class="info-message" *ngIf="carregandoUnidades">Carregando unidades…</small>
+            <small *ngIf="erroUnidades">Não foi possível carregar as unidades.</small>
+            <small *ngIf="campoInvalido('usfReferencia') || errosPorCampo['usfReferencia']">
+              {{ mensagemErro('usfReferencia', 'Unidade de saúde é obrigatória.') }}
+            </small>
+          </label>
+
+          <label for="capsReferencia">CAPS de referência *
+            <select id="capsReferencia" name="patient-caps" autocomplete="off" formControlName="capsReferencia">
+              <option value="" disabled>Selecione</option>
+              <option *ngFor="let caps of capsOptions" [value]="caps">{{ labelEnum(caps) }}</option>
+            </select>
+            <small *ngIf="campoInvalido('capsReferencia') || errosPorCampo['capsReferencia']">
+              {{ mensagemErro('capsReferencia', 'CAPS de referência é obrigatório.') }}
+            </small>
+          </label>
+
+          <label for="tipoAcompanhamento">Tipo de acompanhamento *
+            <select id="tipoAcompanhamento" name="patient-follow-up" autocomplete="off"
+              formControlName="tipoAcompanhamento">
+              <option value="" disabled>Selecione</option>
+              <option *ngFor="let tipo of tipoAcompanhamentoOptions" [value]="tipo">
+                {{ labelEnum(tipo) }}
+              </option>
+            </select>
+            <small *ngIf="campoInvalido('tipoAcompanhamento') || errosPorCampo['tipoAcompanhamento']">
+              {{ mensagemErro('tipoAcompanhamento', 'Tipo de acompanhamento é obrigatório.') }}
+            </small>
+          </label>
+
+          <label for="profissionalReferenciaId">Profissional de referência (opcional)
+            <select id="profissionalReferenciaId" name="patient-reference-user"
+              formControlName="profissionalReferenciaId">
+              <option [ngValue]="null">Nenhum profissional de referência</option>
+              <option *ngFor="let usuario of usuariosReferencia" [value]="usuario.idPublico">
+                {{ usuario.nome }}
+              </option>
+            </select>
+            <small class="info-message" *ngIf="carregandoReferencias">Carregando profissionais de referência…</small>
+            <small *ngIf="erroReferencias">Não foi possível carregar os profissionais de referência.</small>
+          </label>
+        </div>
+      </section>
+
+      <section class="form-section" formGroupName="endereco" aria-labelledby="titulo-endereco">
+        <h2 id="titulo-endereco"><span class="step-number">3</span>Endereço e referência territorial</h2>
+        <p class="notice" *ngIf="pacienteForm.controls.situacaoRua.value === true">
+          Para paciente em situação de rua, o endereço não é obrigatório.
+        </p>
+        <div class="form-grid">
+          <label for="cep">CEP <span *ngIf="pacienteForm.controls.situacaoRua.value !== true">*</span>
+            <input id="cep" name="postal-code" type="text" inputmode="numeric" autocomplete="postal-code"
+              maxlength="9" placeholder="00000-000" formControlName="cep" (input)="aplicarMascaraCep()">
+            <small *ngIf="campoInvalido('endereco.cep') || errosPorCampo['endereco.cep']">
+              {{ mensagemErro('endereco.cep', 'CEP é obrigatório.') }}
+            </small>
+          </label>
+
+          <label for="estado">Estado <span *ngIf="pacienteForm.controls.situacaoRua.value !== true">*</span>
+            <select id="estado" name="address-level1" autocomplete="address-level1" formControlName="estado">
+              <option value="" disabled>Selecione a UF</option>
+              <option *ngFor="let estado of estados" [value]="estado">{{ estado }}</option>
+            </select>
+            <small *ngIf="campoInvalido('endereco.estado') || errosPorCampo['endereco.estado']">
+              {{ mensagemErro('endereco.estado', 'Estado é obrigatório.') }}
+            </small>
+          </label>
+
+          <label for="cidade">Cidade <span *ngIf="pacienteForm.controls.situacaoRua.value !== true">*</span>
+            <input id="cidade" name="address-level2" type="text" autocomplete="address-level2"
+              formControlName="cidade" placeholder="Digite a cidade">
+            <small *ngIf="campoInvalido('endereco.cidade') || errosPorCampo['endereco.cidade']">
+              {{ mensagemErro('endereco.cidade', 'Cidade é obrigatória.') }}
+            </small>
+          </label>
+
+          <label for="bairro">Bairro <span *ngIf="pacienteForm.controls.situacaoRua.value !== true">*</span>
+            <input id="bairro" name="address-level3" type="text" autocomplete="address-level3"
+              formControlName="bairro" placeholder="Digite o bairro">
+            <small *ngIf="campoInvalido('endereco.bairro') || errosPorCampo['endereco.bairro']">
+              {{ mensagemErro('endereco.bairro', 'Bairro é obrigatório.') }}
+            </small>
+          </label>
+
+          <label for="logradouro">Logradouro <span *ngIf="pacienteForm.controls.situacaoRua.value !== true">*</span>
+            <input id="logradouro" name="address-line1" type="text" autocomplete="address-line1"
+              formControlName="logradouro" placeholder="Rua, avenida, travessa…">
+            <small *ngIf="campoInvalido('endereco.logradouro') || errosPorCampo['endereco.logradouro']">
+              {{ mensagemErro('endereco.logradouro', 'Logradouro é obrigatório.') }}
+            </small>
+          </label>
+
+          <label for="numero">Número <span *ngIf="pacienteForm.controls.situacaoRua.value !== true">*</span>
+            <input id="numero" name="patient-address-number" type="text" autocomplete="off"
+              formControlName="numero" placeholder="Número">
+            <small *ngIf="campoInvalido('endereco.numero') || errosPorCampo['endereco.numero']">
+              {{ mensagemErro('endereco.numero', 'Número é obrigatório.') }}
+            </small>
+          </label>
+
+          <label for="complemento">Complemento
+            <input id="complemento" name="address-line2" type="text" autocomplete="address-line2"
+              formControlName="complemento" placeholder="Casa, apartamento, referência…">
+          </label>
+        </div>
+      </section>
+
+      <div class="form-actions">
+        <button type="button" (click)="cancelar()" [disabled]="salvando">Cancelar</button>
+        <button class="save" type="submit" [disabled]="salvando">
+          {{ salvando ? 'Salvando…' : modoEdicao ? 'Salvar alterações' : 'Salvar' }}
+        </button>
+      </div>
+        </div>
+
+    <aside>
+      <section>
+        <h2>Progresso do cadastro</h2>
+        <progress [value]="progresso" max="100">{{ progresso }}%</progress>
+        <p>{{ progresso }}% preenchido</p>
+        <ol>
+          <li>Identificação — {{ estadoSecao(camposIdentificacao) }}</li>
+          <li>Documentos e vínculo — {{ estadoSecao(camposDocumentos) }}</li>
+          <li>Endereço — {{ estadoEndereco }}</li>
+        </ol>
+      </section>
+      <section>
+        <h2>Antes de salvar</h2>
+        <p>Confira nome, data de nascimento, CPF e CNS antes de salvar.</p>
+        <p>O sistema verifica CPF e CNS existentes antes da confirmação.</p>
+      </section>
+    </aside>
+  </form>
+
+</main>

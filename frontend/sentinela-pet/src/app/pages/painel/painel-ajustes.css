@@ -1,0 +1,147 @@
+.panel-card h2 {
+    font-size: 1.08rem;
+    font-weight: 700;
+    color: #0b285c;
+}
+
+
+.card-heading h2 {
+    font-size: 1.08rem;
+    font-weight: 700;
+    color: #0b285c;
+}
+
+.card-heading > span {
+    font-size: .82rem;
+    font-weight: 600;
+    color: #15386c;
+}
+
+.legend {
+    font-size: .90rem;
+    font-weight: 500;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.legend span:before {
+    vertical-align: middle;
+}
+
+.legend .red:before {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #ef3b49;
+}
+
+.legend .yellow:before {
+    width: 9px;
+    height: 9px;
+    border-radius: 1px;
+    background: #efa30b;
+}
+
+.legend .green:before {
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 10px solid #3da552;
+    border-radius: 0;
+    background: transparent;
+}
+
+.history-note {
+    font-size: .74rem;
+    line-height: 1.35;
+    margin: 5px 0 2px;
+}
+
+.evolution-chart {
+    position: relative;
+    padding-left: 34px;
+}
+
+.evolution-chart .evolution-svg,
+.evolution-chart svg {
+    display: block;
+}
+
+.evolution svg {
+    height: 210px;
+}
+
+.markers-layer {
+    height: 210px;
+}
+
+.y-labels {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 31px;
+    pointer-events: none;
+}
+
+.y-labels span {
+    position: absolute;
+    right: 4px;
+    transform: translateY(-50%);
+    color: #52617b;
+    font-size: .7rem;
+    font-weight: 500;
+}
+
+.grid-line {
+    stroke: #d7e0ea;
+    stroke-width: .38;
+}
+
+.series {
+    stroke-width: .9;
+}
+
+.x-labels {
+    padding-left: calc(5% + 34px);
+    font-size: .73rem;
+    font-weight: 500;
+}
+
+.priority-heading h2 {
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.patient-name strong {
+    font-size: .86rem;
+}
+
+.patient-name small {
+    font-size: .72rem;
+}
+
+.risk-badge {
+    font-size: .74rem;
+}
+
+.needed {
+    font-size: .79rem;
+}
+
+.patient-button {
+    font-size: .76rem;
+    font-weight: 500;
+}
+
+.info-footer {
+    font-size: .82rem;
+    font-weight: 500;
+}
+
+@media (max-width: 650px) {
+
+    .legend {
+        gap: 14px;
+        flex-wrap: wrap;
+    }
+}

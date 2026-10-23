@@ -1,0 +1,97 @@
+<main class="container">
+
+  <button class="back-link" (click)="voltar()">
+    <i class="bi bi-arrow-left"></i> Voltar para a lista
+  </button>
+  <div class="loading-message" *ngIf="carregando">Carregando dados do profissional...</div>
+  <div class="alert-erro" *ngIf="erro">{{ erro }}</div>
+
+  <ng-container *ngIf="profissional && !carregando">
+
+    <section class="profile-card">
+      <div class="profile">
+        <span class="avatar">{{ iniciais(profissional.nome) }}</span>
+        <div>
+          <h1>{{ profissional.nome }}</h1>
+          <p>
+            {{ labelEnum(profissional.tipoUsuario) }} <span>•</span>
+            {{ profissional.usfAtuacao?.nomeUsf || labelEnum(profissional.unidadeAtuacao) }}
+          </p>
+          <small>Dados profissionais e informações de acesso ao sistema.</small>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button class="btn btn-back" (click)="voltar()">
+          <i class="bi bi-arrow-left"></i> Voltar</button
+        ><button *ngIf="podeGerenciar" class="btn btn-edit" (click)="editarProfissional()">
+          <i class="bi bi-pencil"></i> Editar</button
+        ><button
+          *ngIf="podeGerenciar"
+          class="btn btn-delete"
+          (click)="pedirConfirmacaoExclusao()"
+          [disabled]="excluindo"
+        >
+          <i class="bi bi-trash3"></i> Excluir profissional
+        </button>
+      </div>
+    </section>
+
+    <section class="details-grid">
+      <article class="detail-card">
+        <h2><i class="bi bi-person-vcard"></i> Dados do Profissional</h2>
+        <dl>
+          <div>
+            <dt>Nome completo</dt>
+            <dd>{{ profissional.nome }}</dd>
+          </div>
+          <div>
+            <dt>E-mail</dt>
+            <dd>{{ profissional.email }}</dd>
+          </div>
+          <div>
+            <dt>Cargo / Função</dt>
+            <dd>{{ labelEnum(profissional.tipoUsuario) }}</dd>
+          </div>
+          <div>
+            <dt>Unidade de atuação</dt>
+            <dd>{{ profissional.usfAtuacao?.nomeUsf || labelEnum(profissional.unidadeAtuacao) }}</dd>
+          </div>
+        </dl>
+      </article>
+      <article class="detail-card">
+        <h2><i class="bi bi-person-gear"></i> Acesso / Vínculo</h2>
+        <dl>
+          <div>
+            <dt>Tipo de acesso</dt>
+            <dd>{{ labelEnum(profissional.tipoUsuario) }}</dd>
+          </div>
+          <div>
+            <dt>Unidade de atuação</dt>
+            <dd>{{ profissional.usfAtuacao?.nomeUsf || labelEnum(profissional.unidadeAtuacao) }}</dd>
+          </div>
+        </dl>
+      </article>
+    </section>
+  </ng-container>
+  <div class="modal-backdrop" *ngIf="confirmandoExclusao" (click)="cancelarExclusao()">
+    <section
+      class="confirm-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-title"
+      (click)="$event.stopPropagation()"
+    >
+      <span class="danger-icon"><i class="bi bi-trash3"></i></span>
+      <h2 id="delete-title">Excluir profissional?</h2>
+      <p>Essa ação não pode ser desfeita.</p>
+      <div class="confirm-actions">
+        <button class="btn btn-back" (click)="cancelarExclusao()" [disabled]="excluindo">
+          Cancelar</button
+        ><button class="btn btn-delete" (click)="confirmarExclusao()" [disabled]="excluindo">
+          {{ excluindo ? 'Excluindo...' : 'Excluir profissional' }}
+        </button>
+      </div>
+    </section>
+  </div>
+</main>
