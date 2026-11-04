@@ -143,6 +143,7 @@ abstract class AgendaIntegritySupport extends SecurityTestSupport {
 
     record RaceResult(int confirmed, int rejected) {}
     RaceResult race(String label, List<Callable<Integer>> operations) throws Exception {
+        long rowsBefore = appointments.count(), historyBefore = history.count();
         var executor = Executors.newFixedThreadPool(operations.size());
         var ready = new CountDownLatch(operations.size()); var start = new CountDownLatch(1);
         var sessions = ConcurrentHashMap.<Integer>newKeySet();
@@ -172,8 +173,9 @@ abstract class AgendaIntegritySupport extends SecurityTestSupport {
                         "Unexpected concurrent status (lock/transaction failures must not be hidden): " + status); rejected++; }
             }
             assertEquals(operations.size(), sessions.size(), "Each operation must hold its own H2 connection");
-            System.out.printf("AGENDA_RACE %s operations=%d confirmed=%d rejected=%d connections=%d%n",
-                    label, operations.size(), ok, rejected, sessions.size());
+            System.out.printf("AGENDA_RACE %s operations=%d confirmed=%d rejected=%d connections=%d newRows=%d historyDelta=%d%n",
+                    label, operations.size(), ok, rejected, sessions.size(),
+                    appointments.count() - rowsBefore, history.count() - historyBefore);
             return new RaceResult(ok, rejected);
         } finally { start.countDown(); executor.shutdownNow(); assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS)); }
     }
