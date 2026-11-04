@@ -90,9 +90,9 @@ class AgendaConcurrencyTests extends AgendaIntegritySupport {
     }
 
     private int changeStatus(Long id, SituacaoAtendimento status) throws Exception {
-        return mvc.perform(patch("/api/agendamentos/" + id + "/status")
+        return businessStatus(mvc.perform(patch("/api/agendamentos/" + id + "/status")
                 .param("novoStatus", status.name()).header("Authorization", "Bearer " + tokens.gerarToken(admin)))
-                .andReturn().getResponse().getStatus();
+                .andReturn().getResponse());
     }
 
     @Test void p0408CancellationCompetesWithCreation() throws Exception {

@@ -142,6 +142,39 @@ confirmações, rejeições, conexões e linhas/histórico adicionados; `AGENDA_
 registra invariantes persistidas. A corrida cancelamento/criação admite as duas
 ordens de serialização válidas, por isso sua distribuição pode variar.
 
+Na execução completa em clone raso, foram231 testes aprovados, zero falhas/erros/
+ignorados, mesmo com variáveis `dev` e com qualquer subprocesso Git bloqueado.
+O commit histórico não existia no clone. Em exportação sem `.git`, os35 testes
+selecionados de configuração JWT, política, autorização e console também passaram;
+o marcador de tentativa de execução de Git permaneceu ausente.
+
+Uma execução medida no clone raso registrou62 operações:22 confirmadas e40
+rejeitadas,21 novos atendimentos e23 registros de histórico. Confirmações incluem
+mudanças de status, portanto não equivalem à quantidade de novos atendimentos.
+Para os mesmos pacientes/horários, cada disputa terminou com no máximo um ativo.
+Não ocorreram deadlocks/timeouts. A bateria adicional de32 casos passou exigindo
+também que um409 técnico de lock/otimismo não fosse contado como conflito de negócio.
+
+| Grupo medido | Operações | Confirmadas | Rejeitadas | Novos atendimentos |
+|---|---:|---:|---:|---:|
+| Mesmo paciente/horário,5 repetições |10|5|5|5|
+| Oito solicitações,3 repetições |24|3|21|3|
+| Mesmo profissional,3 repetições |6|3|3|3|
+| Pacientes/profissionais independentes |2|2|0|2|
+| Mesmo paciente,horários diferentes |2|2|0|2|
+| Criação contra remarcação |2|1|1|1|
+| Reativação contra criação |2|1|1|1|
+| Requisição de outra unidade |2|1|1|1|
+| Cancelamento contra criação |2|1|1|0|
+| Mesmo original,remarcações concorrentes |2|1|1|1|
+| C01:horário inválido concorrente |2|0|2|0|
+| C02:remarcação válida e paciente errado |2|1|1|1|
+| C04:fluxo combinado |4|1|3|1|
+
+Esses números descrevem uma execução identificada, sem somar retestes. A ordem
+válida da corrida com cancelamento pode confirmar ambas as operações em outra
+execução. Logs e asserções verificam os dois resultados serializáveis permitidos.
+
 Frontend Node22/npm11.6.2: `npm ci` e build são validados; a suíte unitária mantém
 os7 casos reprovados e5 erros não tratados preexistentes de Q01–Q04. Não foram
 alterados testes/componentes Angular para esconder esses resultados.

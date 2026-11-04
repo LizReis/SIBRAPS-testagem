@@ -107,10 +107,16 @@ abstract class AgendaIntegritySupport extends SecurityTestSupport {
     AgendamentoDTO dto(String time) { return dto(patient, professional, time, TurnoEnum.MANHA, null); }
 
     int post(AgendamentoDTO dto) throws Exception {
-        return mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/agendamentos")
+        return businessStatus(mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/agendamentos")
                 .header("Authorization", "Bearer " + tokens.gerarToken(admin))
                 .contentType("application/json").content(json.writeValueAsString(dto)))
-                .andReturn().getResponse().getStatus();
+                .andReturn().getResponse());
+    }
+
+    int businessStatus(org.springframework.mock.web.MockHttpServletResponse response) throws Exception {
+        assertFalse(response.getContentAsString().contains("Não foi possível concluir a operação concorrente."),
+                "A technical lock/optimistic failure must not count as a successful business-conflict test");
+        return response.getStatus();
     }
 
     AgendamentoDTO create(String time) { return service.save(dto(time)); }

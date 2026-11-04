@@ -1,8 +1,9 @@
 # Segurança do backend — correções P01 e P02
 
-Esta etapa altera somente a configuração JWT e a exposição do console H2. Não
-constitui aprovação de segurança da implantação nem corrige os outros achados da
-auditoria (P03–P16 e Q01–Q04).
+Este documento descreve a configuração JWT e a exposição do console H2; não
+constitui aprovação de segurança da implantação. As correções posteriores de
+P03–P05 estão em [Etapa2](correcao-agendamentos-p03-p04-p05.md).
+P06–P16 e Q01–Q04 permanecem fora desses escopos.
 
 ## Configuração e perfis
 
