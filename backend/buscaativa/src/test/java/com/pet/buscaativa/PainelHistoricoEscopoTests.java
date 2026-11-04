@@ -26,7 +26,7 @@ import com.pet.buscaativa.services.PainelHistoricoService;
 import com.pet.buscaativa.services.impl.SusApiAdapter;
 
 @SpringBootTest(properties = "logging.level.org.springframework.security=WARN")
-class PainelHistoricoEscopoTests {
+class PainelHistoricoEscopoTests extends SecurityTestSupport {
     @MockitoBean SusApiAdapter susApi;
     @Autowired TransactionTemplate transacoes;
     @Autowired PacienteRepository pacientes;

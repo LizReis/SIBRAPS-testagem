@@ -29,7 +29,7 @@ import tools.jackson.databind.ObjectMapper;
 
 @SpringBootTest
 @Transactional
-class UsuarioUnidadeTests {
+class UsuarioUnidadeTests extends SecurityTestSupport {
     @MockitoBean SusApiAdapter susApi;
     @Autowired UsuarioService service;
     @Autowired UsuarioRepository usuarios;

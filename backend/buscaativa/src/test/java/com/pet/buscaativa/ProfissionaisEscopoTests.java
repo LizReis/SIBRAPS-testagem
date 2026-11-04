@@ -36,7 +36,7 @@ import tools.jackson.databind.ObjectMapper;
 @SpringBootTest(properties = "logging.level.org.springframework.security=WARN")
 @AutoConfigureMockMvc(print = MockMvcPrint.NONE)
 @Transactional
-class ProfissionaisEscopoTests {
+class ProfissionaisEscopoTests extends SecurityTestSupport {
     @MockitoBean SusApiAdapter susApi;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
