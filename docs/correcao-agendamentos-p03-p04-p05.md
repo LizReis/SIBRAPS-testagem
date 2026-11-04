@@ -1,5 +1,10 @@
 # Etapa 2 — estabilidade, CI e integridade dos agendamentos
 
+> Revisão complementar:os231 testes originais continuam passando,mas novos testes
+> detectaram regressão na correção histórica FALTOU→PRESENTE após mudança da oferta.
+> O verify ampliado tem289 casos e9 falhas de compatibilidade. Nenhuma regra foi
+> alterada automaticamente. Consulte a [análise e proposta](revisao-complementar-frequencia-concorrencia.md).
+
 Base: `main`, commit `967d5162dd543ec9005608739128423903e75e30`.
 Branch de revisão: `correcao-estabilidade-agenda-p03-p04-p05`.
 Não há merge ou deploy automático. P06–P16 e Q01–Q04 permanecem fora do escopo.
