@@ -2,11 +2,8 @@ package com.pet.buscaativa.config;
 
 import java.util.Arrays;
 
-import org.springframework.boot.security.autoconfigure.web.servlet.PathRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.Ordered;
-import org.springframework.core.annotation.Order;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.Customizer;
@@ -38,22 +35,6 @@ public class SecurityConfig {
     private final RestAccessDeniedHandler accessDeniedHandler;
 
     @Bean
-    @Order(Ordered.HIGHEST_PRECEDENCE)
-    public SecurityFilterChain h2ConsoleSecurityFilterChain(HttpSecurity http) throws Exception {
-        http
-                .securityMatcher(PathRequest.toH2Console())
-                .csrf(csrf -> csrf.disable())
-                .headers(headers ->
-                        headers.frameOptions(frame -> frame.sameOrigin())
-                )
-                .authorizeHttpRequests(auth ->
-                        auth.anyRequest().permitAll()
-                );
-
-        return http.build();
-    }
-
-    @Bean
     public SecurityFilterChain appSecurityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
@@ -69,13 +50,13 @@ public class SecurityConfig {
                 .anonymous(anon -> anon.disable())
                 
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/h2-console", "/h2-console/**").denyAll()
                         .requestMatchers(
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html").permitAll()
                         .requestMatchers("/api/auth/login").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/error").permitAll()
                         //Qualquer outra requisição DEVE estar autenticada
                         .anyRequest().authenticated()
