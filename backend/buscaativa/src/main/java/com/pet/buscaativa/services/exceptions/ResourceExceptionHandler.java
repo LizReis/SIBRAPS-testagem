@@ -94,4 +94,14 @@ public class ResourceExceptionHandler {
                 "Não foi possível gerar o PDF solicitado.", request.getRequestURI());
         return ResponseEntity.status(status).body(error);
     }
+
+    @ExceptionHandler({org.springframework.dao.PessimisticLockingFailureException.class,
+            org.springframework.dao.OptimisticLockingFailureException.class,
+            jakarta.persistence.PessimisticLockException.class, jakarta.persistence.LockTimeoutException.class})
+    public ResponseEntity<StandardError> transactionConflict(Exception exception, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new StandardError(Instant.now(), 409,
+                "Conflito de atualização.",
+                "Não foi possível concluir a operação concorrente. Atualize os dados antes de tentar novamente.",
+                request.getRequestURI()));
+    }
 }

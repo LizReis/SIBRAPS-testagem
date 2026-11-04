@@ -73,7 +73,15 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     @Override
     @Transactional
     public AgendamentoDTO save(AgendamentoDTO agendamentoDTO) {
-        // Serializa criações do mesmo profissional entre a consulta e o save.
+        // Global agenda lock order: patient -> professional -> original appointment.
+        Paciente paciente = pacienteRepository.findByIdPublicoForUpdate(agendamentoDTO.pacienteId())
+                .orElseThrow(() -> new ResourceNotFoundException("Paciente não encontrado"));
+
+        escopoUnidadeService.validarAcesso(paciente);
+        if (paciente.getStatusPaciente() != StatusPaciente.ATIVO) {
+            throw new ValidationException("Somente pacientes ativos podem ser agendados.");
+        }
+
         Usuario usuario = usuarioRepository.findByIdPublicoForUpdate(agendamentoDTO.usuarioId())
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado"));
 
@@ -83,51 +91,12 @@ public class AgendamentoServiceImpl implements AgendamentoService {
             throw new ValidationException("O usuário selecionado não é um profissional habilitado para atendimento.");
         }
 
-        Paciente paciente = pacienteRepository.findByIdPublico(agendamentoDTO.pacienteId())
-                .orElseThrow(() -> new ResourceNotFoundException("Paciente não encontrado"));
-
-        escopoUnidadeService.validarAcesso(paciente);
-        if (paciente.getStatusPaciente() != StatusPaciente.ATIVO) {
-            throw new ValidationException("Somente pacientes ativos podem ser agendados.");
-        }
         if (agendamentoDTO.dataAgendamento().isBefore(LocalDate.now())) {
             throw new ValidationException("Não é permitido criar agendamento em data passada.");
         }
 
-        boolean horarioJaOcupado = agendamentoRepository.existsAgendamentoAtivoNoMesmoHorario(
-                usuario, agendamentoDTO.dataAgendamento(), agendamentoDTO.horaAtendimento(),
-                SITUACOES_ATIVAS);
-
-        if (horarioJaOcupado) {
-            throw new ConflictException(
-                    "Já existe um atendimento marcado para este profissional nesta data e horário.");
-        }
-
-        if (agendamentoRepository.existsAtivoDoPacienteNoMesmoHorario(paciente,
-                agendamentoDTO.dataAgendamento(), agendamentoDTO.horaAtendimento(), SITUACOES_ATIVAS)) {
-            throw new ConflictException("O paciente já possui um atendimento ativo nesta data e horário.");
-        }
-
-        if (bloqueioAgendaRepository.isDataBloqueadaParaUsuario(usuario, agendamentoDTO.dataAgendamento())) {
-            throw new ConflictException("A agenda do profissional está bloqueada na data informada.");
-        }
-        
-
-        // Resolve a capacidade considerando exceção de data específica (prioridade)
-        // e, na ausência dela, o padrão semanal.
-        Integer capacidade = resolverCapacidade(usuario, agendamentoDTO.dataAgendamento(),
-                agendamentoDTO.dataAgendamento().getDayOfWeek(), agendamentoDTO.turnoAgendamento());
-
-        if (capacidade == null || capacidade <= 0) {
-            throw new ConflictException("Não existe disponibilidade para a data e turno informados.");
-        }
-
-        int ocupadas = agendamentoRepository.contarVagasOcupadasBySituacoes(usuario, agendamentoDTO.dataAgendamento(),
-                agendamentoDTO.turnoAgendamento(), List.of(SituacaoAtendimento.AGENDADO,
-                        SituacaoAtendimento.REMARCADO, SituacaoAtendimento.PRESENTE));
-        if (ocupadas >= capacidade) {
-            throw new ConflictException("Não há vagas disponíveis para a data e turno informados.");
-        }
+        validarVaga(usuario, paciente, agendamentoDTO.dataAgendamento(),
+                agendamentoDTO.turnoAgendamento(), agendamentoDTO.horaAtendimento());
 
         Agendamento agendamento = new Agendamento();
         agendamento.setUsuario(usuario);
@@ -171,6 +140,44 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         agendamento = agendamentoRepository.save(agendamento);
         historicoPacienteService.registrarAgendamento(agendamento);
         return agendamentoMapper.toAgendamentoDTO(agendamento);
+    }
+
+    private void validarVaga(Usuario usuario, Paciente paciente, LocalDate data, TurnoEnum turno, LocalTime hora) {
+        boolean horarioJaOcupado = agendamentoRepository.existsAgendamentoAtivoNoMesmoHorario(
+                usuario, data, hora,
+                SITUACOES_ATIVAS);
+
+        if (horarioJaOcupado) {
+            throw new ConflictException(
+                    "Já existe um atendimento marcado para este profissional nesta data e horário.");
+        }
+
+        if (agendamentoRepository.existsAtivoDoPacienteNoMesmoHorario(paciente,
+                data, hora, SITUACOES_ATIVAS)) {
+            throw new ConflictException("O paciente já possui um atendimento ativo nesta data e horário.");
+        }
+
+        if (bloqueioAgendaRepository.isDataBloqueadaParaUsuario(usuario, data)) {
+            throw new ConflictException("A agenda do profissional está bloqueada na data informada.");
+        }
+
+
+        // Resolve a capacidade considerando exceção de data específica (prioridade)
+        // e, na ausência dela, o padrão semanal.
+        Integer capacidade = resolverCapacidade(usuario, data,
+                data.getDayOfWeek(), turno);
+
+        if (capacidade == null || capacidade <= 0) {
+            throw new ConflictException("Não existe disponibilidade para a data e turno informados.");
+        }
+
+        int ocupadas = agendamentoRepository.contarVagasOcupadasBySituacoes(usuario, data,
+                turno, List.of(SituacaoAtendimento.AGENDADO,
+                        SituacaoAtendimento.REMARCADO, SituacaoAtendimento.PRESENTE));
+        if (ocupadas >= capacidade) {
+            throw new ConflictException("Não há vagas disponíveis para a data e turno informados.");
+        }
+
     }
 
     @Override
@@ -430,8 +437,17 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     @Override
     @Transactional
     public AgendamentoDTO atualizarStatus(Long id, SituacaoAtendimento novoStatus, Integer expectedVersion) {
-        Agendamento agendamento = agendamentoRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Agendamento não encontrado para o id"));
+        // Read scalar identifiers only; do not cache a stale appointment before obtaining locks.
+        var identity = agendamentoRepository.findLockIdentityById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Agendamento não encontrado"));
+        Paciente pacienteBloqueado = pacienteRepository.findByIdPublicoForUpdate(identity.getPacienteId())
+                .orElseThrow(() -> new ResourceNotFoundException("Paciente não encontrado"));
+        escopoUnidadeService.validarAcesso(pacienteBloqueado);
+        Usuario profissionalBloqueado = usuarioRepository.findByIdPublicoForUpdate(identity.getUsuarioId())
+                .orElseThrow(() -> new ResourceNotFoundException("Profissional não encontrado"));
+        escopoUnidadeService.validarUsuario(profissionalBloqueado);
+        Agendamento agendamento = agendamentoRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Agendamento não encontrado"));
 
         escopoUnidadeService.validarAgendamento(agendamento);
         LocalDate dataAgendamento = agendamento.getDataAgendamento();
@@ -465,12 +481,16 @@ public class AgendamentoServiceImpl implements AgendamentoService {
                 && (statusAnterior == SituacaoAtendimento.CANCELADO || statusAnterior == SituacaoAtendimento.REMARCADO_ORIGEM))
             throw new ValidationException("Um atendimento cancelado ou substituído não permite registro de frequência.");
 
+        if (SITUACOES_ATIVAS.contains(novoStatus) && !SITUACOES_ATIVAS.contains(statusAnterior)) {
+            validarVaga(profissionalBloqueado, pacienteBloqueado, agendamento.getDataAgendamento(),
+                    agendamento.getTurnoAgendamento(), agendamento.getHoraAtendimento());
+        }
+
         agendamento.setSituacaoAtendimento(novoStatus);
 
         Paciente pacienteAgendado = agendamento.getPaciente();
         if (pacienteAgendado != null) {
-            Paciente paciente = pacienteRepository.findByIdPublicoForUpdate(pacienteAgendado.getIdPublico())
-                    .orElseThrow(() -> new ResourceNotFoundException("Paciente não encontrado"));
+            Paciente paciente = pacienteBloqueado;
 
             pacienteService.atualizarAssiduidadePaciente(paciente, statusAnterior, novoStatus,
                     agendamento.getDataAgendamento());

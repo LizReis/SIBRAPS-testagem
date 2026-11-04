@@ -50,6 +50,7 @@ abstract class AgendaIntegritySupport extends SecurityTestSupport {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     @Autowired PlatformTransactionManager manager;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     Usuario admin, professional, colleague;
     Paciente patient, other;
     LocalDate date;
@@ -144,10 +145,23 @@ abstract class AgendaIntegritySupport extends SecurityTestSupport {
     RaceResult race(String label, List<Callable<Integer>> operations) throws Exception {
         var executor = Executors.newFixedThreadPool(operations.size());
         var ready = new CountDownLatch(operations.size()); var start = new CountDownLatch(1);
+        var sessions = ConcurrentHashMap.<Integer>newKeySet();
         try {
             var futures = operations.stream().map(op -> executor.submit(() -> {
-                ready.countDown(); assertTrue(start.await(10, TimeUnit.SECONDS)); authenticate();
-                try { return op.call(); } finally { SecurityContextHolder.clearContext(); }
+                var transaction = new TransactionTemplate(manager);
+                transaction.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+                return transaction.execute(status -> {
+                    sessions.add(jdbc.queryForObject("SELECT SESSION_ID()", Integer.class));
+                    ready.countDown(); authenticate();
+                    try {
+                        assertTrue(start.await(10, TimeUnit.SECONDS));
+                        int code = op.call();
+                        if (code >= 400) status.setRollbackOnly();
+                        return code;
+                    } catch (Exception exception) {
+                        throw new IllegalStateException("Concurrent operation failed unexpectedly", exception);
+                    } finally { SecurityContextHolder.clearContext(); }
+                });
             })).toList();
             assertTrue(ready.await(10, TimeUnit.SECONDS)); start.countDown();
             int ok = 0, rejected = 0;
@@ -157,7 +171,9 @@ abstract class AgendaIntegritySupport extends SecurityTestSupport {
                 else { assertTrue(status == 409 || status == 422 || status == 404,
                         "Unexpected concurrent status (lock/transaction failures must not be hidden): " + status); rejected++; }
             }
-            System.out.printf("AGENDA_RACE %s operations=%d confirmed=%d rejected=%d%n", label, operations.size(), ok, rejected);
+            assertEquals(operations.size(), sessions.size(), "Each operation must hold its own H2 connection");
+            System.out.printf("AGENDA_RACE %s operations=%d confirmed=%d rejected=%d connections=%d%n",
+                    label, operations.size(), ok, rejected, sessions.size());
             return new RaceResult(ok, rejected);
         } finally { start.countDown(); executor.shutdownNow(); assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS)); }
     }

@@ -22,6 +22,14 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long>,
     @Query("select a from Agendamento a where a.id = :id")
     Optional<Agendamento> findByIdForUpdate(@Param("id") Long id);
 
+    interface LockIdentity {
+        java.util.UUID getPacienteId();
+        java.util.UUID getUsuarioId();
+    }
+
+    @Query("select a.paciente.idPublico as pacienteId, a.usuario.idPublico as usuarioId from Agendamento a where a.id = :id")
+    Optional<LockIdentity> findLockIdentityById(@Param("id") Long id);
+
     Optional<Agendamento> findFirstByPacienteAndDataAgendamentoGreaterThanEqualAndSituacaoAtendimentoInOrderByDataAgendamentoAscHoraAtendimentoAsc(
             Paciente paciente, LocalDate data, List<SituacaoAtendimento> situacoes);
 
