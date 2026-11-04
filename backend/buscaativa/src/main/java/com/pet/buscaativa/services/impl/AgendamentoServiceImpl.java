@@ -73,6 +73,11 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     @Override
     @Transactional
     public AgendamentoDTO save(AgendamentoDTO agendamentoDTO) {
+        if (agendamentoDTO == null || agendamentoDTO.pacienteId() == null || agendamentoDTO.usuarioId() == null
+                || agendamentoDTO.dataAgendamento() == null) {
+            throw new ValidationException("Informe paciente, profissional e data do atendimento.");
+        }
+        validarHorario(agendamentoDTO.turnoAgendamento(), agendamentoDTO.horaAtendimento());
         // Global agenda lock order: patient -> professional -> original appointment.
         Paciente paciente = pacienteRepository.findByIdPublicoForUpdate(agendamentoDTO.pacienteId())
                 .orElseThrow(() -> new ResourceNotFoundException("Paciente não encontrado"));
@@ -143,6 +148,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     }
 
     private void validarVaga(Usuario usuario, Paciente paciente, LocalDate data, TurnoEnum turno, LocalTime hora) {
+        validarHorario(turno, hora);
         boolean horarioJaOcupado = agendamentoRepository.existsAgendamentoAtivoNoMesmoHorario(
                 usuario, data, hora,
                 SITUACOES_ATIVAS);
@@ -178,6 +184,15 @@ public class AgendamentoServiceImpl implements AgendamentoService {
             throw new ConflictException("Não há vagas disponíveis para a data e turno informados.");
         }
 
+    }
+
+    private void validarHorario(TurnoEnum turno, LocalTime hora) {
+        if (turno == null || hora == null) {
+            throw new ValidationException("Informe o turno e o horário do atendimento.");
+        }
+        if (!agendaHorarioProperties.grade(turno).contains(hora)) {
+            throw new ValidationException("O horário deve pertencer à grade configurada para o turno informado.");
+        }
     }
 
     @Override
@@ -236,6 +251,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
 
     @Override
     public HorariosDisponiveisDTO buscarHorariosDisponiveis(UUID usuarioIdPublico, LocalDate data, TurnoEnum turno) {
+        if (data == null || turno == null) throw new ValidationException("Informe a data e o turno da consulta.");
         if (data.isBefore(LocalDate.now()))
             throw new ValidationException("Não é permitido consultar horários em data passada.");
         Usuario usuario = usuarioRepository.findByIdPublico(usuarioIdPublico)
@@ -254,12 +270,9 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         int restantes = Math.max(0, capacidade - ocupadas);
         if (restantes == 0)
             return new HorariosDisponiveisDTO(turno, 0, "CAPACIDADE_ESGOTADA", List.of());
-        var periodo = turno == TurnoEnum.MANHA ? agendaHorarioProperties.getHorarios().getManha()
-                : agendaHorarioProperties.getHorarios().getTarde();
         Set<LocalTime> ocupados = new HashSet<>(agendamentoRepository.findHorariosOcupados(usuario, data, turno, SITUACOES_ATIVAS));
         List<HorarioDisponivelDTO> horarios = new ArrayList<>();
-        for (LocalTime hora = periodo.getInicio(); !hora.isAfter(periodo.getFim());
-                hora = hora.plusMinutes(agendaHorarioProperties.getIntervaloMinutos()))
+        for (LocalTime hora : agendaHorarioProperties.grade(turno))
             horarios.add(new HorarioDisponivelDTO(hora, !ocupados.contains(hora)));
         return new HorariosDisponiveisDTO(turno, restantes, null, horarios);
     }

@@ -1,5 +1,9 @@
 package com.pet.buscaativa.config;
 import java.time.LocalTime;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import com.pet.buscaativa.entities.enums.TurnoEnum;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 import jakarta.annotation.PostConstruct;
@@ -12,8 +16,22 @@ public class AgendaHorarioProperties {
     public Horarios getHorarios() { return horarios; }
     public int getIntervaloMinutos() { return intervaloMinutos; }
     public void setIntervaloMinutos(int valor) { intervaloMinutos = valor; }
+    /** The last slot is inclusive only when aligned with the interval from the start. */
+    public List<LocalTime> grade(TurnoEnum turno) {
+        if (turno == null) throw new IllegalArgumentException("Turno obrigatório.");
+        validar();
+        Periodo periodo = turno == TurnoEnum.MANHA ? horarios.manha : horarios.tarde;
+        long duration = Duration.between(periodo.inicio, periodo.fim).toMinutes();
+        List<LocalTime> slots = new ArrayList<>();
+        for (long offset = 0; offset <= duration; offset += intervaloMinutos) {
+            slots.add(periodo.inicio.plusMinutes(offset));
+        }
+        return List.copyOf(slots);
+    }
     @PostConstruct void validar() {
-        if (intervaloMinutos <= 0 || !horarios.manha.inicio.isBefore(horarios.manha.fim)
+        if (intervaloMinutos <= 0 || horarios.manha.inicio == null || horarios.manha.fim == null
+                || horarios.tarde.inicio == null || horarios.tarde.fim == null
+                || !horarios.manha.inicio.isBefore(horarios.manha.fim)
                 || !horarios.tarde.inicio.isBefore(horarios.tarde.fim))
             throw new IllegalStateException("Configuração de horários da agenda inválida.");
     }
