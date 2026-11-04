@@ -17,6 +17,7 @@ import com.pet.buscaativa.services.impl.TokenServiceImpl;
 
 class JwtKeyConfigurationTests {
     private final ApplicationContextRunner context = new ApplicationContextRunner()
+            .withInitializer(c -> TestEnvironmentIsolation.apply(c.getEnvironment()))
             .withUserConfiguration(TokenServiceImpl.class);
 
     @Test
@@ -55,15 +56,9 @@ class JwtKeyConfigurationTests {
     }
 
     @Test
-    void jwt05RejectsActualRetiredMaterialEvenWhenBase64Encoded() {
-        byte[] retired = RetiredJwtFixture.key();
-        try {
-            var exception = assertThrows(IllegalArgumentException.class,
-                    () -> new TokenServiceImpl(Base64.getEncoder().encodeToString(retired)));
-            assertTrue(exception.getMessage().contains("revogado"));
-        } finally {
-            java.util.Arrays.fill(retired, (byte) 0);
-        }
+    void jwt05ProductionPolicyKeepsHistoricalFingerprintRevoked() {
+        assertTrue(com.pet.buscaativa.services.impl.JwtKeyPolicy.production().revokes(
+                "321a61cd161b2e83d848740ec3a1f8168e76aba5a86e813e3c7a849099ff4ba4"));
     }
 
     @Test

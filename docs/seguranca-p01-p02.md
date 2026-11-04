@@ -105,11 +105,18 @@ credenciais do ambiente real ou fallback da aplicação. Não existe uma nova ch
 fixa de testes que a aplicação possa aceitar em produção. O teste de contexto
 simula a integração SUS; os demais testes de integração já o faziam.
 
-As regressões da chave comprometida leem o material **somente em memória**, do
-commit local `e92606fb463dc7880684ab193b5a9dd543e0efed`, para verificar que a
-configuração e o token antigo são rejeitados. Requerem Git e esse objeto no clone;
-em exportação sem histórico, falham explicitamente em vez de declarar aprovação.
-Não fazem acesso de rede nem republicam a chave/token em fixtures ou logs.
+As regressões não executam Git e não dependem do histórico. A política imutável
+mantém o fingerprint histórico revogado; testes usam material sintético e um
+fingerprint proibido controlado para exercitar o mesmo construtor usado na
+inicialização real. A chave histórica não é republicada nem recuperada pelos testes.
+A verificação da configuração desse fingerprint complementa o teste funcional da
+política; não equivale a reassinar um token com o material histórico.
+
+Os testes podem ser executados mesmo com `JWT_SECRET_BASE64`, `DEV_DB_PASSWORD`
+e `SPRING_PROFILES_ACTIVE=dev` no terminal. Não é necessário limpar variáveis.
+Integrações selecionam explicitamente `test`; contextos que verificam ausência de
+configuração isolam as fontes externas localmente. O ambiente do processo não é
+alterado. Iniciar a aplicação em `dev` e executar os testes são procedimentos distintos.
 
 No ambiente cloud preparado desta sessão, os comandos equivalentes são:
 
@@ -173,3 +180,23 @@ não altera regras de USF/CAPS nem o esquema das entidades.
 Esta mudança não configura infraestrutura de produção, TLS público, CORS,
 revogação individual de JWT, atualizações gerais de dependências ou as demais
 correções da auditoria. Valide esses requisitos separadamente antes de uso real.
+
+## Logging temporário
+
+O nível padrão de Spring Security é WARN. Para diagnóstico local controlado,
+habilite temporariamente DEBUG com `--logging.level.org.springframework.security=DEBUG`
+no comando do backend. No PowerShell o mesmo argumento se aplica. Remova o
+argumento após o diagnóstico. Evite TRACE, captura de cabeçalhos e compartilhamento
+de logs com credenciais ou informações de pacientes. A configuração não suprime
+falhas de inicialização, erros nem resultados dos testes.
+
+## Integração contínua
+
+`.github/workflows/ci.yml` executa backend e build Angular em PRs para `main`,
+pushes na `main` e manualmente. Não exige Secrets. O checkout raso é suficiente.
+O backend usa Java21 e `bash ./mvnw verify`; o frontend usa Node22 e npm11.6.2.
+A suíte Angular possui falhas preexistentes Q01–Q04 e está em um job diagnóstico
+manual (`run_frontend_tests`), desmarcado por padrão. Se selecionado, suas falhas
+ficam visíveis; não há `continue-on-error`. O build Angular continua obrigatório.
+Não há deploy ou merge automático. Configure na proteção da branch os checks
+Backend e Frontend build como obrigatórios se desejar bloquear integração na UI.

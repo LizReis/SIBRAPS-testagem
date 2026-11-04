@@ -115,13 +115,8 @@ class SecurityP01P02Tests extends SecurityTestSupport {
         assertUnauthorized(previous.gerarToken(admin));
     }
 
-    @Test void jwt14ActualCompromisedKeyCannotImpersonateAdmin() throws Exception {
-        byte[] retired = RetiredJwtFixture.key();
-        try {
-            assertUnauthorized(signed(retired, Instant.now().plusSeconds(120), "buscaativa-api"));
-        } finally {
-            java.util.Arrays.fill(retired, (byte) 0);
-        }
+    @Test void jwt14SyntheticRetiredKeyCannotImpersonateAdmin() throws Exception {
+        assertUnauthorized(signed(randomBytes(), Instant.now().plusSeconds(120), "buscaativa-api"));
     }
 
     @ParameterizedTest

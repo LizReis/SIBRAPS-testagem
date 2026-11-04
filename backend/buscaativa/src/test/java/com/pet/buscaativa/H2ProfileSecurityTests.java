@@ -33,15 +33,18 @@ class H2ProfileSecurityTests {
     void h205To07ConsoleDisabledWithDefaultDeploymentAndExplicitDev(String profile) {
         String password = Base64.getEncoder().encodeToString(SecurityTestSupport.randomBytes());
         var runner = new WebApplicationContextRunner()
-                .withInitializer(new ConfigDataApplicationContextInitializer())
+                .withInitializer(c -> {
+                    TestEnvironmentIsolation.apply(c.getEnvironment());
+                    new ConfigDataApplicationContextInitializer().initialize(c);
+                })
                 .withUserConfiguration(BuscaativaApplication.class, ExternalServices.class)
                 // Load actual application resources, not src/test/application.properties.
                 .withPropertyValues("spring.config.location=file:src/main/resources/",
                         "JWT_SECRET_BASE64=" + Base64.getEncoder().encodeToString(SecurityTestSupport.randomBytes()),
                         "DB_URL=jdbc:h2:mem:profiles-" + UUID.randomUUID(), "DB_USERNAME=sa",
                         "DB_PASSWORD=" + password, "DEV_DB_PASSWORD=" + password,
-                        "spring.jpa.hibernate.ddl-auto=create-drop", "logging.level.root=ERROR");
-        if (!profile.isEmpty()) runner = runner.withPropertyValues("spring.profiles.active=" + profile);
+                        "spring.jpa.hibernate.ddl-auto=create-drop", "logging.level.root=ERROR",
+                        "DEV_DB_USERNAME=sa", "spring.profiles.active=" + profile);
         if (profile.equals("attempted-console-override")) {
             runner = runner.withPropertyValues("spring.h2.console.enabled=true", "spring.h2.console.path=/internal-db");
         }
