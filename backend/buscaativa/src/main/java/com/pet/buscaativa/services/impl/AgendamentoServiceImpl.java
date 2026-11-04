@@ -137,10 +137,13 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         agendamento.setHoraAtendimento(agendamentoDTO.horaAtendimento());
 
         if (agendamentoDTO.agendamentoOriginalId() != null) {
-            var original = agendamentoRepository.findById(agendamentoDTO.agendamentoOriginalId())
+            var original = agendamentoRepository.findByIdForUpdate(agendamentoDTO.agendamentoOriginalId())
                     .orElseThrow(() -> new ResourceNotFoundException("Agendamento original não encontrado"));
 
             escopoUnidadeService.validarAgendamento(original);
+            if (!java.util.Objects.equals(original.getPaciente().getId(), paciente.getId())) {
+                throw new ValidationException("A remarcação deve pertencer ao mesmo paciente do atendimento original.");
+            }
             if (agendamentoDTO.id() != null && agendamentoDTO.id().equals(agendamentoDTO.agendamentoOriginalId())) {
                 throw new ValidationException("Um agendamento não pode ser vinculado a ele mesmo.");
             }
