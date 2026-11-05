@@ -103,13 +103,14 @@ class HomeVisitRecalculationTests extends AgendaIntegritySupport {
         assertEquals(LocalDate.now().minusDays(3), patients.findById(patient.getId()).orElseThrow().getDataUltimaPresenca());
         assertEquals(0, patients.findById(patient.getId()).orElseThrow().getCountFaltas());
     }
-    @Test void correctedEvidenceOverridesStaleRescheduleFlag() {
+    @Test void correctedEvidenceOverridesStaleRescheduleFlag() throws Exception {
         var original = fact(8, SituacaoAtendimento.FALTOU);
-        replacement(original, 6); alertPreviouslyActive();
-        tx(() -> { var event = history.findByAgendamento(original).getFirst();
-            event.setTipo(TipoEventoHistoricoPaciente.PRESENCA); event.setSituacaoAtendimento(SituacaoAtendimento.PRESENTE);
-            history.saveAndFlush(event); return null; });
-        recalculate(); assertFalse(visit());
+        var successor = replacement(original, 6); alertPreviouslyActive();
+        assertEquals(200, correct(original, SituacaoAtendimento.PRESENTE));
+        assertEquals(SituacaoAtendimento.REMARCADO_ORIGEM, appointment(original.getId()).getSituacaoAtendimento());
+        assertEquals(FrequenciaAssistencial.PRESENTE, appointment(original.getId()).getFrequenciaAssistencial());
+        assertTrue(appointment(successor.getId()).isRemarcacaoAposFalta());
+        assertFalse(visit());
     }
     @Test void unrelatedAbsencesDoNotCreateANumericVisitThreshold() {
         for (int i = 12; i >= 5; i--) fact(i, SituacaoAtendimento.FALTOU);

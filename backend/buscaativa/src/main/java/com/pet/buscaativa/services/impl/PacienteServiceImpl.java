@@ -323,10 +323,10 @@ public class PacienteServiceImpl implements PacienteService{
         List<Evento> eventos = new java.util.ArrayList<>();
         var atendimentos = agendamentoRepository.findByPaciente(paciente);
         for (var a : atendimentos) {
-            if (a.getSituacaoAtendimento() == SituacaoAtendimento.PRESENTE
-                    || a.getSituacaoAtendimento() == SituacaoAtendimento.FALTOU) {
+            if (a.getFrequenciaAssistencial() == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.PRESENTE
+                    || a.getFrequenciaAssistencial() == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU) {
                 eventos.add(new Evento(LocalDateTime.of(a.getDataAgendamento(), a.getHoraAtendimento()),
-                        a.getSituacaoAtendimento() == SituacaoAtendimento.PRESENTE, 0, a.getId()));
+                        a.getFrequenciaAssistencial() == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.PRESENTE, 0, a.getId()));
             }
         }
         for (var p : participanteGrupoRepository.findByPaciente(paciente)) {

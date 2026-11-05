@@ -144,6 +144,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
 
         agendamento = agendamentoRepository.save(agendamento);
         historicoPacienteService.registrarAgendamento(agendamento);
+        if (agendamentoDTO.agendamentoOriginalId() != null) pacienteService.recalcularAssiduidadePaciente(paciente);
         return agendamentoMapper.toAgendamentoDTO(agendamento);
     }
 
@@ -359,7 +360,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
             if (a.getDataAgendamento() == null || a.getTurnoAgendamento() == null || a.getSituacaoAtendimento() == null)
                 continue;
 
-            if (!ocupantes.contains(a.getSituacaoAtendimento()))
+            if (!Boolean.TRUE.equals(a.getOcupaVaga()))
                 continue;
 
             LocalDate d = a.getDataAgendamento();
@@ -481,13 +482,22 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         }
 
         SituacaoAtendimento statusAnterior = agendamento.getSituacaoAtendimento();
+        var frequenciaAnterior = agendamento.getFrequenciaAssistencial();
+        boolean destinoClinico = novoStatus == SituacaoAtendimento.PRESENTE || novoStatus == SituacaoAtendimento.FALTOU;
+        boolean frequenciaRegistrada = frequenciaAnterior == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.PRESENTE
+                || frequenciaAnterior == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU;
+        boolean correcaoDeSubstituido = statusAnterior == SituacaoAtendimento.REMARCADO_ORIGEM
+                && frequenciaRegistrada && destinoClinico;
+        if (agendamento.isMigracaoPendente())
+            throw new ConflictException("Agendamento com migração pendente de revisão; nenhuma alteração foi realizada.");
+        if (frequenciaRegistrada && (novoStatus == SituacaoAtendimento.AGENDADO || novoStatus == SituacaoAtendimento.REMARCADO))
+            throw new ConflictException("A frequência registrada deve ser preservada; esta alteração de reserva exige revisão.");
 
-        if (statusAnterior == novoStatus) {
+        if (statusAnterior == novoStatus || (correcaoDeSubstituido && frequenciaAnterior.name().equals(novoStatus.name()))) {
             return agendamentoMapper.toAgendamentoDTO(agendamento);
         }
 
-        boolean correcaoFrequencia = (statusAnterior == SituacaoAtendimento.PRESENTE || statusAnterior == SituacaoAtendimento.FALTOU)
-                && (novoStatus == SituacaoAtendimento.PRESENTE || novoStatus == SituacaoAtendimento.FALTOU);
+        boolean correcaoFrequencia = frequenciaRegistrada && destinoClinico;
         if (correcaoFrequencia) {
             String email = SecurityContextHolder.getContext().getAuthentication().getName();
             TipoUsuario perfil = usuarioRepository.findByEmail(email)
@@ -497,7 +507,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         }
 
         if ((novoStatus == SituacaoAtendimento.PRESENTE || novoStatus == SituacaoAtendimento.FALTOU)
-                && (statusAnterior == SituacaoAtendimento.CANCELADO || statusAnterior == SituacaoAtendimento.REMARCADO_ORIGEM))
+                && (statusAnterior == SituacaoAtendimento.CANCELADO || (statusAnterior == SituacaoAtendimento.REMARCADO_ORIGEM && !correcaoDeSubstituido)))
             throw new ValidationException("Um atendimento cancelado ou substituído não permite registro de frequência.");
 
         if (statusAnterior == SituacaoAtendimento.FALTOU && novoStatus == SituacaoAtendimento.PRESENTE) {
@@ -505,7 +515,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
             // Correct the historical fact under the same locks, independently of the current offer/grid.
             validarConflitosDeHorario(profissionalBloqueado, pacienteBloqueado, agendamento.getDataAgendamento(),
                     agendamento.getHoraAtendimento(), true);
-        } else if (SITUACOES_ATIVAS.contains(novoStatus) && !SITUACOES_ATIVAS.contains(statusAnterior)) {
+        } else if (!correcaoDeSubstituido && SITUACOES_ATIVAS.contains(novoStatus) && !SITUACOES_ATIVAS.contains(statusAnterior)) {
             validarVaga(profissionalBloqueado, pacienteBloqueado, agendamento.getDataAgendamento(),
                     agendamento.getTurnoAgendamento(), agendamento.getHoraAtendimento());
         }
@@ -523,7 +533,9 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         }
 
         agendamento = agendamentoRepository.save(agendamento);
-        historicoPacienteService.registrarAlteracaoDeAtendimento(agendamento, statusAnterior);
+        if (correcaoDeSubstituido)
+            historicoPacienteService.registrarCorrecaoDeFrequencia(agendamento, frequenciaAnterior);
+        else historicoPacienteService.registrarAlteracaoDeAtendimento(agendamento, statusAnterior);
 
         return agendamentoMapper.toAgendamentoDTO(agendamento);
     }

@@ -197,7 +197,9 @@ class HistoricalAttendanceReviewTests extends AgendaIntegritySupport {
         assertEquals(date, p.getDataUltimaPresenca());
         assertEquals(200, status(admin, id, SituacaoAtendimento.FALTOU));
         p = patients.findById(patient.getId()).orElseThrow();
-        assertTrue(p.getGatilhoVisitaAcionado()); assertEquals(1, p.getCountFaltas());
+        assertTrue(p.getGatilhoVisitaAcionado()); assertEquals(2, p.getCountFaltas());
+        assertEquals(com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU,
+                tx(() -> appointment(id).getAgendamentoOriginal().getFrequenciaAssistencial()));
         assertEquals(before.history(), history.count());
     }
 

@@ -320,17 +320,21 @@ class AttendanceCorrectionIntegrityTests extends AgendaIntegritySupport {
     }
 
     @RepeatedTest(3)
-    void e112CorrectionAndRescheduleCannotBothReplaceTheSameAbsence() throws Exception {
+    void e112CorrectionAndReschedulePreserveIndependentFactAndReservation() throws Exception {
         var target = absence(patient, professional, LocalDate.now().minusDays(10), "08:00");
-        long rows = appointments.count();
-        assertEquals(new RaceResult(1, 1), race("E1-12-correct-reschedule", List.of(
-                () -> correct(target.getId()), () -> post(dto(patient, colleague, "08:30", TurnoEnum.MANHA, target.getId())))));
+        long rows = appointments.count(), events = history.count();
+        var result = race("E1-12-correct-reschedule", List.of(
+                () -> correct(target.getId()), () -> post(dto(patient, colleague, "08:30", TurnoEnum.MANHA, target.getId()))));
+        assertTrue(result.equals(new RaceResult(1, 1)) || result.equals(new RaceResult(2, 0)));
         var state = appointment(target.getId()).getSituacaoAtendimento();
-        boolean corrected = state == SituacaoAtendimento.PRESENTE;
-        assertTrue(corrected || state == SituacaoAtendimento.REMARCADO_ORIGEM);
-        assertEquals(rows + (corrected ? 0 : 1), appointments.count());
-        assertEquals(corrected ? 0 : 1, active(patient, "08:30"));
-        assertEquals(corrected ? 0L : 1L, tx(() -> appointments.findAll().stream()
+        boolean replaced = state == SituacaoAtendimento.REMARCADO_ORIGEM;
+        assertTrue(replaced || state == SituacaoAtendimento.PRESENTE);
+        assertEquals(FrequenciaAssistencial.PRESENTE, appointment(target.getId()).getFrequenciaAssistencial());
+        assertEquals(result.confirmed() - 1, replaced ? 1 : 0);
+        assertEquals(rows + (replaced ? 1 : 0), appointments.count());
+        assertEquals(events + (replaced ? 2 : 0), history.count());
+        assertEquals(replaced ? 1 : 0, active(patient, "08:30"));
+        assertEquals(replaced ? 1L : 0L, tx(() -> appointments.findAll().stream()
                 .filter(a -> a.getAgendamentoOriginal() != null && a.getAgendamentoOriginal().getId().equals(target.getId())).count()));
     }
 

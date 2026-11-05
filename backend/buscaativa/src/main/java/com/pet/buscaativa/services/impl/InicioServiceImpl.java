@@ -44,7 +44,7 @@ public class InicioServiceImpl implements InicioService {
                         cb.equal(r.get("situacaoAtendimento"), SituacaoAtendimento.AGENDADO))));
 
         long faltasUltimosSeteDias = agendamentoRepository.count(escopoUnidadeService.<Agendamento>specificationPaciente("paciente")
-                .and((r,q,cb)->cb.and(cb.equal(r.get("situacaoAtendimento"), SituacaoAtendimento.FALTOU),
+                .and((r,q,cb)->cb.and(cb.equal(r.get("frequenciaAssistencial"), com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU),
                         cb.between(r.get("dataAgendamento"), seteDiasAtras, hoje))));
 
         var atencao = pacientesAtivos.and((r,q,cb)->r.get("classificacaoRisco")

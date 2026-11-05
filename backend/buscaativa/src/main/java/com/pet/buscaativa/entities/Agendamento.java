@@ -7,6 +7,13 @@ import org.hibernate.envers.Audited;
 
 import com.pet.buscaativa.entities.enums.SituacaoAtendimento;
 import com.pet.buscaativa.entities.enums.TurnoEnum;
+import com.pet.buscaativa.entities.enums.SituacaoReserva;
+import com.pet.buscaativa.entities.enums.FrequenciaAssistencial;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import lombok.AccessLevel;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
@@ -58,6 +65,31 @@ public class Agendamento {
     @Convert(converter = SituacaoAtendimentoConverter.class)
     private SituacaoAtendimento situacaoAtendimento;
 
+    @Enumerated(EnumType.STRING)
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.VARCHAR)
+    @Column(name = "situacao_reserva", length = 20)
+    @Setter(AccessLevel.NONE)
+    private SituacaoReserva situacaoReserva;
+
+    @Enumerated(EnumType.STRING)
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.VARCHAR)
+    @Column(name = "frequencia_assistencial", length = 20)
+    @Setter(AccessLevel.NONE)
+    private FrequenciaAssistencial frequenciaAssistencial;
+
+    @Column(name = "migracao_pendente")
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    private Boolean migracaoPendente = false;
+
+    @Column(name = "motivo_migracao_pendente", length = 200)
+    @Setter(AccessLevel.NONE)
+    private String motivoMigracaoPendente;
+
+    @Column(name = "ocupa_vaga")
+    @Setter(AccessLevel.NONE)
+    private Boolean ocupaVaga;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "agendamento_original_id")
     private Agendamento agendamentoOriginal;
@@ -67,4 +99,52 @@ public class Agendamento {
 
     @Version
     private Integer version;
+
+    public boolean isMigracaoPendente() { return Boolean.TRUE.equals(migracaoPendente); }
+
+    public void setAgendamentoOriginal(Agendamento original) {
+        if (original == this) throw new IllegalArgumentException("Vínculo de remarcação circular.");
+        agendamentoOriginal = original;
+        if (original != null && situacaoReserva == SituacaoReserva.AGENDADA) {
+            situacaoReserva = SituacaoReserva.REMARCADA;
+            sincronizarProjecoes();
+        }
+    }
+
+    /** Compatibility command. JPA uses field access; loaded legacy values never become facts here. */
+    public void setSituacaoAtendimento(SituacaoAtendimento comando) {
+        if (isMigracaoPendente()) throw new IllegalStateException("Agendamento com migração pendente.");
+        if (comando == null) throw new IllegalArgumentException("Situação obrigatória.");
+        if (frequenciaAssistencial == null) frequenciaAssistencial = FrequenciaAssistencial.NAO_REGISTRADA;
+        switch (comando) {
+            case AGENDADO -> situacaoReserva = SituacaoReserva.AGENDADA;
+            case REMARCADO -> situacaoReserva = SituacaoReserva.REMARCADA;
+            case CANCELADO -> situacaoReserva = SituacaoReserva.CANCELADA;
+            case REMARCADO_ORIGEM -> situacaoReserva = SituacaoReserva.SUBSTITUIDA;
+            case PRESENTE, FALTOU -> {
+                if (situacaoReserva == null) situacaoReserva = agendamentoOriginal == null
+                        ? SituacaoReserva.AGENDADA : SituacaoReserva.REMARCADA;
+                frequenciaAssistencial = comando == SituacaoAtendimento.PRESENTE
+                        ? FrequenciaAssistencial.PRESENTE : FrequenciaAssistencial.FALTOU;
+            }
+        }
+        sincronizarProjecoes();
+    }
+
+    public SituacaoAtendimento getSituacaoAtendimento() {
+        return isMigracaoPendente() || situacaoReserva == null || frequenciaAssistencial == null ? situacaoAtendimento
+                : PoliticaOcupacaoAgendamento.projetar(situacaoReserva, frequenciaAssistencial);
+    }
+
+    @PrePersist @PreUpdate
+    private void sincronizarProjecoes() {
+        if (isMigracaoPendente()) return; // Unresolved migrated rows remain frozen at their observed legacy projection.
+        if (situacaoReserva == null || frequenciaAssistencial == null) {
+            if (situacaoAtendimento != null) throw new IllegalStateException("Estado canônico ausente.");
+            migracaoPendente = true; motivoMigracaoPendente = "SITUACAO_LEGADA_AUSENTE"; ocupaVaga = false;
+            return;
+        }
+        situacaoAtendimento = PoliticaOcupacaoAgendamento.projetar(situacaoReserva, frequenciaAssistencial);
+        ocupaVaga = PoliticaOcupacaoAgendamento.ocupa(situacaoReserva, frequenciaAssistencial);
+    }
 }

@@ -42,28 +42,30 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long>,
     @Query("SELECT a FROM Agendamento a JOIN FETCH a.usuario JOIN FETCH a.paciente WHERE a.dataAgendamento = :dataAgendamento ORDER BY a.dataAgendamento, a.turnoAgendamento, a.horaAtendimento, a.id")
     List<Agendamento> findByDataAgendamento(@Param("dataAgendamento") LocalDate dataAgendamento);
 
-    long countByDataAgendamentoAndSituacaoAtendimento(LocalDate dataAgendamento, SituacaoAtendimento situacaoAtendimento);
+    @Query("select count(a) from Agendamento a where a.dataAgendamento = :data and ((:situacao = com.pet.buscaativa.entities.enums.SituacaoAtendimento.PRESENTE and a.frequenciaAssistencial = com.pet.buscaativa.entities.enums.FrequenciaAssistencial.PRESENTE) or (:situacao = com.pet.buscaativa.entities.enums.SituacaoAtendimento.FALTOU and a.frequenciaAssistencial = com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU) or (:situacao not in (com.pet.buscaativa.entities.enums.SituacaoAtendimento.PRESENTE, com.pet.buscaativa.entities.enums.SituacaoAtendimento.FALTOU) and a.situacaoAtendimento = :situacao))")
+    long countByDataAgendamentoAndSituacaoAtendimento(@Param("data") LocalDate dataAgendamento, @Param("situacao") SituacaoAtendimento situacaoAtendimento);
 
-    long countBySituacaoAtendimentoAndDataAgendamentoBetween(SituacaoAtendimento situacaoAtendimento, LocalDate inicio, LocalDate fim);
+    @Query("select count(a) from Agendamento a where a.dataAgendamento between :inicio and :fim and ((:situacao = com.pet.buscaativa.entities.enums.SituacaoAtendimento.PRESENTE and a.frequenciaAssistencial = com.pet.buscaativa.entities.enums.FrequenciaAssistencial.PRESENTE) or (:situacao = com.pet.buscaativa.entities.enums.SituacaoAtendimento.FALTOU and a.frequenciaAssistencial = com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU) or (:situacao not in (com.pet.buscaativa.entities.enums.SituacaoAtendimento.PRESENTE, com.pet.buscaativa.entities.enums.SituacaoAtendimento.FALTOU) and a.situacaoAtendimento = :situacao))")
+    long countBySituacaoAtendimentoAndDataAgendamentoBetween(@Param("situacao") SituacaoAtendimento situacaoAtendimento, @Param("inicio") LocalDate inicio, @Param("fim") LocalDate fim);
 
     List<Agendamento> findByPacienteOrderByDataAgendamentoDescIdDesc(Paciente paciente);
 
     List<Agendamento> findByPaciente(Paciente paciente);
 
     // Conta agendamentos que ocupam vaga com filtro por status
-    @Query("SELECT COUNT(a) FROM Agendamento a WHERE a.usuario = :usuario AND a.dataAgendamento = :data AND a.turnoAgendamento = :turno AND a.situacaoAtendimento IN :situacoes")
+    @Query("SELECT COUNT(a) FROM Agendamento a WHERE a.usuario = :usuario AND a.dataAgendamento = :data AND a.turnoAgendamento = :turno AND a.ocupaVaga = true AND a.situacaoAtendimento IN :situacoes")
     int contarVagasOcupadasBySituacoes(@Param("usuario") Usuario usuario,
                                        @Param("data") LocalDate dataAgendamento,
                                        @Param("turno") TurnoEnum turnoAgendamento,
                                        @Param("situacoes") List<SituacaoAtendimento> situacoes);
 
-    @Query("SELECT COUNT(a) FROM Agendamento a WHERE a.usuario = :usuario AND a.dataAgendamento = :data AND a.turnoAgendamento = :turno AND a.situacaoAtendimento <> :situacao")
+    @Query("SELECT COUNT(a) FROM Agendamento a WHERE a.usuario = :usuario AND a.dataAgendamento = :data AND a.turnoAgendamento = :turno AND a.ocupaVaga = true AND a.situacaoAtendimento <> :situacao")
     int contarVagasOcupadas(@Param("usuario") Usuario usuario,
                             @Param("data") LocalDate dataAgendamento,
                             @Param("turno") TurnoEnum turnoAgendamento,
                             @Param("situacao") SituacaoAtendimento situacao);
 
-    @Query("SELECT COUNT(a) FROM Agendamento a WHERE a.usuario = :usuario AND a.dataAgendamento BETWEEN :inicio AND :fim AND a.situacaoAtendimento IN :situacoes")
+    @Query("SELECT COUNT(a) FROM Agendamento a WHERE a.usuario = :usuario AND a.dataAgendamento BETWEEN :inicio AND :fim AND a.ocupaVaga = true AND a.situacaoAtendimento IN :situacoes")
     long contarAtivosNoPeriodo(@Param("usuario") Usuario usuario,
                                @Param("inicio") LocalDate inicio,
                                @Param("fim") LocalDate fim,
@@ -83,14 +85,14 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long>,
     List<Agendamento> findByUsuarioAndDataAgendamentoBetween(Usuario usuario, LocalDate startInclusive, LocalDate endInclusive);
 
     @Query("SELECT COUNT(a) FROM Agendamento a WHERE a.usuario = :usuario " +
-            "AND a.dataAgendamento >= :dataInicio AND a.situacaoAtendimento IN :situacoes " +
+            "AND a.dataAgendamento >= :dataInicio AND a.ocupaVaga = true AND a.situacaoAtendimento IN :situacoes " +
             "AND FUNCTION('DAY_OF_WEEK', a.dataAgendamento) = :diaBanco AND a.turnoAgendamento = :turno")
     long contarConflitosDisponibilidade(@Param("usuario") Usuario usuario,
                                         @Param("dataInicio") LocalDate dataInicio, @Param("diaBanco") int diaBanco,
                                         @Param("turno") TurnoEnum turno, @Param("situacoes") List<SituacaoAtendimento> situacoes);
 
     @Query("SELECT COUNT(a) FROM Agendamento a WHERE a.usuario = :usuario " +
-            "AND a.dataAgendamento >= :dataInicio AND a.situacaoAtendimento IN :situacoes " +
+            "AND a.dataAgendamento >= :dataInicio AND a.ocupaVaga = true AND a.situacaoAtendimento IN :situacoes " +
             "AND FUNCTION('DAY_OF_WEEK', a.dataAgendamento) = :diaBanco AND a.turnoAgendamento = :turno " +
             "GROUP BY a.dataAgendamento")
     List<Long> contarOcupacaoPorDataDisponibilidade(@Param("usuario") Usuario usuario,
@@ -101,15 +103,15 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long>,
     // Verifica se já existe um agendamento ativo do profissional na mesma data e horário exato
     @Query("SELECT COUNT(a) > 0 FROM Agendamento a WHERE a.usuario = :usuario " +
             "AND a.dataAgendamento = :data AND a.horaAtendimento = :hora " +
-            "AND a.situacaoAtendimento IN :situacoes")
+            "AND a.ocupaVaga = true AND a.situacaoAtendimento IN :situacoes")
     boolean existsAgendamentoAtivoNoMesmoHorario(@Param("usuario") Usuario usuario,
                                                  @Param("data") LocalDate data, @Param("hora") LocalTime hora,
                                                  @Param("situacoes") List<SituacaoAtendimento> situacoes);
 
-    @Query("SELECT COUNT(a) > 0 FROM Agendamento a WHERE a.paciente = :paciente AND a.dataAgendamento = :data AND a.horaAtendimento = :hora AND a.situacaoAtendimento IN :situacoes")
+    @Query("SELECT COUNT(a) > 0 FROM Agendamento a WHERE a.paciente = :paciente AND a.dataAgendamento = :data AND a.horaAtendimento = :hora AND a.ocupaVaga = true AND a.situacaoAtendimento IN :situacoes")
     boolean existsAtivoDoPacienteNoMesmoHorario(@Param("paciente") Paciente paciente, @Param("data") LocalDate data,
             @Param("hora") LocalTime hora, @Param("situacoes") List<SituacaoAtendimento> situacoes);
-    @Query("SELECT a.horaAtendimento FROM Agendamento a WHERE a.usuario = :usuario AND a.dataAgendamento = :data AND a.turnoAgendamento = :turno AND a.situacaoAtendimento IN :situacoes ORDER BY a.horaAtendimento")
+    @Query("SELECT a.horaAtendimento FROM Agendamento a WHERE a.usuario = :usuario AND a.dataAgendamento = :data AND a.turnoAgendamento = :turno AND a.ocupaVaga = true AND a.situacaoAtendimento IN :situacoes ORDER BY a.horaAtendimento")
     List<LocalTime> findHorariosOcupados(@Param("usuario") Usuario usuario, @Param("data") LocalDate data,
             @Param("turno") TurnoEnum turno, @Param("situacoes") List<SituacaoAtendimento> situacoes);
 }

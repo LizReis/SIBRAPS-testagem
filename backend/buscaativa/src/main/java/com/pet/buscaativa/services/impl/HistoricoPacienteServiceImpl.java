@@ -104,6 +104,19 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
     @Transactional
     public void registrarAlteracaoDeAtendimento(Agendamento agendamento, SituacaoAtendimento statusAnterior) {
         SituacaoAtendimento novoStatus = agendamento.getSituacaoAtendimento();
+        registrarAlteracao(agendamento, statusAnterior, novoStatus);
+    }
+
+    @Override
+    @Transactional
+    public void registrarCorrecaoDeFrequencia(Agendamento agendamento,
+            com.pet.buscaativa.entities.enums.FrequenciaAssistencial anterior) {
+        registrarAlteracao(agendamento, SituacaoAtendimento.valueOf(anterior.name()),
+                SituacaoAtendimento.valueOf(agendamento.getFrequenciaAssistencial().name()));
+    }
+
+    private void registrarAlteracao(Agendamento agendamento, SituacaoAtendimento statusAnterior,
+            SituacaoAtendimento novoStatus) {
         TipoEventoHistoricoPaciente tipo = switch (novoStatus) {
             case PRESENTE -> agendamento.getPaciente().getTipoAcompanhamento() == TipoAcompanhamento.GRUPO_TERAPEUTICO
                     ? TipoEventoHistoricoPaciente.PARTICIPACAO_GRUPO_TERAPEUTICO

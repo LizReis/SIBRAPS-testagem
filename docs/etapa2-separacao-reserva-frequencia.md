@@ -57,3 +57,21 @@ O SGBD final não está definido neste repositório. A infraestrutura deve recus
 ### Validação prevista
 
 Conservar os 334 casos, além dos 14 da Frente A; adicionar modelo, equivalência/projeção, rejeição de estados incoerentes, migração dos seis códigos, ambiguidades, Envers, reinicialização, restauração e contrato HTTP. Reexecutar concorrência e rollback reais, indicadores em cadeia, `mvnw test`, `mvnw verify`, `npm ci`, `npm run build`. Registrar quaisquer expectativas alteradas pela preservação aprovada de faltas antes ocultas, sem remover cenários. Resultado desta subetapa: desenho registrado, implementação e migração ainda não executadas.
+
+## 2C — Camada canônica implementada e validada
+
+Os enums propostos e os campos `situacaoReserva`/`frequenciaAssistencial` foram implementados. As colunas técnicas são `migracao_pendente`, `motivo_migracao_pendente` e `ocupa_vaga`. Reserva/frequência têm mutação controlada; o setter legado traduz comandos e sincroniza a projeção. Callbacks de persistência mantêm a coluna legada e ocupação coerentes. A revisão antiga permanece legível sem preencher retroativamente os novos campos. As tabelas persistentes ainda dependem da migração explícita da 2D.
+
+O DTO ganhou os campos canônicos/técnicos somente de resposta e conserva seu construtor legado e os endpoints. POST não aceita esses campos como entrada alternativa para registrar clínica; o teste tenta enviar presença/cancelamento pelos campos novos e confirma criação AGENDADA/NAO_REGISTRADA. PATCH conserva perfil, unidade, versão, data e oferta onde aplicável.
+
+A política central `PoliticaOcupacaoAgendamento` produz `ocupaVaga`; queries de capacidade, horários e colisões usam essa projeção, mantendo os subconjuntos legados operacionais. Contagens clínicas e assiduidade usam frequência, incluindo fatos preservados em reservas substituídas/canceladas. Histórico clínico é corrigido sem mudar a reserva. A política de visita agora usa a frequência canônica do original e do sucessor, não reconstrói clínica a partir da flag. Marcadores pendentes impedem escrita automática; fatos não identificados não se tornam NAO_REGISTRADA.
+
+### Alterações intencionais das expectativas anteriores
+
+1. `HistoricalAttendanceReviewTests.rescheduleVisitTriggerAndRepeatedCorrectionsRemainIdempotentWhenScheduleExists`: a correção inversa na remarcação resulta em **duas**, não uma falta, pois a falta do original SUBSTITUIDA deixou de desaparecer. Acrescentada asserção da frequência FALTOU preservada no original. Os 33 casos foram mantidos.
+2. `HomeVisitRecalculationTests.correctedEvidenceOverridesStaleRescheduleFlag`: deixou de modificar apenas o evento de histórico pela fixture; usa a API para corrigir a frequência canônica comprovada do original, conferindo reserva ainda SUBSTITUIDA, flag de proveniência preservada e alerta desativado.
+3. As três repetições E1-12 agora admitem 1 confirmação/1 rejeição quando a correção precede a tentativa de remarcação, ou 2 confirmações quando a remarcação precede a correção clínica do original. Não é duplicidade: o original conserva SUBSTITUIDA, frequência PRESENTE e não ocupa vaga; só há um sucessor. Asserts incluem frequência, contagens de linhas/eventos, vínculo, ocupação e relação entre confirmações e reservas criadas. Nenhum cenário foi removido.
+
+Um reset operacional AGENDADO/REMARCADO não pode apagar uma frequência já registrada: é recusado com 409, preservando o fato e impedindo atalho legado para contornar a correção clínica. Cancelado → frequência continua recusado; não foi implementada regularização da Etapa 5. Original SUBSTITUIDA só aceita correção de frequência já comprovada, com as permissões atuais de correção e sem adquirir reserva. Idempotência e rollback são testados.
+
+`CanonicalAppointmentTests` acrescenta **12 casos**, incluindo seis comandos legados, DTO, preservação da falta/remarcação, correção de substituído, cancelamento sem apagamento de clínica, reset indevido, comandos inválidos e rollback. `verify` completo: **360 executados, 360 aprovados, 0 falhas/erros/ignorados**, BUILD SUCCESS, 41,872 s, término **18:13:16 de 05/11/2026, America/Sao_Paulo**. Esse conjunto conserva os 334 anteriores, os 14 da 2A e os 12 novos. Migração de banco persistente e build Angular ainda não executados nesta subetapa.

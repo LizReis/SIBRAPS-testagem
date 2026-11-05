@@ -19,6 +19,8 @@ public interface HistoricoPacienteService {
     void registrarAgendamento(Agendamento agendamento);
 
     void registrarAlteracaoDeAtendimento(Agendamento agendamento, SituacaoAtendimento statusAnterior);
+    void registrarCorrecaoDeFrequencia(Agendamento agendamento,
+            com.pet.buscaativa.entities.enums.FrequenciaAssistencial anterior);
 
     void registrarSituacaoAtual(Paciente paciente, String descricao);
 
