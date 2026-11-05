@@ -16,10 +16,12 @@ import com.pet.buscaativa.repositories.*;
 import com.pet.buscaativa.migration.*;
 import com.pet.buscaativa.services.impl.SusApiAdapter;
 
-@SpringBootTest(properties = "spring.jpa.hibernate.ddl-auto=validate")
+@SpringBootTest(properties = {"spring.jpa.hibernate.ddl-auto=validate", "sibraps.test.fixture=migrated-indicators"})
 @Import(MigratedIndicatorsInitializationTests.KnownPatientDatabase.class)
 class MigratedIndicatorsInitializationTests extends SecurityTestSupport {
-    @TestConfiguration static class KnownPatientDatabase {
+    @TestConfiguration
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name = "sibraps.test.fixture", havingValue = "migrated-indicators")
+    static class KnownPatientDatabase {
         @Bean DataSource dataSource() throws Exception {
             var source = LegacyMigrationFixture.legacy(Files.createTempDirectory("sibraps-indicators-").resolve("legacy"));
             var jdbc = new JdbcTemplate(source);

@@ -23,11 +23,13 @@ import com.pet.buscaativa.migration.AgendaMigrationTool;
 import tools.jackson.databind.ObjectMapper;
 
 /** Boot validates and serves an actually migrated file, never Hibernate create/update. */
-@SpringBootTest(properties = "spring.jpa.hibernate.ddl-auto=validate")
+@SpringBootTest(properties = {"spring.jpa.hibernate.ddl-auto=validate", "sibraps.test.fixture=migrated-http"})
 @AutoConfigureMockMvc(print = MockMvcPrint.NONE)
 @Import(MigratedAgendaHttpTests.MigratedDatabase.class)
 class MigratedAgendaHttpTests extends SecurityTestSupport {
-    @TestConfiguration static class MigratedDatabase {
+    @TestConfiguration
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name = "sibraps.test.fixture", havingValue = "migrated-http")
+    static class MigratedDatabase {
         @Bean DataSource dataSource() throws Exception {
             var source = LegacyMigrationFixture.legacy(Files.createTempDirectory("sibraps-migrated-http-").resolve("legacy"));
             AgendaMigrationTool.migrar(source);

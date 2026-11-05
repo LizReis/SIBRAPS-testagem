@@ -78,7 +78,7 @@ public record PacienteDTO(
 
         UsuarioReferenciaDTO profissionalReferencia,
         @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
-        boolean indicadoresPendentes
+        Boolean indicadoresPendentes
 
 ) {
     public PacienteDTO(Paciente entity) {
