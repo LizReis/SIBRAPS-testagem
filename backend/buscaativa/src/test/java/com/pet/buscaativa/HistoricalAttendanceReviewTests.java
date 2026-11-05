@@ -20,9 +20,7 @@ import com.pet.buscaativa.entities.enums.*;
 import com.pet.buscaativa.services.HistoricoPacienteService;
 import com.pet.buscaativa.services.PacienteService;
 
-/** Compatibility gates: historical facts must be compared with the pre-stage-2 behavior.
- * Failures document the pending business decision; they do not authorize changing production rules.
- */
+/** Historical corrections ignore later offer changes but retain clinical effects and integrity. */
 class HistoricalAttendanceReviewTests extends AgendaIntegritySupport {
     enum Schedule { AVAILABLE, REMOVED, ZERO_CAPACITY, REDUCED_CAPACITY, BLOCKED }
     @Autowired HistoricoPacienteService histories;
@@ -147,11 +145,17 @@ class HistoricalAttendanceReviewTests extends AgendaIntegritySupport {
 
     @ParameterizedTest
     @org.junit.jupiter.params.provider.EnumSource(value = Schedule.class, names = {"REMOVED", "ZERO_CAPACITY", "REDUCED_CAPACITY", "BLOCKED"})
-    void currentBlockedHistoricalCorrectionIsAtomicButRequiresBusinessDecision(Schedule scenario) throws Exception {
+    void historicalCorrectionIgnoresChangedOfferAndPersistsAllClinicalEffects(Schedule scenario) throws Exception {
         var target = historical(SituacaoAtendimento.FALTOU);
         changeSchedule(scenario); var before = snapshot(patient, target.getId());
-        assertEquals(409, status(admin, target.getId(), SituacaoAtendimento.PRESENTE));
-        assertEquals(before, snapshot(patient, target.getId()));
+        Long eventId = history.findByAgendamento(target).getFirst().getId();
+        assertEquals(200, status(admin, target.getId(), SituacaoAtendimento.PRESENTE));
+        var after = snapshot(patient, target.getId());
+        assertEquals(before.appointments(), after.appointments());
+        assertEquals(before.history(), after.history());
+        assertEquals(before.version() + 1, after.version());
+        assertEquals(eventId, history.findByAgendamento(target).getFirst().getId());
+        checkIndicators(target.getId(), SituacaoAtendimento.PRESENTE);
     }
 
     @Test void correctedFrequencyRemainsUnavailableToReception() throws Exception {
@@ -200,6 +204,9 @@ class HistoricalAttendanceReviewTests extends AgendaIntegritySupport {
     @Test void correctingReplacementAttendanceMustClearVisitEvenAfterCapacityWasClosed() throws Exception {
         Long id = rescheduleAfterAbsence();
         assertEquals(200, status(admin, id, SituacaoAtendimento.FALTOU));
+        var before = snapshot(patient, id);
+        Long eventId = history.findByAgendamento(appointment(id)).stream()
+                .filter(h -> h.getTipo() == TipoEventoHistoricoPaciente.FALTA).findFirst().orElseThrow().getId();
         tx(() -> { var e = exceptions.findByUsuarioAndDataAndTurno(colleague, date, TurnoEnum.MANHA).orElseThrow();
             e.setCapacidade(0); exceptions.saveAndFlush(e); return null; });
         int result = status(admin, id, SituacaoAtendimento.PRESENTE);
@@ -208,5 +215,15 @@ class HistoricalAttendanceReviewTests extends AgendaIntegritySupport {
                 result, p.getGatilhoVisitaAcionado(), p.getCountFaltas());
         assertEquals(200, result, "Historical correction must be decided separately from consuming a slot");
         assertFalse(p.getGatilhoVisitaAcionado()); assertEquals(0, p.getCountFaltas());
+        assertEquals(date, p.getDataUltimaPresenca());
+        assertEquals(ClassificacaoRisco.VERDE, p.getClassificacaoRisco());
+        assertEquals(before.appointments(), appointments.count());
+        assertEquals(before.history(), history.count());
+        var event = history.findById(eventId).orElseThrow();
+        assertEquals(TipoEventoHistoricoPaciente.PRESENCA, event.getTipo());
+        assertEquals(SituacaoAtendimento.PRESENTE, event.getSituacaoAtendimento());
+        var after = snapshot(patient, id);
+        assertEquals(200, status(admin, id, SituacaoAtendimento.PRESENTE));
+        assertEquals(after, snapshot(patient, id));
     }
 }
