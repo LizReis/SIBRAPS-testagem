@@ -519,20 +519,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
             pacienteService.atualizarAssiduidadePaciente(paciente, statusAnterior, novoStatus,
                     agendamento.getDataAgendamento());
 
-            // 6. RF08: Gatilho de Visita Domiciliar Automático
-            // Se o status virou FALTOU e este agendamento é uma remarcação (tem um original vinculado):
-            if (novoStatus == SituacaoAtendimento.FALTOU && agendamento.getAgendamentoOriginal() != null
-                    && agendamento.isRemarcacaoAposFalta()) {
-                paciente.setGatilhoVisitaAcionado(true);
-                pacienteRepository.save(paciente);
-            } else if (statusAnterior == SituacaoAtendimento.FALTOU && agendamento.getAgendamentoOriginal() != null
-                    && agendamento.isRemarcacaoAposFalta()) {
-                paciente.setGatilhoVisitaAcionado(false);
-                pacienteRepository.save(paciente);
-            }
-
-            // O Paciente já será salvo automaticamente ao final do método por causa do @Transactional,
-            // mas manter o save explícito não causa problemas se preferir.
+            // Visit eligibility is derived by chronological recalculation, not this transition alone.
         }
 
         agendamento = agendamentoRepository.save(agendamento);

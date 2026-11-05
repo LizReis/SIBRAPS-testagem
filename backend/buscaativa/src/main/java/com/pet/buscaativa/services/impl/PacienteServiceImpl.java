@@ -44,6 +44,7 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 public class PacienteServiceImpl implements PacienteService{
+    private final com.pet.buscaativa.services.PoliticaVisitaDomiciliar politicaVisita;
 
     
     private static final int FALTAS_AMARELO = 2;
@@ -311,7 +312,6 @@ public class PacienteServiceImpl implements PacienteService{
     public void atualizarAssiduidadePaciente(Paciente paciente, SituacaoAtendimento statusAnterior,
             SituacaoAtendimento novoStatus, LocalDate dataAtendimento) {
 
-        if (novoStatus == SituacaoAtendimento.PRESENTE) paciente.setGatilhoVisitaAcionado(false);
         recalcularAssiduidadePaciente(paciente);
     }
 
@@ -321,7 +321,8 @@ public class PacienteServiceImpl implements PacienteService{
     public void recalcularAssiduidadePaciente(Paciente paciente) {
         record Evento(LocalDateTime quando, boolean presente, int origem, long id) {}
         List<Evento> eventos = new java.util.ArrayList<>();
-        for (var a : agendamentoRepository.findByPaciente(paciente)) {
+        var atendimentos = agendamentoRepository.findByPaciente(paciente);
+        for (var a : atendimentos) {
             if (a.getSituacaoAtendimento() == SituacaoAtendimento.PRESENTE
                     || a.getSituacaoAtendimento() == SituacaoAtendimento.FALTOU) {
                 eventos.add(new Evento(LocalDateTime.of(a.getDataAgendamento(), a.getHoraAtendimento()),
@@ -336,12 +337,13 @@ public class PacienteServiceImpl implements PacienteService{
             }
         }
         eventos.sort(java.util.Comparator.comparing(Evento::quando).thenComparingInt(Evento::origem).thenComparingLong(Evento::id));
-        int faltas = 0; LocalDate ultima = null;
+        int faltas = 0; LocalDate ultima = null; LocalDateTime ultimaPresenca = null;
         for (Evento e : eventos) {
-            if (e.presente()) { faltas = 0; ultima = e.quando().toLocalDate(); paciente.setGatilhoVisitaAcionado(false); }
+            if (e.presente()) { faltas = 0; ultima = e.quando().toLocalDate(); ultimaPresenca = e.quando(); }
             else faltas++;
         }
         paciente.setCountFaltas(faltas); paciente.setDataUltimaPresenca(ultima);
+        paciente.setGatilhoVisitaAcionado(politicaVisita.necessaria(atendimentos, ultimaPresenca));
         calcularEAtualizarRisco(paciente); pacienteRepository.save(paciente);
     }
 
