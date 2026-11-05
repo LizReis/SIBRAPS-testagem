@@ -76,7 +76,9 @@ public record PacienteDTO(
 
         UUID profissionalReferenciaId,
 
-        UsuarioReferenciaDTO profissionalReferencia
+        UsuarioReferenciaDTO profissionalReferencia,
+        @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        boolean indicadoresPendentes
 
 ) {
     public PacienteDTO(Paciente entity) {
@@ -99,8 +101,18 @@ public record PacienteDTO(
                 entity.getUsfReferencia(),
                 entity.getCapsReferencia(),
                 entity.getProfissionalReferencia() == null ? null : entity.getProfissionalReferencia().getIdPublico(),
-                entity.getProfissionalReferencia() == null ? null : new UsuarioReferenciaDTO(entity.getProfissionalReferencia())
+                entity.getProfissionalReferencia() == null ? null : new UsuarioReferenciaDTO(entity.getProfissionalReferencia()),
+                Boolean.TRUE.equals(entity.getIndicadoresPendentes())
         );
+    }
+
+    public PacienteDTO(UUID idPublico, String nome, String nomeMae, LocalDate dataNascimento, LocalDate dataUltimaPresenca,
+            SexoEnum sexo, RacaCorEnum racacor, String cns, String cpf, String telefone, Endereco endereco,
+            boolean situacaoRua, TipoAcompanhamento tipoAcompanhamento, Integer countFaltas, StatusPaciente statusPaciente,
+            UsfReferencia usfReferencia, CapsEnum capsReferencia, UUID profissionalReferenciaId, UsuarioReferenciaDTO profissionalReferencia) {
+        this(idPublico, nome, nomeMae, dataNascimento, dataUltimaPresenca, sexo, racacor, cns, cpf, telefone, endereco,
+                situacaoRua, tipoAcompanhamento, countFaltas, statusPaciente, usfReferencia, capsReferencia,
+                profissionalReferenciaId, profissionalReferencia, false);
     }
 
 }

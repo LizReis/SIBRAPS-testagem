@@ -34,6 +34,9 @@ public interface PacienteRepository extends JpaRepository<Paciente, Long>, JpaSp
     @Query("select p from Paciente p where p.idPublico = :idPublico")
     Optional<Paciente> findByIdPublicoForUpdate(UUID idPublico);
 
+    @Query("select p.idPublico from Paciente p where p.indicadoresPendentes = true order by p.idPublico")
+    List<UUID> findIdsComIndicadoresPendentes();
+
     Optional<Paciente> findByCns(String cns);
 
     Optional<Paciente> findByCpf(String cpf);

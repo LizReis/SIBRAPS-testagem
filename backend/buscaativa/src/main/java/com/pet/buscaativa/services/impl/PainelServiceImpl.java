@@ -56,7 +56,7 @@ public class PainelServiceImpl implements PainelService {
                 .thenComparing(Comparator.comparingInt(Paciente::getCountFaltas).reversed())
                 .thenComparing(Paciente::getNome, String.CASE_INSENSITIVE_ORDER);
         List<PacientePainelDTO> prioritarios = ativos.stream()
-                .filter(p -> p.getClassificacaoRisco() == ClassificacaoRisco.VERMELHO
+                .filter(p -> Boolean.TRUE.equals(p.getIndicadoresPendentes()) || p.getClassificacaoRisco() == ClassificacaoRisco.VERMELHO
                         || p.getClassificacaoRisco() == ClassificacaoRisco.AMARELO)
                 .sorted(prioridade).limit(5).map(this::paraPrioritario).toList();
 
@@ -79,7 +79,9 @@ public class PainelServiceImpl implements PainelService {
 
     private PacientePainelDTO paraPrioritario(Paciente p) {
         String acao = "Acompanhamento prioritário";
-        if (Boolean.TRUE.equals(p.getGatilhoVisitaAcionado())) {
+        if (Boolean.TRUE.equals(p.getIndicadoresPendentes())) {
+            acao = "Revisão do histórico necessária";
+        } else if (Boolean.TRUE.equals(p.getGatilhoVisitaAcionado())) {
             acao = p.isSituacaoRua() ? "Busca em ponto de referência" : "Visita domiciliar necessária";
         }
         Integer idade = p.getDataNascimento() == null ? null

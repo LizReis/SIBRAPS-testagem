@@ -11,12 +11,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.pet.buscaativa.entities.*;
 import com.pet.buscaativa.entities.enums.*;
 import com.pet.buscaativa.services.HistoricoPacienteService;
 
 class CanonicalAppointmentTests extends AgendaIntegritySupport {
     @MockitoSpyBean HistoricoPacienteService histories;
+    @Autowired com.pet.buscaativa.services.PacienteService patientService;
 
     @ParameterizedTest @CsvSource({"AGENDADO,AGENDADA,NAO_REGISTRADA,true", "REMARCADO,REMARCADA,NAO_REGISTRADA,true",
             "PRESENTE,AGENDADA,PRESENTE,true", "FALTOU,AGENDADA,FALTOU,false",
@@ -66,6 +68,17 @@ class CanonicalAppointmentTests extends AgendaIntegritySupport {
         assertEquals("REMARCADO_ORIGEM", body.get("situacaoAtendimento").asText());
         assertEquals("SUBSTITUIDA", body.get("situacaoReserva").asText());
         assertEquals("PRESENTE", body.get("frequenciaAssistencial").asText());
+        var listed = mvc.perform(get("/api/pacientes/" + patient.getIdPublico() + "/agendamentos")
+                .header("Authorization", "Bearer " + tokens.gerarToken(admin))).andReturn().getResponse();
+        assertEquals(200, listed.getStatus());
+        var entries = json.readTree(listed.getContentAsString());
+        boolean found = false;
+        for (var entry : entries) if (entry.get("id").asLong() == source.getId()) {
+            found = true;
+            assertEquals("SUBSTITUIDA", entry.get("situacaoReserva").asText());
+            assertEquals("PRESENTE", entry.get("frequenciaAssistencial").asText());
+        }
+        assertTrue(found);
         assertEquals(200, change(source.getId(), SituacaoAtendimento.PRESENTE, source.getVersion()));
         assertEquals(source.getVersion(), appointment(source.getId()).getVersion());
     }
@@ -121,5 +134,38 @@ class CanonicalAppointmentTests extends AgendaIntegritySupport {
         assertThrows(IllegalStateException.class, () -> service.atualizarStatus(source.getId(), SituacaoAtendimento.PRESENTE, null));
         assertEquals(before, snapshot(patient, source.getId()));
         assertEquals(FrequenciaAssistencial.FALTOU, appointment(source.getId()).getFrequenciaAssistencial());
+    }
+
+    @ParameterizedTest @CsvSource({"true,true", "true,false", "false,true", "false,false"})
+    void unknownLaterFactsFlagProvisionalIndicatorsWithoutInventingVisitDecision(boolean later, boolean previousAlert) {
+        var unknown = absence(LocalDate.now().minusDays(later ? 5 : 20), "08:00");
+        tx(() -> { seed(patient, colleague, SituacaoAtendimento.PRESENTE, LocalDate.now().minusDays(10), "09:00");
+            var p = patients.findById(patient.getId()).orElseThrow(); p.setGatilhoVisitaAcionado(previousAlert);
+            p.setClassificacaoRisco(ClassificacaoRisco.AMARELO);
+            patients.saveAndFlush(p); return null; });
+        jdbc.update("update tb_agendamento set frequencia_assistencial=null,migracao_pendente=true,motivo_migracao_pendente='SYNTHETIC_UNKNOWN' where id=?", unknown.getId());
+        authenticate();
+        // Exercise the real shared recalculation, not the transition shortcut.
+        tx(() -> { patientService.recalcularAssiduidadePaciente(patients.findById(patient.getId()).orElseThrow()); return null; });
+        var p = patients.findById(patient.getId()).orElseThrow();
+        assertEquals(later, p.getIndicadoresPendentes());
+        assertEquals(later && previousAlert, p.getGatilhoVisitaAcionado());
+        assertEquals(later ? ClassificacaoRisco.AMARELO : ClassificacaoRisco.VERDE, p.getClassificacaoRisco());
+        assertNull(appointment(unknown.getId()).getFrequenciaAssistencial());
+        assertEquals(LocalDate.now().minusDays(10), p.getDataUltimaPresenca());
+    }
+
+    @ParameterizedTest @CsvSource({"true", "false"})
+    void substitutedFrequencyCorrectionStillChecksRealCollisions(boolean samePatient) throws Exception {
+        date = LocalDate.now().minusDays(10);
+        var original = absence(date, "08:00");
+        tx(() -> { appointment(original.getId()).setSituacaoAtendimento(SituacaoAtendimento.REMARCADO_ORIGEM);
+            seed(samePatient ? patient : other, samePatient ? colleague : professional, SituacaoAtendimento.AGENDADO, date, "08:00");
+            return null; });
+        var before = snapshot(patient, original.getId());
+        assertEquals(409, change(original.getId(), SituacaoAtendimento.PRESENTE, null));
+        assertEquals(before, snapshot(patient, original.getId()));
+        assertEquals(SituacaoReserva.SUBSTITUIDA, appointment(original.getId()).getSituacaoReserva());
+        assertEquals(FrequenciaAssistencial.FALTOU, appointment(original.getId()).getFrequenciaAssistencial());
     }
 }

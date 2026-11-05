@@ -171,6 +171,7 @@ public class PacienteServiceImpl implements PacienteService{
                 p, LocalDate.now(), List.of(SituacaoAtendimento.AGENDADO, SituacaoAtendimento.REMARCADO))
                 .map(a->new ProximoAgendamentoDTO(a.getId(),a.getDataAgendamento(),a.getHoraAtendimento(),a.getSituacaoAtendimento())).orElse(null);
         String atencao=p.getStatusPaciente()!=StatusPaciente.ATIVO ? "Acompanhamento "+p.getStatusPaciente().name().toLowerCase().replace('_',' ')
+                : Boolean.TRUE.equals(p.getIndicadoresPendentes()) ? "Indicadores pendentes de revisão do histórico"
                 : p.getClassificacaoRisco()==ClassificacaoRisco.VERMELHO ? "Busca ativa recomendada"
                 : p.getClassificacaoRisco()==ClassificacaoRisco.AMARELO ? "Atenção necessária" : "Acompanhamento regular";
         return new PacienteDetalheDTO(new PacienteDTO(p),p.getClassificacaoRisco(),proximo,atencao);
@@ -182,7 +183,9 @@ public class PacienteServiceImpl implements PacienteService{
         return agendamentoRepository.findDetalhesByPaciente(p).stream().map(a->new AgendamentoDTO(a.getId(),a.getUsuario().getIdPublico(),
                 a.getUsuario().getNome(),p.getIdPublico(),p.getNome(),p.getTipoAcompanhamento(),a.getDataAgendamento(),
                 a.getTurnoAgendamento(),a.getHoraAtendimento(),a.getSituacaoAtendimento(),
-                a.getAgendamentoOriginal()==null?null:a.getAgendamentoOriginal().getId(),a.getVersion())).toList();
+                a.getAgendamentoOriginal()==null?null:a.getAgendamentoOriginal().getId(),a.getVersion(),
+                a.getSituacaoReserva(),a.getFrequenciaAssistencial(),a.isMigracaoPendente(),
+                a.getMotivoMigracaoPendente(),a.getOcupaVaga())).toList();
     }
 
     @Override
@@ -319,12 +322,18 @@ public class PacienteServiceImpl implements PacienteService{
         // determinísticas. O agendamento corrente já está alterado no persistence context.
         @Override
     public void recalcularAssiduidadePaciente(Paciente paciente) {
+        recalcularAssiduidadePaciente(paciente, true);
+    }
+
+    @Override
+    public void recalcularAssiduidadePaciente(Paciente paciente, boolean registrarMudancaDeRisco) {
         record Evento(LocalDateTime quando, boolean presente, int origem, long id) {}
         List<Evento> eventos = new java.util.ArrayList<>();
         var atendimentos = agendamentoRepository.findByPaciente(paciente);
         for (var a : atendimentos) {
-            if (a.getFrequenciaAssistencial() == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.PRESENTE
-                    || a.getFrequenciaAssistencial() == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU) {
+            if (a.getDataAgendamento() != null && a.getHoraAtendimento() != null
+                    && (a.getFrequenciaAssistencial() == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.PRESENTE
+                    || a.getFrequenciaAssistencial() == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU)) {
                 eventos.add(new Evento(LocalDateTime.of(a.getDataAgendamento(), a.getHoraAtendimento()),
                         a.getFrequenciaAssistencial() == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.PRESENTE, 0, a.getId()));
             }
@@ -343,18 +352,30 @@ public class PacienteServiceImpl implements PacienteService{
             else faltas++;
         }
         paciente.setCountFaltas(faltas); paciente.setDataUltimaPresenca(ultima);
-        paciente.setGatilhoVisitaAcionado(politicaVisita.necessaria(atendimentos, ultimaPresenca));
-        calcularEAtualizarRisco(paciente); pacienteRepository.save(paciente);
+        final LocalDateTime presencaComprovada = ultimaPresenca;
+        boolean pendente = atendimentos.stream().anyMatch(a -> a.isMigracaoPendente()
+                && (a.getDataAgendamento() == null || a.getHoraAtendimento() == null || presencaComprovada == null
+                || LocalDateTime.of(a.getDataAgendamento(), a.getHoraAtendimento()).isAfter(presencaComprovada)));
+        paciente.setIndicadoresPendentes(pendente);
+        // Unknown later facts cannot justify either activating or clearing a clinical alert.
+        // Retain its previous value explicitly marked as unconfirmed, until review or a later proven presence.
+        if (!pendente) paciente.setGatilhoVisitaAcionado(politicaVisita.necessaria(atendimentos, ultimaPresenca));
+        calcularEAtualizarRisco(paciente, registrarMudancaDeRisco); pacienteRepository.save(paciente);
     }
 
 
     @Override
     public void calcularEAtualizarRisco(Paciente paciente) {
+        calcularEAtualizarRisco(paciente, true);
+    }
+
+    private void calcularEAtualizarRisco(Paciente paciente, boolean registrarMudancaDeRisco) {
         ClassificacaoRisco classificacaoAnterior = paciente.getClassificacaoRisco();
         if(paciente.getStatusPaciente() == StatusPaciente.INATIVO){
             paciente.setClassificacaoRisco(ClassificacaoRisco.VERDE);
             return;
         }
+        if (Boolean.TRUE.equals(paciente.getIndicadoresPendentes())) return;
 
         //Definiçao dos limites padronizados de dias para Vermelho e Amarelo
         //Se o TipoAcompanhamento for Grupo terapeutico o amarelo recebe = 15, se for individual recebe 60
@@ -386,7 +407,7 @@ public class PacienteServiceImpl implements PacienteService{
             paciente.setClassificacaoRisco(ClassificacaoRisco.VERDE);
         }
 
-        if (paciente.getId() != null && classificacaoAnterior != ClassificacaoRisco.VERMELHO
+        if (registrarMudancaDeRisco && paciente.getId() != null && classificacaoAnterior != ClassificacaoRisco.VERMELHO
                 && paciente.getClassificacaoRisco() == ClassificacaoRisco.VERMELHO) {
             historicoPacienteService.registrarSituacaoAtual(paciente,
                     "Classificação de risco alterada de " + classificacaoAnterior + " para VERMELHO.");
@@ -467,7 +488,10 @@ public class PacienteServiceImpl implements PacienteService{
         String localBusca = null;
         String avisoAdicional = null;
 
-        if (alertaDeVisita) {
+        if (Boolean.TRUE.equals(paciente.getIndicadoresPendentes())) {
+            alerta = "Revisão do histórico necessária";
+            avisoAdicional = "Existem frequências legadas não identificadas; indicadores e alerta de visita não estão confirmados.";
+        } else if (alertaDeVisita) {
             if (paciente.isSituacaoRua()) {
                 alerta = "Busca em ponto de referência necessária";
                 localBusca = formatarPontoReferencia(paciente.getEndereco());

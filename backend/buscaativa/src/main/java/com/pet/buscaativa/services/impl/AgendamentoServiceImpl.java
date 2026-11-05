@@ -118,6 +118,8 @@ public class AgendamentoServiceImpl implements AgendamentoService {
             if (!java.util.Objects.equals(original.getPaciente().getId(), paciente.getId())) {
                 throw new ValidationException("A remarcação deve pertencer ao mesmo paciente do atendimento original.");
             }
+            if (original.isMigracaoPendente())
+                throw new ConflictException("Atendimento original com informações históricas pendentes de revisão; nenhuma remarcação foi realizada.");
             if (agendamentoDTO.id() != null && agendamentoDTO.id().equals(agendamentoDTO.agendamentoOriginalId())) {
                 throw new ValidationException("Um agendamento não pode ser vinculado a ele mesmo.");
             }
@@ -489,7 +491,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         boolean correcaoDeSubstituido = statusAnterior == SituacaoAtendimento.REMARCADO_ORIGEM
                 && frequenciaRegistrada && destinoClinico;
         if (agendamento.isMigracaoPendente())
-            throw new ConflictException("Agendamento com migração pendente de revisão; nenhuma alteração foi realizada.");
+            throw new ConflictException("Atendimento com informações históricas pendentes de revisão; nenhuma alteração foi realizada.");
         if (frequenciaRegistrada && (novoStatus == SituacaoAtendimento.AGENDADO || novoStatus == SituacaoAtendimento.REMARCADO))
             throw new ConflictException("A frequência registrada deve ser preservada; esta alteração de reserva exige revisão.");
 
@@ -510,8 +512,8 @@ public class AgendamentoServiceImpl implements AgendamentoService {
                 && (statusAnterior == SituacaoAtendimento.CANCELADO || (statusAnterior == SituacaoAtendimento.REMARCADO_ORIGEM && !correcaoDeSubstituido)))
             throw new ValidationException("Um atendimento cancelado ou substituído não permite registro de frequência.");
 
-        if (statusAnterior == SituacaoAtendimento.FALTOU && novoStatus == SituacaoAtendimento.PRESENTE) {
-            // The current row is still FALTOU (inactive), so it cannot conflict with itself.
+        if (frequenciaAnterior == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU && novoStatus == SituacaoAtendimento.PRESENTE) {
+            // The current row is missed or substituted (inactive), so it cannot conflict with itself.
             // Correct the historical fact under the same locks, independently of the current offer/grid.
             validarConflitosDeHorario(profissionalBloqueado, pacienteBloqueado, agendamento.getDataAgendamento(),
                     agendamento.getHoraAtendimento(), true);

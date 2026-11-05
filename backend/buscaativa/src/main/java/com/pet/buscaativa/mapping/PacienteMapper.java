@@ -14,6 +14,7 @@ public interface PacienteMapper {
     }
 
     @Mapping(target = "idPublico", ignore = true)
+    @Mapping(target = "indicadoresPendentes", ignore = true)
     @Mapping(target = "profissionalReferencia", ignore = true)
     @Mapping(target = "countFaltas", source = "countFaltas", defaultValue = "0")
     public Paciente toPacienteEntity(PacienteDTO pacienteDTO);
@@ -23,6 +24,7 @@ public interface PacienteMapper {
     @Mapping(target = "statusPaciente", ignore = true)
     @Mapping(target = "classificacaoRisco", ignore = true)
     @Mapping(target = "gatilhoVisitaAcionado", ignore = true)
+    @Mapping(target = "indicadoresPendentes", ignore = true)
     @Mapping(target = "profissionalReferencia", ignore = true)
     void updatePacienteFromDTO(PacienteDTO pacienteDTO, @MappingTarget Paciente pacienteEntity);
 }

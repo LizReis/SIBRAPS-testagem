@@ -113,6 +113,10 @@ public class Paciente extends AbstractEntities implements Serializable{
     @Column(name = "gatilho_visita")
     private Boolean gatilhoVisitaAcionado = false;
 
+    /** Technical uncertainty, not a clinical outcome or a new visit criterion. */
+    @Column(name = "indicadores_pendentes")
+    private Boolean indicadoresPendentes = false;
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
