@@ -107,4 +107,17 @@ class ClinicalAuthorizationTests extends AgendaIntegritySupport {
         assertEquals(before,snapshot(patient,null));assertEquals(professional.getId(),tx(()->groups.findById(g.getId()).orElseThrow().getCoordenador().getId()));
     }
 
+    @ParameterizedTest @CsvSource({"owner,200","colleague,403"})
+    void sessionConfirmationCannotBypassResponsibility(String role,int expected) throws Exception {
+        var s=session(StatusSessaoGrupo.AGENDADA);var before=snapshot(patient,null);var dto=new ConfirmarOcorrenciaGrupoDTO(true,List.of(new FrequenciaParticipanteGrupoDTO(patient.getIdPublico(),StatusPresencaGrupo.PRESENTE)),null,s.getVersion());
+        assertEquals(expected,mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/grupos/sessoes/"+s.getId()+"/confirmacao-ocorrencia").header("Authorization","Bearer "+tokens.gerarToken(actor(role))).contentType("application/json").content(json.writeValueAsString(dto))).andReturn().getResponse().getStatus());
+        assertEquals(expected==200?StatusSessaoGrupo.REALIZADA:StatusSessaoGrupo.AGENDADA,sessions.findById(s.getId()).orElseThrow().getStatus());if(expected!=200)assertEquals(before,snapshot(patient,null));
+    }
+    @ParameterizedTest @CsvSource({"owner,200","colleague,403"})
+    void retroactiveInitialEnrollmentCannotBypassResponsibility(String role,int expected) throws Exception {
+        var s=session(StatusSessaoGrupo.REALIZADA);var before=snapshot(other,null);var dto=new InscricaoRetroativaGrupoDTO(other.getIdPublico(),List.of(new FrequenciaSessaoRetroativaDTO(s.getId(),StatusPresencaGrupo.PRESENTE)));
+        assertEquals(expected,mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/grupos/"+s.getGrupo().getId()+"/inscricoes-retroativas").header("Authorization","Bearer "+tokens.gerarToken(actor(role))).contentType("application/json").content(json.writeValueAsString(dto))).andReturn().getResponse().getStatus());
+        assertEquals(expected==200,tx(()->participants.findBySessaoGrupoAndPaciente(s,other).isPresent()));if(expected!=200)assertEquals(before,snapshot(other,null));
+    }
+
 }

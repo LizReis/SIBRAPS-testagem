@@ -29,7 +29,7 @@ public class AuditoriaCorrecaoService {
         authorization.validarAgendamento(a,true);
         var actor=scope.usuarioLogado();
         entityManager.persist(new AuditoriaCorrecaoFrequencia(a,null,null,a.getPaciente(),actor,a.getUsuario(),scope.unidadePainel().valor(),
-                before,a.getFrequenciaAssistencial(),reason,clock.instant(),previousVersion,a.getVersion()));
+                before,a.getFrequenciaAssistencial(),reason,clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS),previousVersion,a.getVersion()));
         entityManager.flush();
     }
     @Transactional(propagation=Propagation.MANDATORY)
@@ -37,7 +37,7 @@ public class AuditoriaCorrecaoService {
         authorization.validarSessao(s);
         var actor=scope.usuarioLogado();
         entityManager.persist(new AuditoriaCorrecaoFrequencia(null,s,p,p.getPaciente(),actor,s.getGrupo().getCoordenador(),scope.unidadePainel().valor(),
-                FrequenciaAssistencial.valueOf(before.name()),FrequenciaAssistencial.valueOf(p.getStatusPresenca().name()),reason,clock.instant(),previousVersion,s.getVersion()));
+                FrequenciaAssistencial.valueOf(before.name()),FrequenciaAssistencial.valueOf(p.getStatusPresenca().name()),reason,clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS),previousVersion,s.getVersion()));
         entityManager.flush();
     }
     @Transactional(readOnly=true)

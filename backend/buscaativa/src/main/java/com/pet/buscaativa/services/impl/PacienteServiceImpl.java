@@ -60,6 +60,7 @@ public class PacienteServiceImpl implements PacienteService{
 
     private final UsuarioRepository usuarioRepository;
     private final EscopoUnidadeService escopoUnidadeService;
+    private final com.pet.buscaativa.services.AuditoriaBuscaAtivaService auditoriaBuscaAtiva;
 
 
     @Override
@@ -472,7 +473,7 @@ public class PacienteServiceImpl implements PacienteService{
             calcularEAtualizarRisco(p);
             pacienteRepository.save(p);
         });
-        return pacienteRepository
+        var alertas = pacienteRepository
                 .findAll(escopoUnidadeService.<Paciente>specificationPaciente().and((r,q,cb)->cb.and(
                         cb.equal(r.get("statusPaciente"),StatusPaciente.ATIVO),
                         cb.or(cb.equal(r.get("classificacaoRisco"),ClassificacaoRisco.VERMELHO),
@@ -482,6 +483,8 @@ public class PacienteServiceImpl implements PacienteService{
                 .stream()
                 .map(this::montarAlertaBuscaAtiva)
                 .toList();
+        auditoriaBuscaAtiva.registrarConsultaLista(alertas.size());
+        return alertas;
     }
 
     private AlertaBuscaAtivaDTO montarAlertaBuscaAtiva(Paciente paciente) {

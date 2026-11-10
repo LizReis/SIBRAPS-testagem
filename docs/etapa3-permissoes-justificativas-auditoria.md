@@ -97,3 +97,61 @@ A dependência H2, já existente e na mesma versão, passa de runtime para compi
 Focado clínica + regressões de migração: **31/31**. Focado persistente final: **6/6**, em 22,445 s, término **18:44:07 de 10/11/2026**. Verify completo da B4: **472/472**, zero falhas/erros/ignorados, BUILD SUCCESS em 49,830 s, término **18:43:01**; depois dele, o ajuste de liberação de conexão do guard foi exercitado novamente no focado com pool mínimo e reinicialização. A suíte integral será repetida na B6 com a composição final.
 
 Na preparação dos testes persistentes, foram corrigidos problemas das fixtures: dependência de teste de segurança não presente (substituída pela cadeia real já disponível), dois mocks SUS primários e ciclo de vida da memória sem pool. Não houve relaxamento de validação/segurança de produção para fazê-los passar. Nenhum banco real ou persistente compartilhado foi usado.
+
+## B5 — RNF17: suporte backend, sem afirmar integração visual concluída
+
+### Eventos e contratos
+
+`AuditoriaBuscaAtiva` é uma trilha operacional separada da auditoria clínica, de `HistoricoPaciente` e do Envers. Persiste UUID, paciente quando aplicável, ator real, perfil/unidade no momento, instante UTC, tipo, identificador de requisição, situação consultada/registrada, risco/indicadores/gatilho confirmados no instante, situação de rua, quantidade e, somente no encaminhamento, destino/descrição operacionais. Não copia endereço, referência, CPF ou CNS para a auditoria operacional.
+
+| Operação | Contrato | Evento efetivamente registrado |
+|---|---|---|
+| Consulta da lista existente | GET /api/pacientes/busca-ativa | CONSULTA_LISTA_BUSCA_ATIVA, quantidade e critérios da unidade; paciente nulo. Não significa que cada alerta foi visto. |
+| Confirmação explícita de apresentação individual | POST /api/pacientes/{uuid}/alertas/visualizacoes, `{ "idRequisicao": "UUID" }` | VISUALIZACAO_ALERTA somente após chamada explícita autorizada. A Etapa 8 deve chamá-la quando realmente abrir/apresentar o alerta. |
+| Registro formal explícito de encaminhamento | POST /api/pacientes/{uuid}/alertas/encaminhamentos, `{ "idRequisicao": "UUID", "destino": "Equipe ...", "descricao": "Descrição da ação formalmente registrada." }` | ENCAMINHAMENTO_ALERTA. Registra a declaração operacional autorizada; não envia mensagem, não prova recebimento por outro serviço e não ocorre por abrir/consultar alerta. |
+| Histórico operacional do paciente | GET /api/pacientes/{uuid}/alertas/auditoria?page=0&size=20 | Consulta protegida; não cria visualização nem encaminhamento. |
+| Consulta administrativa da unidade | GET /api/alertas/auditoria?page=0&size=20 | Somente administrador, no escopo autenticado. |
+
+Criação retorna 201; repetição idêntica pelo mesmo ator/chave retorna 200 com o mesmo recibo, sem evento novo. Reutilização da chave para outro paciente, tipo, unidade ou dados operacionais retorna 409 sem expor o evento anterior. A chave não é prova de identidade; autoria vem sempre do contexto autenticado. O recibo de uma ação já registrada não representa uma nova visualização se o alerta tiver mudado depois. A precisão dos instantes é normalizada a microssegundos, compatível com TIMESTAMP(6), garantindo resposta idempotente também após releitura do banco.
+
+### Permissões e situações
+
+| Perfil | Consultar lista / registrar visualização | Registrar encaminhamento formal | Consultar trilha operacional |
+|---|---|---|---|
+| ADMINISTRADOR | Própria unidade | Própria unidade, situação confirmada | Paciente e lista administrativa da unidade |
+| PROFISSIONAL | Própria unidade | Própria unidade, situação confirmada | Paciente da unidade; sem consulta administrativa global |
+| RECEPCAO | Acesso operacional preexistente da própria unidade | 403 | 403; não recebe descrições operacionais adicionais |
+| Não autenticado / outra unidade | 401 / 404 no recurso | 401 / 404 no recurso | 401 / 404 no recurso |
+
+A situação de alerta é compartilhada pela equipe da unidade; isso não concede autorização para corrigir atendimentos de colegas. A auditoria clínica continua restrita ao responsável/coordenador ou administrador. USF específica é considerada. Consultas administrativas também conferem o escopo **atual** do paciente, além da unidade histórica, para não expor pacientes transferidos. Registros são preservados mesmo quando deixam de ser acessíveis no escopo anterior.
+
+Visualização pode registrar `REVISAO_HISTORICO` para indicadores provisórios, com `gatilhoConfirmado=false`; encaminhamento como alerta confirmado é recusado nesses casos. Paciente inativo ou situação resolvida não recebe evento novo. Risco vermelho sem gatilho e risco amarelo com gatilho confirmado são situações diferentes e válidas. A situação de rua distingue busca em referência de visita, sem declarar que uma visita foi realizada. Os endpoints usam os indicadores persistidos sob lock; uma tela obsoleta deve atualizar a lista quando a situação deixou de ser elegível.
+
+Destino tem limite de 200 caracteres e descrição operacional de 10–1000, com validação no controller e no serviço. Isso não é justificativa de correção, não integra cálculo de risco/visita e não é exigido para detecção automática de faltas. Dados inválidos retornam 422 com mensagens seguras. Há adaptação **local** no controller novo para JSON inválido, sem ecoar seu conteúdo nem alterar `ResourceExceptionHandler`; a revisão global permanece na Etapa 7.
+
+### Integridade, migração e provas
+
+V4 acrescenta a tabela operacional, FKs, índices, unicidade ator/chave e trigger append-only. Também fortalece aditivamente o check de sessão não nula da auditoria de grupo, porque CHECK SQL não rejeita por si só toda expressão indeterminada por NULL. **V3 não foi reescrita**; V1/V2 também permanecem intactas. Encaminhamento exige destino/descrição explicitamente não nulos no banco. Nenhuma migração cria consultas, visualizações, encaminhamentos ou justificativas do passado.
+
+Ações individuais de alerta usam paciente → ator autenticado, compatível com o sentido paciente → usuário da agenda. O lock do ator serializa reutilização da chave entre requisições; uma constraint única também protege no banco. Consulta à lista integra sua transação existente: se falhar a gravação da auditoria, não confirma parcialmente o recálculo de risco que a lista já realizava. Nenhum evento operacional chama recálculo de frequência, cria reserva, adiciona presença/falta ou ocupa vaga. A reclassificação sob demanda do GET preexistente foi preservada e é distinguida da nova auditoria.
+
+`BuscaAtivaAuditIntegrationTests`: **30 execuções** HTTP/JPA, cobrindo consulta distinta, três perfis de visualização, autoria/tempo/tipo/unidade forjados, rua/referência protegida, vermelho sem gatilho, pendências, resolução/inativação, encaminhamento formal, rejeições de recepção/escopo, USFs diferentes, paginação, paciente transferido, validação direta/HTTP, JSON sanitizado, idempotência, DML imutável, rollback após INSERT, rollback do recálculo da lista e repetição concorrente (duas confirmações HTTP para um único evento).
+
+Ampliados os testes de responsabilidade com confirmação e inscrição retroativa pelo coordenador/colega (quatro execuções), e de leitura de auditoria de grupo com cinco perfis/escopos. Assim, as classes de responsabilidade e auditoria clínica passam de 23/22 para **27/27** execuções.
+
+`ClinicalAuditMigrationTests` passa a **8 execuções**: cobre V0, V2 e V3 como entrada; verifica zero auditorias inventadas; testa nulos, FKs e estados impossíveis via SQL; registra por HTTP uma correção clínica, três frequências iniciais, consulta, visualização e encaminhamento formal; reabre a aplicação e restaura backup em destino isolado. Os quatro registros de auditoria (uma correção e três eventos operacionais) continuam acessíveis em três inicializações. As três frequências iniciais não viram correções auditadas. O arquivo desse ensaio passa a 15 atendimentos; a fixture principal de preservação continua com seus 12 originais. Reaplicação de migrações: zero.
+
+Resultados: focado final de contratos/autorização/auditoria **84/84**, verify integrado antes do último check SQL **512/512** (54,551 s, término 19:01:24), focado com os checks finais e restauração **38/38** (25,170 s, término **19:04:39 de 10/11/2026**). O caso SQL adicional eleva o conjunto final esperado a 513; a B6 registrará o total efetivamente executado. A primeira rodada RNF17 revelou três diferenças de precisão de timestamp nos recibos e uma fixture afetada pela reclassificação legítima de outro paciente; precisão foi corrigida no código, e o teste da lista passou a isolar seus pacientes. Não foram apagados testes nem mudadas regras clínicas para obter sucesso.
+
+**RNF17 não está integralmente concluído na interface.** O backend distingue e protege os eventos; o Angular atual não chama as rotas explícitas de apresentação/registro formal. Não se afirma que seus usuários já tiveram visualizações reais rastreadas automaticamente nem que houve entrega a outro serviço. A integração visual/operacional permanece na Etapa 8.
+
+## Recomendações permanentes — Etapas 4–9
+
+| Etapa | Pendência que permanece |
+|---|---|
+| 4 | Correção retroativa e no mesmo dia após o horário previsto, com relógio/fuso oficial, recálculo completo e preservação das regras assistenciais. Guarda temporal anterior não foi substituída nesta entrega. |
+| 5 | Regularização de cancelamentos incorretos com justificativa, auditoria e sem reservas retroativas fictícias. A reativação genérica existente não é declarada fluxo definitivo. |
+| 6 | Reconciliação autorizada de históricos ambíguos, inconsistências da migração e conflitos, preservando evidências e sem reescrever auditorias imutáveis. |
+| 7 | Revisão global de erros de negócio, concorrência e infraestrutura; preservar diagnóstico e não mascarar falhas internas como conflito recuperável. |
+| 8 | UI para justificativa, consulta de auditoria, reserva/frequência separadas, indicadores provisórios e registro real de visualização/encaminhamento. Preparar dados fictícios completos para demonstração; não chamar visualização por simples refresh da lista. |
+| 9 | Validação de todos os resumos, relatórios e indicadores; testes Angular pendentes; CI remota; escolha do SGBD definitivo; migração, restauração, privilégio das credenciais e concorrência no banco escolhido. |

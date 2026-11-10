@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -144,4 +145,11 @@ class ClinicalAuditIntegrationTests extends AgendaIntegritySupport {
         var a=fact(SituacaoAtendimento.FALTOU);long count=audits.count();var dto=dto(patient,colleague,"08:30",TurnoEnum.MANHA,a.getId());assertEquals(new RaceResult(1,1),race("E3-correction-reschedule",List.of(()->correct(admin,a,SituacaoAtendimento.PRESENTE,0),()->post(dto))));
         var row=appointment(a.getId());assertEquals(count+(row.getFrequenciaAssistencial()==FrequenciaAssistencial.PRESENTE?1:0),audits.count());assertEquals(1,row.getVersion());
     }
+    @ParameterizedTest @CsvSource({"owner,200","colleague,403","admin,200","reception,403","foreign,404"})
+    void groupAuditReadRequiresCoordinatorOrLocalAdministrator(String role,int expected) throws Exception {
+        var s=groupFact();assertEquals(200,correctGroup(admin,s,batch(s,false)));var actor=switch(role){case "owner"->professional;case "colleague"->colleague;case "admin"->admin;case "reception"->tx(()->user(TipoUsuario.RECEPCAO,UnidadeAtuacao.CAPS_AD));case "foreign"->tx(()->user(TipoUsuario.ADMINISTRADOR,UnidadeAtuacao.CAPS_I));default->throw new IllegalArgumentException();};var before=database();
+        var response=mvc.perform(get("/api/grupos/sessoes/"+s.getId()+"/correcoes").header("Authorization","Bearer "+tokens.gerarToken(actor))).andReturn().getResponse();assertEquals(expected,response.getStatus());
+        if(expected==200)assertEquals(2,json.readTree(response.getContentAsString()).get("content").size());else assertFalse(response.getContentAsString().contains(REASON));assertEquals(before,database());
+    }
+
 }
