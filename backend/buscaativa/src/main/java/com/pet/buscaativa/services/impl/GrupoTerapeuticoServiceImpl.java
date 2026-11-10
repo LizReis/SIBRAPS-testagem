@@ -42,6 +42,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     private final AgendamentoRepository agendamentoRepository;
     private final Clock clock;
     private final EscopoUnidadeService escopoUnidadeService;
+    private final com.pet.buscaativa.services.AutorizacaoClinicaService autorizacaoClinica;
 
     @Override
     @Transactional
@@ -137,6 +138,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     public GrupoTerapeuticoDTO atualizarGrupo(Long grupoId, AtualizarGrupoTerapeuticoDTO dto) {
         GrupoTerapeutico grupo = grupoRepository.findById(grupoId).filter(escopoUnidadeService::grupoPertenceAoEscopo)
                 .orElseThrow(() -> new ResourceNotFoundException("Grupo não encontrado."));
+        autorizacaoClinica.validarEdicaoGrupo(grupo);
         if (!dto.version().equals(grupo.getVersion()))
             throw new OptimisticLockException("O grupo foi alterado por outro usuário.");
         Usuario coordenador = usuarioRepository.findByIdPublico(dto.coordenadorId())
@@ -262,6 +264,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Transactional
     public SessaoGrupoDTO registrarPresenca(Long sessaoId, UUID pacienteId, RegistrarPresencaGrupoDTO dto) {
         SessaoGrupo sessao = buscarSessao(sessaoId);
+        autorizacaoClinica.validarSessao(sessao);
         if (sessao.getStatus() != StatusSessaoGrupo.AGENDADA)
             throw new ValidationException("A frequência provisória só pode ser alterada em sessão agendada.");
         if (sessaoAindaNaoIniciou(sessao))
@@ -276,6 +279,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Transactional
     public SessaoGrupoDTO atualizarStatus(Long sessaoId, StatusSessaoGrupo novoStatus, Integer expectedVersion) {
         SessaoGrupo sessao = buscarSessao(sessaoId);
+        autorizacaoClinica.validarSessao(sessao);
         if (expectedVersion != null && !expectedVersion.equals(sessao.getVersion()))
             throw new OptimisticLockException(
                     "A sessão foi alterada por outro usuário. Atualize a tela antes de tentar novamente.");
@@ -291,7 +295,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     public SessaoGrupoDTO confirmarOcorrencia(Long sessaoId, ConfirmarOcorrenciaGrupoDTO dto) {
         SessaoGrupo sessao = sessaoRepository.findByIdForUpdate(sessaoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Sessão não encontrada."));
-        escopoUnidadeService.validarSessaoCompleta(sessao);
+        autorizacaoClinica.validarSessao(sessao);
         if (sessao.getStatus() != StatusSessaoGrupo.AGENDADA)
             throw new ConflictException("Sessão já foi confirmada como " + sessao.getStatus() + ".");
         if (dto.version() != null && !dto.version().equals(sessao.getVersion()))
@@ -348,6 +352,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     public SessaoGrupoDTO inscreverRetroativamente(Long grupoId, InscricaoRetroativaGrupoDTO dto) {
         GrupoTerapeutico grupo = grupoRepository.findById(grupoId).filter(escopoUnidadeService::grupoPertenceAoEscopo)
                 .orElseThrow(() -> new ResourceNotFoundException("Grupo não encontrado."));
+        autorizacaoClinica.validarGrupoClinico(grupo);
         Paciente paciente = pacienteRepository.findByIdPublicoForUpdate(dto.pacienteId()).filter(escopoUnidadeService::pacientePertenceAoEscopo)
                 .orElseThrow(() -> new ResourceNotFoundException("Paciente não encontrado."));
         if (paciente.getStatusPaciente() != StatusPaciente.ATIVO)
@@ -486,7 +491,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Transactional
     public SessaoGrupoDTO corrigirFrequencias(Long sessaoId, CorrigirFrequenciasGrupoDTO dto) {
         SessaoGrupo sessao = sessaoRepository.findByIdForUpdate(sessaoId).orElseThrow(() -> new ResourceNotFoundException("Sessão não encontrada."));
-        escopoUnidadeService.validarGrupo(sessao.getGrupo());
+        autorizacaoClinica.validarSessao(sessao);
         if (sessao.getStatus() != StatusSessaoGrupo.REALIZADA) throw new ValidationException("Somente sessões realizadas permitem correção de frequência.");
         if (dto.version() != null && !dto.version().equals(sessao.getVersion())) throw new OptimisticLockException("A sessão foi alterada por outro usuário.");
         Set<UUID> ids = new HashSet<>(); List<SessaoGrupoParticipante> alterados = new ArrayList<>();

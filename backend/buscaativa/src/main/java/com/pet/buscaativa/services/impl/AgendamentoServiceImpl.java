@@ -67,6 +67,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     private final HistoricoPacienteService historicoPacienteService;
     private final AgendaHorarioProperties agendaHorarioProperties;
     private final EscopoUnidadeService escopoUnidadeService;
+    private final com.pet.buscaativa.services.AutorizacaoClinicaService autorizacaoClinica;
     private static final List<SituacaoAtendimento> SITUACOES_ATIVAS = List.of(
             SituacaoAtendimento.AGENDADO, SituacaoAtendimento.REMARCADO, SituacaoAtendimento.PRESENTE);
 
@@ -472,6 +473,11 @@ public class AgendamentoServiceImpl implements AgendamentoService {
                 .orElseThrow(() -> new ResourceNotFoundException("Agendamento não encontrado"));
 
         escopoUnidadeService.validarAgendamento(agendamento);
+        var frequenciaConhecida = agendamento.getFrequenciaAssistencial();
+        boolean comandoClinico = novoStatus == SituacaoAtendimento.PRESENTE || novoStatus == SituacaoAtendimento.FALTOU;
+        boolean fatoRegistrado = frequenciaConhecida == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.PRESENTE
+                || frequenciaConhecida == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU;
+        autorizacaoClinica.validarAgendamento(agendamento, comandoClinico && fatoRegistrado);
         LocalDate dataAgendamento = agendamento.getDataAgendamento();
         if (dataAgendamento != null && dataAgendamento.isAfter(LocalDate.now())) {
             throw new ValidationException(
@@ -499,14 +505,6 @@ public class AgendamentoServiceImpl implements AgendamentoService {
             return agendamentoMapper.toAgendamentoDTO(agendamento);
         }
 
-        boolean correcaoFrequencia = frequenciaRegistrada && destinoClinico;
-        if (correcaoFrequencia) {
-            String email = SecurityContextHolder.getContext().getAuthentication().getName();
-            TipoUsuario perfil = usuarioRepository.findByEmail(email)
-                    .orElseThrow(() -> new ResourceNotFoundException("Usuário logado não encontrado")).getTipoUsuario();
-            if (perfil != TipoUsuario.ADMINISTRADOR && perfil != TipoUsuario.PROFISSIONAL)
-                throw new ValidationException("Seu perfil não possui permissão para corrigir frequência.");
-        }
 
         if ((novoStatus == SituacaoAtendimento.PRESENTE || novoStatus == SituacaoAtendimento.FALTOU)
                 && (statusAnterior == SituacaoAtendimento.CANCELADO || (statusAnterior == SituacaoAtendimento.REMARCADO_ORIGEM && !correcaoDeSubstituido)))
