@@ -91,7 +91,7 @@ class AgendaConcurrencyTests extends AgendaIntegritySupport {
 
     private int changeStatus(Long id, SituacaoAtendimento status) throws Exception {
         return businessStatus(mvc.perform(patch("/api/agendamentos/" + id + "/status")
-                .param("novoStatus", status.name()).header("Authorization", "Bearer " + tokens.gerarToken(admin)))
+                .param("novoStatus", status.name()).param("justificativa", "Retificação sintética após conferência do registro original.").header("Authorization", "Bearer " + tokens.gerarToken(admin)))
                 .andReturn().getResponse());
     }
 

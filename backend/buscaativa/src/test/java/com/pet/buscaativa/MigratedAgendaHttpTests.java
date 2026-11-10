@@ -65,7 +65,7 @@ class MigratedAgendaHttpTests extends SecurityTestSupport {
         assertEquals("CANCELADO", body.get("situacaoAtendimento").asText());
         assertTrue(body.get("migracaoPendente").asBoolean()); assertTrue(body.get("frequenciaAssistencial").isNull());
         var columns = LegacyMigrationFixture.columns(source); var before = LegacyMigrationFixture.snapshot(source, columns);
-        response = mvc.perform(patch("/api/agendamentos/6/status").param("novoStatus", "PRESENTE")
+        response = mvc.perform(patch("/api/agendamentos/6/status").param("novoStatus", "PRESENTE").param("justificativa", "Retificação sintética após conferência do registro original.")
                 .header("Authorization", "Bearer " + token())).andReturn().getResponse();
         assertEquals(409, response.getStatus()); assertEquals(before, LegacyMigrationFixture.snapshot(source, columns));
     }
@@ -74,7 +74,7 @@ class MigratedAgendaHttpTests extends SecurityTestSupport {
         var original = appointments.findById(4L).orElseThrow();
         var riskBefore = patients.findById(1L).orElseThrow().getClassificacaoRisco();
         assertEquals(7, original.getVersion());
-        var response = mvc.perform(patch("/api/agendamentos/4/status").param("novoStatus", "FALTOU").param("version", "7")
+        var response = mvc.perform(patch("/api/agendamentos/4/status").param("novoStatus", "FALTOU").param("justificativa", "Retificação sintética após conferência do registro original.").param("version", "7")
                 .header("Authorization", "Bearer " + token())).andReturn().getResponse();
         assertEquals(200, response.getStatus()); var body = json.readTree(response.getContentAsString());
         assertEquals("FALTOU", body.get("situacaoAtendimento").asText());
@@ -93,7 +93,7 @@ class MigratedAgendaHttpTests extends SecurityTestSupport {
         assertTrue(panel.getContentAsString().contains("Revisão do histórico necessária"));
         assertFalse(panel.getContentAsString().contains("Visita domiciliar necessária"));
         var columns = LegacyMigrationFixture.columns(source); var before = LegacyMigrationFixture.snapshot(source, columns);
-        response = mvc.perform(patch("/api/agendamentos/4/status").param("novoStatus", "PRESENTE").param("version", "7")
+        response = mvc.perform(patch("/api/agendamentos/4/status").param("novoStatus", "PRESENTE").param("justificativa", "Retificação sintética após conferência do registro original.").param("version", "7")
                 .header("Authorization", "Bearer " + token())).andReturn().getResponse();
         assertEquals(409, response.getStatus()); assertEquals(before, LegacyMigrationFixture.snapshot(source, columns));
     }
@@ -106,10 +106,10 @@ class MigratedAgendaHttpTests extends SecurityTestSupport {
         foreign.setSenha("synthetic-not-for-login"); foreign.setTipoUsuario(TipoUsuario.ADMINISTRADOR); foreign.setUnidadeAtuacao(UnidadeAtuacao.CAPS_I);
         users.saveAndFlush(foreign);
         var columns = LegacyMigrationFixture.columns(source); var before = LegacyMigrationFixture.snapshot(source, columns);
-        var response = mvc.perform(patch("/api/agendamentos/7/status").param("novoStatus", "PRESENTE")
+        var response = mvc.perform(patch("/api/agendamentos/7/status").param("novoStatus", "PRESENTE").param("justificativa", "Retificação sintética após conferência do registro original.")
                 .header("Authorization", "Bearer " + tokens.gerarToken(reception))).andReturn().getResponse();
-        assertEquals(422, response.getStatus());
-        response = mvc.perform(patch("/api/agendamentos/7/status").param("novoStatus", "PRESENTE")
+        assertEquals(403, response.getStatus());
+        response = mvc.perform(patch("/api/agendamentos/7/status").param("novoStatus", "PRESENTE").param("justificativa", "Retificação sintética após conferência do registro original.")
                 .header("Authorization", "Bearer " + tokens.gerarToken(foreign))).andReturn().getResponse();
         assertEquals(404, response.getStatus()); assertEquals(before, LegacyMigrationFixture.snapshot(source, columns));
     }

@@ -43,6 +43,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     private final Clock clock;
     private final EscopoUnidadeService escopoUnidadeService;
     private final com.pet.buscaativa.services.AutorizacaoClinicaService autorizacaoClinica;
+    private final com.pet.buscaativa.services.PoliticaJustificativaCorrecao politicaJustificativa;
 
     @Override
     @Transactional
@@ -494,13 +495,20 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         autorizacaoClinica.validarSessao(sessao);
         if (sessao.getStatus() != StatusSessaoGrupo.REALIZADA) throw new ValidationException("Somente sessões realizadas permitem correção de frequência.");
         if (dto.version() != null && !dto.version().equals(sessao.getVersion())) throw new OptimisticLockException("A sessão foi alterada por outro usuário.");
+        if(dto.frequencias()==null || dto.frequencias().isEmpty())throw new ValidationException("Informe as frequências para correção.");
         Set<UUID> ids = new HashSet<>(); List<SessaoGrupoParticipante> alterados = new ArrayList<>();
+        Map<UUID,StatusPresencaGrupo> destinos = new java.util.HashMap<>();
         for (var f : dto.frequencias()) {
-            if (!ids.add(f.pacienteId())) throw new ConflictException("Paciente duplicado nas correções.");
+            if (f==null || f.pacienteId()==null || !ids.add(f.pacienteId())) throw new ConflictException("Participante inválido ou duplicado nas correções.");
             if (f.statusPresenca() != StatusPresencaGrupo.PRESENTE && f.statusPresenca() != StatusPresencaGrupo.FALTOU)
                 throw new ValidationException("A correção aceita somente PRESENTE ou FALTOU.");
-            SessaoGrupoParticipante p = buscarParticipante(sessao, f.pacienteId()); p.setStatusPresenca(f.statusPresenca()); alterados.add(p);
+            SessaoGrupoParticipante p = buscarParticipante(sessao, f.pacienteId());
+            if(p.getStatusPresenca()==StatusPresencaGrupo.NAO_REGISTRADA)throw new ConflictException("Frequência histórica não registrada exige revisão; nenhuma correção foi realizada.");
+            if(p.getStatusPresenca()!=f.statusPresenca()){alterados.add(p);destinos.put(f.pacienteId(),f.statusPresenca());}
         }
+        if(alterados.isEmpty())return toSessaoDTO(sessao);
+        String motivo=politicaJustificativa.validar(dto.justificativa());
+        for(var p:alterados)p.setStatusPresenca(destinos.get(p.getPaciente().getIdPublico()));
         participanteRepository.saveAll(alterados); sessaoRepository.saveAndFlush(sessao);
         for (var p : alterados) { pacienteService.recalcularAssiduidadePaciente(p.getPaciente()); historicoPacienteService.corrigirFrequenciaGrupo(p.getPaciente(), sessao, p.getStatusPresenca()); }
         return toSessaoDTO(sessao);

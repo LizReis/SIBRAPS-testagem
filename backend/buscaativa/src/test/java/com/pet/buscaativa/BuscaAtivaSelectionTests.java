@@ -48,7 +48,7 @@ class BuscaAtivaSelectionTests extends AgendaIntegritySupport {
         });
     }
     private void correct(Agendamento a,SituacaoAtendimento status) throws Exception {
-        assertEquals(200,mvc.perform(patch("/api/agendamentos/"+a.getId()+"/status").param("novoStatus",status.name())
+        assertEquals(200,mvc.perform(patch("/api/agendamentos/"+a.getId()+"/status").param("novoStatus",status.name()).param("justificativa", "Retificação sintética após conferência do registro original.")
             .header("Authorization","Bearer "+tokens.gerarToken(admin))).andReturn().getResponse().getStatus());
     }
     @Test void ba07ConfirmedAlertDisappearsAfterCorrection() throws Exception {

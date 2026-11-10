@@ -37,7 +37,7 @@ class CanonicalAppointmentTests extends AgendaIntegritySupport {
             histories.registrarAlteracaoDeAtendimento(a, SituacaoAtendimento.AGENDADO); return a; });
     }
     private int change(Long id, SituacaoAtendimento next, Integer version) throws Exception {
-        var request = patch("/api/agendamentos/" + id + "/status").param("novoStatus", next.name())
+        var request = patch("/api/agendamentos/" + id + "/status").param("novoStatus", next.name()).param("justificativa", "Retificação sintética após conferência do registro original.")
                 .header("Authorization", "Bearer " + tokens.gerarToken(admin));
         if (version != null) request.param("version", version.toString());
         return businessStatus(mvc.perform(request).andReturn().getResponse());
@@ -131,7 +131,7 @@ class CanonicalAppointmentTests extends AgendaIntegritySupport {
         doThrow(new IllegalStateException("synthetic canonical rollback")).when(histories)
                 .registrarCorrecaoDeFrequencia(any(Agendamento.class), any(FrequenciaAssistencial.class));
         authenticate();
-        assertThrows(IllegalStateException.class, () -> service.atualizarStatus(source.getId(), SituacaoAtendimento.PRESENTE, null));
+        assertThrows(IllegalStateException.class, () -> service.atualizarStatus(source.getId(), SituacaoAtendimento.PRESENTE, null, "Retificação sintética após conferência do registro original."));
         assertEquals(before, snapshot(patient, source.getId()));
         assertEquals(FrequenciaAssistencial.FALTOU, appointment(source.getId()).getFrequenciaAssistencial());
     }

@@ -108,9 +108,10 @@ public class AgendamentoController {
     public ResponseEntity<AgendamentoDTO> atualizarStatus(
             @PathVariable Long id,
             @RequestParam SituacaoAtendimento novoStatus,
-            @RequestParam(required = false) Integer version) {
+            @RequestParam(required = false) Integer version,
+            @RequestParam(required = false) String justificativa) {
 
-        AgendamentoDTO agendamentoAtualizado = agendamentoService.atualizarStatus(id, novoStatus, version);
+        AgendamentoDTO agendamentoAtualizado = agendamentoService.atualizarStatus(id, novoStatus, version, justificativa);
         return ResponseEntity.ok(agendamentoAtualizado);
     }
 }

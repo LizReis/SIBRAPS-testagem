@@ -47,7 +47,7 @@ class AttendanceCorrectionIntegrityTests extends AgendaIntegritySupport {
     }
 
     private int change(Usuario actor, Long id, SituacaoAtendimento next, Integer version) throws Exception {
-        var request = patch("/api/agendamentos/" + id + "/status").param("novoStatus", next.name())
+        var request = patch("/api/agendamentos/" + id + "/status").param("novoStatus", next.name()).param("justificativa", "Retificação sintética após conferência do registro original.")
                 .header("Authorization", "Bearer " + tokens.gerarToken(actor));
         if (version != null) request.param("version", version.toString());
         var response = mvc.perform(request).andReturn().getResponse();
@@ -96,7 +96,7 @@ class AttendanceCorrectionIntegrityTests extends AgendaIntegritySupport {
         assertEquals(before, persisted(target.getId()));
         assertEquals(1, active(samePatient ? patient : other, "08:00"));
         var response = mvc.perform(patch("/api/agendamentos/" + target.getId() + "/status")
-                .param("novoStatus", "PRESENTE").header("Authorization", "Bearer " + tokens.gerarToken(admin)))
+                .param("novoStatus", "PRESENTE").param("justificativa", "Retificação sintética após conferência do registro original.").header("Authorization", "Bearer " + tokens.gerarToken(admin)))
                 .andReturn().getResponse();
         assertEquals(409, businessStatus(response));
         assertTrue(response.getContentAsString().contains("Regularize o conflito"));
@@ -173,7 +173,7 @@ class AttendanceCorrectionIntegrityTests extends AgendaIntegritySupport {
         var target = absence(patient, professional, date, "08:00");
         var reception = tx(() -> user(TipoUsuario.RECEPCAO, UnidadeAtuacao.CAPS_AD));
         var before = persisted(target.getId());
-        assertEquals(422, change(reception, target.getId(), SituacaoAtendimento.PRESENTE, null));
+        assertEquals(403, change(reception, target.getId(), SituacaoAtendimento.PRESENTE, null));
         assertEquals(before, persisted(target.getId()));
     }
 
@@ -186,11 +186,12 @@ class AttendanceCorrectionIntegrityTests extends AgendaIntegritySupport {
         assertEquals(before, persisted(target.getId()));
     }
 
-    @Test void sameUnitColleagueRetainsCurrentPermissionUntilStageThree() throws Exception {
+    @Test void sameUnitColleagueCannotCorrectAfterStageThree() throws Exception {
         date = LocalDate.now().minusDays(10);
         var target = absence(patient, professional, date, "08:00");
-        assertEquals(200, change(colleague, target.getId(), SituacaoAtendimento.PRESENTE, null));
-        assertEquals(SituacaoAtendimento.PRESENTE, appointment(target.getId()).getSituacaoAtendimento());
+        var before = persisted(target.getId());
+        assertEquals(403, change(colleague, target.getId(), SituacaoAtendimento.PRESENTE, null));
+        assertEquals(before, persisted(target.getId()));
     }
 
     @Test void futureFrequencyStillRejected() throws Exception {
@@ -270,7 +271,7 @@ class AttendanceCorrectionIntegrityTests extends AgendaIntegritySupport {
                 .registrarAlteracaoDeAtendimento(any(Agendamento.class), any(SituacaoAtendimento.class));
         authenticate();
         var error = assertThrows(IllegalStateException.class,
-                () -> service.atualizarStatus(target.getId(), SituacaoAtendimento.PRESENTE, null));
+                () -> service.atualizarStatus(target.getId(), SituacaoAtendimento.PRESENTE, null, "Retificação sintética após conferência do registro original."));
         assertEquals("synthetic history failure", error.getMessage());
         assertEquals(before, persisted(target.getId()));
     }

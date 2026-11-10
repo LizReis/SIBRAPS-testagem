@@ -75,7 +75,7 @@ class HistoricalAttendanceReviewTests extends AgendaIntegritySupport {
 
     private int status(Usuario actor, Long id, SituacaoAtendimento next) throws Exception {
         return businessStatus(mvc.perform(patch("/api/agendamentos/" + id + "/status")
-                .param("novoStatus", next.name()).header("Authorization", "Bearer " + tokens.gerarToken(actor)))
+                .param("novoStatus", next.name()).param("justificativa", "Retificação sintética após conferência do registro original.").header("Authorization", "Bearer " + tokens.gerarToken(actor)))
                 .andReturn().getResponse());
     }
 
@@ -162,7 +162,7 @@ class HistoricalAttendanceReviewTests extends AgendaIntegritySupport {
         var target = historical(SituacaoAtendimento.PRESENTE);
         var reception = tx(() -> user(TipoUsuario.RECEPCAO, UnidadeAtuacao.CAPS_AD));
         var before = snapshot(patient, target.getId());
-        assertEquals(422, status(reception, target.getId(), SituacaoAtendimento.FALTOU));
+        assertEquals(403, status(reception, target.getId(), SituacaoAtendimento.FALTOU));
         assertEquals(before, snapshot(patient, target.getId()));
     }
 

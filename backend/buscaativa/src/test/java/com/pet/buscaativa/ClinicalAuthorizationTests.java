@@ -82,7 +82,7 @@ class ClinicalAuthorizationTests extends AgendaIntegritySupport {
     }
     @ParameterizedTest @CsvSource({"owner,200","colleague,403","admin,200","reception,403","foreign,404"})
     void groupCorrectionsRequireCoordinatorOrUnitAdmin(String role,int expected) throws Exception {
-        var s=session(StatusSessaoGrupo.REALIZADA);var dto=new CorrigirFrequenciasGrupoDTO(List.of(new FrequenciaParticipanteGrupoDTO(patient.getIdPublico(),StatusPresencaGrupo.PRESENTE)),s.getVersion());
+        var s=session(StatusSessaoGrupo.REALIZADA);var dto=new CorrigirFrequenciasGrupoDTO(List.of(new FrequenciaParticipanteGrupoDTO(patient.getIdPublico(),StatusPresencaGrupo.PRESENTE)),s.getVersion(),"Retificação sintética após conferência do registro original.");
         var before=snapshot(patient,null);var r=mvc.perform(patch("/api/grupos/sessoes/"+s.getId()+"/frequencias")
             .header("Authorization","Bearer "+tokens.gerarToken(actor(role))).contentType("application/json").content(json.writeValueAsString(dto))).andReturn().getResponse();assertEquals(expected,r.getStatus());
         var state=tx(()->participants.findBySessaoGrupoAndPaciente(s,patient).orElseThrow().getStatusPresenca());
@@ -90,7 +90,7 @@ class ClinicalAuthorizationTests extends AgendaIntegritySupport {
     }
     @Test void groupBatchWithForeignParticipantIsRejectedBeforeAnyChanges() throws Exception {
         var s=session(StatusSessaoGrupo.REALIZADA);tx(()->{var p=patient(CapsEnum.CAPS_I);var x=new SessaoGrupoParticipante();x.setPaciente(p);x.setSessaoGrupo(s);x.setStatusPresenca(StatusPresencaGrupo.FALTOU);participants.saveAndFlush(x);return null;});
-        var before=snapshot(patient,null);var dto=new CorrigirFrequenciasGrupoDTO(List.of(new FrequenciaParticipanteGrupoDTO(patient.getIdPublico(),StatusPresencaGrupo.PRESENTE)),s.getVersion());
+        var before=snapshot(patient,null);var dto=new CorrigirFrequenciasGrupoDTO(List.of(new FrequenciaParticipanteGrupoDTO(patient.getIdPublico(),StatusPresencaGrupo.PRESENTE)),s.getVersion(),"Retificação sintética após conferência do registro original.");
         assertEquals(404,mvc.perform(patch("/api/grupos/sessoes/"+s.getId()+"/frequencias").header("Authorization","Bearer "+tokens.gerarToken(admin)).contentType("application/json").content(json.writeValueAsString(dto))).andReturn().getResponse().getStatus());
         assertEquals(before,snapshot(patient,null));assertEquals(StatusPresencaGrupo.FALTOU,tx(()->participants.findBySessaoGrupoAndPaciente(s,patient).orElseThrow().getStatusPresenca()));
     }

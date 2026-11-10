@@ -68,6 +68,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     private final AgendaHorarioProperties agendaHorarioProperties;
     private final EscopoUnidadeService escopoUnidadeService;
     private final com.pet.buscaativa.services.AutorizacaoClinicaService autorizacaoClinica;
+    private final com.pet.buscaativa.services.PoliticaJustificativaCorrecao politicaJustificativa;
     private static final List<SituacaoAtendimento> SITUACOES_ATIVAS = List.of(
             SituacaoAtendimento.AGENDADO, SituacaoAtendimento.REMARCADO, SituacaoAtendimento.PRESENTE);
 
@@ -460,6 +461,12 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     @Override
     @Transactional
     public AgendamentoDTO atualizarStatus(Long id, SituacaoAtendimento novoStatus, Integer expectedVersion) {
+        return atualizarStatus(id, novoStatus, expectedVersion, null);
+    }
+
+    @Override
+    @Transactional
+    public AgendamentoDTO atualizarStatus(Long id, SituacaoAtendimento novoStatus, Integer expectedVersion, String justificativa) {
         // Read scalar identifiers only; do not cache a stale appointment before obtaining locks.
         var identity = agendamentoRepository.findLockIdentityById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Agendamento não encontrado"));
@@ -505,6 +512,8 @@ public class AgendamentoServiceImpl implements AgendamentoService {
             return agendamentoMapper.toAgendamentoDTO(agendamento);
         }
 
+
+        String motivo = frequenciaRegistrada && destinoClinico ? politicaJustificativa.validar(justificativa) : null;
 
         if ((novoStatus == SituacaoAtendimento.PRESENTE || novoStatus == SituacaoAtendimento.FALTOU)
                 && (statusAnterior == SituacaoAtendimento.CANCELADO || (statusAnterior == SituacaoAtendimento.REMARCADO_ORIGEM && !correcaoDeSubstituido)))

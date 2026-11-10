@@ -50,7 +50,7 @@ class HomeVisitRecalculationTests extends AgendaIntegritySupport {
     private boolean visit() { return Boolean.TRUE.equals(patients.findById(patient.getId()).orElseThrow().getGatilhoVisitaAcionado()); }
     private int correct(Agendamento a, SituacaoAtendimento status) throws Exception {
         return businessStatus(mvc.perform(patch("/api/agendamentos/" + a.getId() + "/status")
-                .param("novoStatus", status.name()).header("Authorization", "Bearer " + tokens.gerarToken(admin)))
+                .param("novoStatus", status.name()).param("justificativa", "Retificação sintética após conferência do registro original.").header("Authorization", "Bearer " + tokens.gerarToken(admin)))
                 .andReturn().getResponse());
     }
     private void alertPreviouslyActive() {
@@ -136,7 +136,7 @@ class HomeVisitRecalculationTests extends AgendaIntegritySupport {
         var foreign = tx(() -> user(TipoUsuario.ADMINISTRADOR, UnidadeAtuacao.CAPS_I));
         var before = snapshot(patient, last.getId());
         assertEquals(404, businessStatus(mvc.perform(patch("/api/agendamentos/" + last.getId() + "/status")
-                .param("novoStatus", "PRESENTE").header("Authorization", "Bearer " + tokens.gerarToken(foreign)))
+                .param("novoStatus", "PRESENTE").param("justificativa", "Retificação sintética após conferência do registro original.").header("Authorization", "Bearer " + tokens.gerarToken(foreign)))
                 .andReturn().getResponse()));
         assertEquals(before, snapshot(patient, last.getId()));
     }
@@ -146,7 +146,7 @@ class HomeVisitRecalculationTests extends AgendaIntegritySupport {
         doThrow(new IllegalStateException("synthetic visit rollback")).when(histories)
                 .registrarAlteracaoDeAtendimento(any(Agendamento.class), any(SituacaoAtendimento.class));
         authenticate();
-        assertThrows(IllegalStateException.class, () -> service.atualizarStatus(last.getId(), SituacaoAtendimento.PRESENTE, null));
+        assertThrows(IllegalStateException.class, () -> service.atualizarStatus(last.getId(), SituacaoAtendimento.PRESENTE, null, "Retificação sintética após conferência do registro original."));
         assertEquals(before, snapshot(patient, last.getId()));
     }
     @RepeatedTest(2) void concurrentCorrectionsKeepAlertForRemainingPair() throws Exception {
