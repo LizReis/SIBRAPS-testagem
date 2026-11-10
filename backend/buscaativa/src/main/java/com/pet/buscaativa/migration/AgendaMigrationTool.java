@@ -20,7 +20,7 @@ public final class AgendaMigrationTool {
                         throw new IllegalArgumentException("A ferramenta H2 em arquivo foi validada com DB_CLOSE_DELAY=0; outro ciclo de vida exige ensaio separado.");
                 }
                 // Refuse an empty/wrong database before Flyway creates any schema/history.
-                for (String table : new String[]{"tb_agendamento", "tb_agendamento_aud", "tb_historico_paciente", "tb_paciente", "tb_paciente_aud", "tb_usuario", "revinfo"})
+                for (String table : new String[]{"tb_agendamento", "tb_agendamento_aud", "tb_historico_paciente", "tb_paciente", "tb_paciente_aud", "tb_usuario", "revinfo", "tb_sessao_grupo", "tb_sessao_grupo_participante"})
                     statement.executeQuery("select count(*) from " + table).close();
             }
             verificarOrigemVersionada(connection);
@@ -29,6 +29,7 @@ public final class AgendaMigrationTool {
                 .locations("classpath:agenda-migration/h2").javaMigrations(new V2__identificar_frequencias_legadas())
                 .baselineOnMigrate(true).baselineVersion("0").cleanDisabled(true).load().migrate();
         CanonicalAgendaGuard.verificar(source);
+        AuditoriaSchemaGuard.verificar(source);
         return result;
     }
 

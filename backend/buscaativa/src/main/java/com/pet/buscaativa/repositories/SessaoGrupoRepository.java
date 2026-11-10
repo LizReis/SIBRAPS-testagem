@@ -24,6 +24,9 @@ public interface SessaoGrupoRepository extends JpaRepository<SessaoGrupo, Long> 
     @Query("select distinct s from SessaoGrupo s left join fetch s.participantes p left join fetch p.paciente where s.id = :id")
     Optional<SessaoGrupo> findByIdForUpdate(@Param("id") Long id);
 
+    @Query("select s.grupo.id from SessaoGrupo s where s.id=:id")
+    Optional<Long> findGrupoId(@Param("id") Long id);
+
     List<SessaoGrupo> findByGrupoOrderByDataSessaoDesc(GrupoTerapeutico grupo);
 
     Optional<SessaoGrupo> findFirstByGrupoOrderByDataSessaoDesc(GrupoTerapeutico grupo);

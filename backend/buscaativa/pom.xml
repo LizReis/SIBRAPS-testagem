@@ -79,7 +79,7 @@
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
-            <scope>runtime</scope>
+            <!-- H2 append-only trigger adapter; other SGBDs require their own validated migration. -->
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>

@@ -69,6 +69,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     private final EscopoUnidadeService escopoUnidadeService;
     private final com.pet.buscaativa.services.AutorizacaoClinicaService autorizacaoClinica;
     private final com.pet.buscaativa.services.PoliticaJustificativaCorrecao politicaJustificativa;
+    private final com.pet.buscaativa.services.AuditoriaCorrecaoService auditoriaCorrecao;
     private static final List<SituacaoAtendimento> SITUACOES_ATIVAS = List.of(
             SituacaoAtendimento.AGENDADO, SituacaoAtendimento.REMARCADO, SituacaoAtendimento.PRESENTE);
 
@@ -529,6 +530,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
                     agendamento.getTurnoAgendamento(), agendamento.getHoraAtendimento());
         }
 
+        int versaoAnterior=agendamento.getVersion();
         agendamento.setSituacaoAtendimento(novoStatus);
 
         Paciente pacienteAgendado = agendamento.getPaciente();
@@ -545,6 +547,8 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         if (correcaoDeSubstituido)
             historicoPacienteService.registrarCorrecaoDeFrequencia(agendamento, frequenciaAnterior);
         else historicoPacienteService.registrarAlteracaoDeAtendimento(agendamento, statusAnterior);
+        agendamentoRepository.flush();
+        if(motivo!=null)auditoriaCorrecao.registrarIndividual(agendamento,frequenciaAnterior,motivo,versaoAnterior);
 
         return agendamentoMapper.toAgendamentoDTO(agendamento);
     }

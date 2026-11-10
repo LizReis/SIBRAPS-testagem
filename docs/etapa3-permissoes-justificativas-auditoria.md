@@ -58,3 +58,42 @@ Grupo: `PATCH /api/grupos/sessoes/{id}/frequencias`, corpo `{ "frequencias": [{ 
 Focado autorização/contrato: **43/43**, zero falhas/erros/ignorados. Verify completo: **444/444**, BUILD SUCCESS em **45,320 s**, término **18:25:10 de 10/11/2026**. A primeira regressão completa mostrou a caracterização antiga `sameUnitColleagueRetainsCurrentPermissionUntilStageThree`, que expressamente aguardava esta etapa: preservou-se o cenário como `sameUnitColleagueCannotCorrectAfterStageThree`, agora esperando 403 e snapshot integral inalterado. Três testes de recepção passaram de 422 para 403, conforme convenção aprovada; permanecem recusados. Helpers de correções anteriores passaram a fornecer motivo sintético explícito; nada foi preenchido automaticamente em produção. Os testes de registro inicial, colisão, oferta histórica, remarcação, rollback, idempotência e migração não foram removidos. Total: 382 anteriores + 19 busca ativa + 23 responsabilidade + 20 justificativas.
 
 O Angular atual não envia justificativa nas correções existentes. Essa incompatibilidade temporária é intencionalmente protegida pelo backend: correções sem motivo recebem 422. A Etapa 8 deverá enviar o parâmetro individual e o campo do lote acima, mostrar validação e consultar auditorias; não foi criado motivo padrão nem relaxamento de segurança para a UI antiga.
+
+## B4 — auditoria clínica persistente e migração V3
+
+### Modelo, autoria e consulta
+
+`AuditoriaCorrecaoFrequencia` armazena UUID próprio, agendamento OU sessão/participante, paciente, ator autenticado, perfil e chave específica da unidade no instante, responsável pelo atendimento, tipo, reserva/sessão, frequência anterior/nova, justificativa normalizada, `Instant` do `Clock` do servidor e versões anterior/resultante. Não recebe esses metadados de autoria pelo cliente. A correção feita pelo administrador identifica esse administrador como executor e conserva o profissional atribuído como responsável assistencial.
+
+A entidade é `@Immutable`, sem setters; o repositório expõe somente consulta/paginação/count. Inserção usa `EntityManager.persist` em transação **MANDATORY**, após o histórico/recálculo e flush das alterações. Cada correção é uma nova linha. Não é presença/falta nova e não substitui `HistoricoPaciente` nem Envers. Nos grupos, cada participante efetivamente alterado gera uma linha sem inventar agendamento individual. Itens inalterados não geram histórico corrigido nem auditoria.
+
+Leitura por DTO específico, ordenação decrescente por instante/versão/UUID e paginação de 1–100 itens:
+
+- `GET /api/agendamentos/{id}/correcoes?page=0&size=20`.
+- `GET /api/grupos/sessoes/{id}/correcoes?page=0&size=20`.
+
+Administrador somente da unidade; profissional somente responsável/coordenador; recepção recebe 403 e unidade externa 404. A consulta também compara a unidade histórica do registro com o escopo atual. Não há PUT/DELETE dessas auditorias. A API retorna 405 para tentativa de mutação pelos caminhos de leitura.
+
+### Atomicidade e concorrência
+
+Individual conserva **paciente → profissional → agendamento**. Captura versão/frequência anteriores sob lock e grava a versão realmente persistida, não uma estimativa. Grupos passam a bloquear pacientes em ordem estável de UUID, depois grupo e sessão. Escritores de participantes e reatribuição do grupo compartilham a proteção; uma lista alterada enquanto os locks eram obtidos é recusada com conflito seguro. Correção efetiva força uma única evolução da versão da sessão, antes da auditoria; tentativa idempotente não incrementa versão. Lote inteiro é atômico.
+
+Falhas de histórico ou de armazenamento da auditoria revertem dados clínicos, indicadores, versão, Envers e auditorias já inseridas na mesma transação. Não há transação REQUIRES_NEW para confirmar uma auditoria independentemente da correção. Os testes injetam falha **após INSERT/flush real** e no segundo participante do lote, comparando todas as tabelas do banco antes/depois. A instrumentação do teste usa o alvo do proxy; a proteção MANDATORY não foi enfraquecida para facilitar o teste.
+
+### Proteção no banco e compatibilidade
+
+`V3__auditoria_correcao_frequencia.sql` acrescenta tabela, FKs, índices por atendimento/sessão/instante e checks: alvo individual/grupo coerente, frequências distintas P/F, motivo dentro do tamanho, versão resultante superior e perfil clínico permitido. Não altera V1/V2, dados anteriores ou revisões. Nenhuma justificativa antiga é fabricada.
+
+O trigger H2 `AuditAppendOnlyTrigger` recusa UPDATE/DELETE, inclusive via DML direto. `AuditoriaSchemaGuard` verifica a proteção antes de servir a aplicação; trigger ausente bloqueia e não é reparado automaticamente em arquivo persistente. Instalação automática de triggers é restrita a H2 **em memória**, com `ddl-auto=create/create-drop` explicitamente configurado para a base descartável. Persistentes continuam exigindo migração explícita. A verificação libera sua conexão antes de adquirir outra, e foi testada com pool de uma conexão.
+
+A dependência H2, já existente e na mesma versão, passa de runtime para compile somente para implementar sua interface de trigger. Não foi adicionado outro framework de teste. A implementação é um adaptador H2; outro SGBD exige sua própria migração/proteção validada. Essas medidas protegem as operações normais e DML, **não tornam o registro inviolável contra um administrador de banco capaz de alterar DDL ou substituir o artefato**. Separação de credenciais/privilégios, guarda externa e política operacional precisam ser avaliadas na implantação.
+
+### Evidências da B4
+
+- `ClinicalAuditIntegrationTests`: 22 execuções, incluindo duas direções, autoria/tempo forjados recusados, supervisor real, ordem/paginação, imutabilidade, leitura negada, registro inicial, substituído, idempotência, rollback e quatro disputas reais (responsável/admin, grupo com ordem inversa, cancelamento e remarcação).
+- `AgendaLegacyMigrationTests`: nove cenários preservados; somente o número esperado de migrações iniciais foi de 2 para 3. Os checks de IDs, colunas antigas, vínculos, versões, ocupação, ambiguidades, histórico, Envers e restauração permanecem.
+- `ClinicalAuditMigrationTests`: seis execuções, partindo do schema antigo e de V1/V2 já aplicadas, checks/FKs, proteção ausente, base dev descartável e ciclo real de aplicação/backup. A correção feita por PATCH no arquivo migrado permanece consultável em **três inicializações** (original, reaberta e restaurada). O backup mais recente conserva também a auditoria; reaplicação executa zero migrações. A migração em si cria zero auditorias históricas.
+
+Focado clínica + regressões de migração: **31/31**. Focado persistente final: **6/6**, em 22,445 s, término **18:44:07 de 10/11/2026**. Verify completo da B4: **472/472**, zero falhas/erros/ignorados, BUILD SUCCESS em 49,830 s, término **18:43:01**; depois dele, o ajuste de liberação de conexão do guard foi exercitado novamente no focado com pool mínimo e reinicialização. A suíte integral será repetida na B6 com a composição final.
+
+Na preparação dos testes persistentes, foram corrigidos problemas das fixtures: dependência de teste de segurança não presente (substituída pela cadeia real já disponível), dois mocks SUS primários e ciclo de vida da memória sem pool. Não houve relaxamento de validação/segurança de produção para fazê-los passar. Nenhum banco real ou persistente compartilhado foi usado.

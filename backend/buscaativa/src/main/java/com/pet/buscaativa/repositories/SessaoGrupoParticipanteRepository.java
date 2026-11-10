@@ -15,5 +15,8 @@ public interface SessaoGrupoParticipanteRepository extends JpaRepository<SessaoG
 
     Optional<SessaoGrupoParticipante> findBySessaoGrupoAndPaciente(SessaoGrupo sessaoGrupo, Paciente paciente);
 
+    @org.springframework.data.jpa.repository.Query("select p.paciente.idPublico from SessaoGrupoParticipante p where p.sessaoGrupo.id=:id order by p.paciente.idPublico")
+    List<java.util.UUID> findPacienteIds(@org.springframework.data.repository.query.Param("id") Long id);
+
     List<SessaoGrupoParticipante> findByPaciente(Paciente paciente);
 }
