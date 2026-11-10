@@ -155,3 +155,224 @@ Resultados: focado final de contratos/autorização/auditoria **84/84**, verify 
 | 7 | Revisão global de erros de negócio, concorrência e infraestrutura; preservar diagnóstico e não mascarar falhas internas como conflito recuperável. |
 | 8 | UI para justificativa, consulta de auditoria, reserva/frequência separadas, indicadores provisórios e registro real de visualização/encaminhamento. Preparar dados fictícios completos para demonstração; não chamar visualização por simples refresh da lista. |
 | 9 | Validação de todos os resumos, relatórios e indicadores; testes Angular pendentes; CI remota; escolha do SGBD definitivo; migração, restauração, privilégio das credenciais e concorrência no banco escolhido. |
+
+
+## B6 — validação final e resultado para revisão
+
+### Resultados reais e preservação do baseline
+
+**APROVADA PARA REVISÃO da Pré-Etapa 3 e da Etapa 3 no escopo backend especificado.** RNF17 possui suporte backend testado, com integração visual explicitamente pendente; não se declara sua conclusão integral na interface nem prontidão para produção. A compilação Angular exigida passou; suas falhas unitárias anteriores permanecem separadas e documentadas.
+
+Os XMLs finais comprovam **513 casos em 29 classes**, sendo os **382 anteriores preservados e aprovados + 131 novos**. A comparação nominal, considerando somente o rename autorizado do cenário de colega da mesma unidade, encontra zero cenário anterior ausente. Não houve remoção, @Disabled ou skipTests. Os novos casos dividem-se em 19 da Entrega A e 112 da Etapa 3: 27 responsabilidade, 20 justificativas, 27 auditoria clínica/grupos/concorrência, 8 migração e 30 RNF17.
+
+| Conjunto / execução | Executados | Aprovados | Falhas | Erros | Ignorados |
+|---|---:|---:|---:|---:|---:|
+| Baseline recebido — verify | 382 | 382 | 0 | 0 | 0 |
+| Entrega A — verify | 401 | 401 | 0 | 0 | 0 |
+| Responsabilidade/justificativa — verify | 444 | 444 | 0 | 0 | 0 |
+| Auditoria clínica — verify | 472 | 472 | 0 | 0 | 0 |
+| RNF17 antes do check SQL final — verify | 512 | 512 | 0 | 0 | 0 |
+| Checks finais / persistência / RNF17 — focado | 38 | 38 | 0 | 0 | 0 |
+| Final — mvnw test | 513 | 513 | 0 | 0 | 0 |
+| Final — mvnw verify | 513 | 513 | 0 | 0 | 0 |
+
+Comandos completos no backend: `bash ./mvnw test` e `bash ./mvnw verify`, com Java 21, settings/cache Maven da nuvem e sem desabilitar testes. `test` usou ambiente herdado; `verify` usou variáveis dev sintéticas para conferir também o isolamento dos testes diante dessas variáveis, sem precisar limpar manualmente o terminal. Material sintético não é fallback de configuração da aplicação.
+
+- `final-test`: BUILD SUCCESS, 53.761 s, término **10/11/2026 19:09:56 America/Sao_Paulo**.
+- `final-verify`: BUILD SUCCESS, 53.596 s, término **10/11/2026 19:11:22 America/Sao_Paulo**.
+
+Detalhamento do verify final:
+
+| Suíte | Executados | Aprovados | Falhas | Ignorados |
+|---|---:|---:|---:|---:|
+| AgendaCombinedTests | 4 | 4 | 0 | 0 |
+| AgendaConcurrencyTests | 18 | 18 | 0 | 0 |
+| AgendaConfiguredGridTests | 3 | 3 | 0 | 0 |
+| AgendaGridTests | 33 | 33 | 0 | 0 |
+| AgendaLegacyMigrationTests | 9 | 9 | 0 | 0 |
+| AgendaRescheduleTests | 10 | 10 | 0 | 0 |
+| AttendanceCorrectionIntegrityTests | 45 | 45 | 0 | 0 |
+| BuscaAtivaAuditIntegrationTests | 30 | 30 | 0 | 0 |
+| BuscaAtivaSelectionTests | 19 | 19 | 0 | 0 |
+| BuscaativaApplicationTests | 1 | 1 | 0 | 0 |
+| CanonicalAppointmentTests | 18 | 18 | 0 | 0 |
+| ClinicalAuditIntegrationTests | 27 | 27 | 0 | 0 |
+| ClinicalAuditMigrationTests | 8 | 8 | 0 | 0 |
+| ClinicalAuthorizationTests | 27 | 27 | 0 | 0 |
+| ClinicalJustificationTests | 20 | 20 | 0 | 0 |
+| GlobalConcurrencyHandlerReviewTests | 25 | 25 | 0 | 0 |
+| H2ProfileSecurityTests | 4 | 4 | 0 | 0 |
+| HistoricalAttendanceReviewTests | 33 | 33 | 0 | 0 |
+| HomeVisitRecalculationTests | 14 | 14 | 0 | 0 |
+| IsolamentoUnidadeTests | 65 | 65 | 0 | 0 |
+| JwtKeyConfigurationTests | 14 | 14 | 0 | 0 |
+| MigracaoUnidadeTests | 1 | 1 | 0 | 0 |
+| MigratedAgendaHttpTests | 5 | 5 | 0 | 0 |
+| MigratedIndicatorsInitializationTests | 2 | 2 | 0 | 0 |
+| PainelHistoricoEscopoTests | 1 | 1 | 0 | 0 |
+| ProfissionaisEscopoTests | 47 | 47 | 0 | 0 |
+| SecurityP01P02Tests | 15 | 15 | 0 | 0 |
+| UsuarioUnidadeTests | 13 | 13 | 0 | 0 |
+| JwtKeyPolicyTests | 2 | 2 | 0 | 0 |
+
+### Concorrência e rollback
+
+Cada execução final contém **47 disputas / 114 operações**, com threads, conexões e transações independentes e verificação de linhas, vínculos, versões, contadores e históricos persistidos. Não se somam retestes para aumentar esses números.
+
+| Execução / grupo | Disputas | Operações | Confirmações HTTP | Rejeições |
+|---|---:|---:|---:|---:|
+| final-test: RNF17 | 1 | 2 | 2 | 0 |
+| final-test: Integrados | 3 | 8 | 2 | 6 |
+| final-test: Etapa 3 clínica | 4 | 8 | 4 | 4 |
+| final-test: Visita Etapa 2 | 2 | 4 | 4 | 0 |
+| final-test: P04 | 17 | 52 | 20 | 32 |
+| final-test: Etapa 1 | 19 | 38 | 20 | 18 |
+| final-test: P05 | 1 | 2 | 1 | 1 |
+| final-test: TOTAL | 47 | 114 | 53 | 61 |
+| final-verify: RNF17 | 1 | 2 | 2 | 0 |
+| final-verify: Integrados | 3 | 8 | 2 | 6 |
+| final-verify: Etapa 3 clínica | 4 | 8 | 4 | 4 |
+| final-verify: Visita Etapa 2 | 2 | 4 | 4 | 0 |
+| final-verify: P04 | 17 | 52 | 19 | 33 |
+| final-verify: Etapa 1 | 19 | 38 | 22 | 16 |
+| final-verify: P05 | 1 | 2 | 1 | 1 |
+| final-verify: TOTAL | 47 | 114 | 54 | 60 |
+
+Resultados variam conforme a serialização permitida: correção e remarcação sem versão exigida podem ambas confirmar quando a remarcação vem primeiro, preservando a frequência do original SUBSTITUIDA; com versão obsoleta, somente a operação válida confirma. Repetição concorrente RNF17 confirma dois recibos HTTP e persiste **um único evento**. Nenhum erro técnico inesperado foi aceito como rejeição válida.
+
+Rollback foi comprovado após gravações reais, inclusive INSERT da auditoria, falha no histórico, segundo participante do lote e falha na auditoria da consulta à lista. O snapshot inclui todas as tabelas; nenhuma frequência, indicador, revisão ou auditoria parcial é confirmada. Os testes antigos de correção versus criação, colisões, capacidade, versão e isolamento permanecem aprovados.
+
+### Frontend — build aprovado, testes anteriores ainda reprovados
+
+Node **24.19.0**, npm **11.6.2** selecionado por npx conforme packageManager, Angular 21. No diretório `frontend/sentinela-pet`:
+
+| Comando | Resultado |
+|---|---|
+| npm ci | Código 0 |
+| npm run build | Código 0; 4,783 s, término 19:11:30 de 10/11/2026 |
+| npm test -- --watch=false | Código 1; 104 testes: 97 aprovados, 7 falhas, zero ignorados; mais 5 erros não tratados |
+
+Os cinco erros não tratados são adicionais ao resultado dos 104 casos, não cinco novos testes. Dos 28 arquivos, 22 passaram e seis falharam. As falhas reproduzem o padrão já registrado como Q01–Q04: título antigo no teste de App (um caso), ausência de ActivatedRoute nos testes de MainLayout/DetalheProfissional/Inicio/Sidebar (quatro), mock sem buscarDetalhe em DetalhePaciente (dois), e cinco requisições não tratadas a /api/usuarios/me. Fontes, testes e lockfile Angular são idênticos ao estado recebido; nenhum teste foi alterado para ocultar esses resultados. Correção permanece na Etapa 9.
+
+O bundle manteve **847,77 kB**, com aviso de 347,77 kB acima do orçamento de 500 kB. O aviso não foi desabilitado. Não foram redesenhadas telas nem implementadas justificativas/visualizações RNF17 na UI; build verde não equivale a validação ponta a ponta desses novos fluxos.
+
+A primeira instalação no sandbox não alcançou o proxy herdado e foi interrompida; os mesmos comandos foram repetidos fora dessa restrição, usando o proxy e a política de rede do ambiente. Isso foi um impedimento de infraestrutura local, não uma falha atribuída ao Angular. O mesmo ajuste foi necessário para a leitura Git remota; nenhuma política de rede/credencial foi enfraquecida.
+
+### Migrador empacotado, preservação e retorno seguro
+
+O jar gerado pelo verify foi realmente executado com `PropertiesLauncher`, sobre outra cópia sintética do schema antigo: preparação, primeira execução, repetição e consultas retornaram código 0. **Quatro migrações na primeira execução; zero na segunda.** Conferência SQL: 12 atendimentos, quatro pendentes, três ocupações, zero auditorias clínicas, zero eventos RNF17 criados pelo backfill e quatro operações protegidas por triggers (UPDATE/DELETE das duas tabelas). A migração não inventa eventos anteriores.
+
+Comando, a partir da raiz do repositório, somente em cópia H2 isolada com escritores suspensos e `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` explicitamente fornecidos no ambiente:
+
+```bash
+java -Dloader.main=com.pet.buscaativa.migration.AgendaMigrationTool \
+  -cp backend/buscaativa/target/buscaativa-0.0.1-SNAPSHOT.jar \
+  org.springframework.boot.loader.launch.PropertiesLauncher
+```
+
+O programa exige arquivo H2, DB_CLOSE_DELAY=0 e schema legado reconhecido, verifica origem canônica/versionada e as proteções finais. Não inicializa aplicação web nem migra automaticamente na inicialização. V1/V2 permanecem sem alteração; V3 também permaneceu idêntica ao seu commit, e o fortalecimento posterior foi aditivo em V4.
+
+Os ensaios preservam integralmente IDs, relações, códigos legados, campos canônicos, flags, versões, históricos e revisões anteriores. O teste real de aplicação conserva uma correção e três eventos de alerta após três inicializações/restauração, mais as três reservas sintéticas com frequência inicial (15 atendimentos nessa cópia). A fixture fixa de preservação permanece com seus 12 dados originais. Ambos os tipos de auditoria continuam protegidos após restaurar.
+
+Antes de ensaiar, guardar backup anterior e inventário; após iniciar escritas novas, guardar também backup/export **mais recente**, incluindo dados clínicos, auditorias, revisões e histórico Flyway. Testar restauração em destino separado e usar binário compatível. Voltar somente ao backup anterior perderia escritas posteriores; executar o binário antigo também perderia as novas garantias de responsabilidade/justificativa/auditoria. **Downgrade semântico completo não foi garantido**. Não apagar tabelas/triggers, usar clean/repair automático ou descartar histórico para simular retorno. H2 pode confirmar DDL separadamente; falha parcial exige diagnóstico e recuperação pela cópia verificada, com aplicação bloqueada até estrutura coerente.
+
+### Preservações, mudanças intencionais e limites
+
+| Tema | Resultado comprovado |
+|---|---|
+| P01/P02 | JWT, chaves e console H2 preservados; fontes de segurança não modificadas. |
+| P03 | Grade, turnos, oferta, capacidade e bloqueios continuam protegidos. |
+| P04 | Locks/versões e colisões individuais preservados; novos lotes de grupo e recibos têm atomicidade testada. |
+| P05 | Mesmo paciente, vínculo original/sucessor, falta original e concorrência de remarcação preservados. |
+| Etapa 1 | Correção histórica autorizada continua independente da oferta atual, sem aceitar colisão real da agenda. |
+| Etapa 2 | Códigos 1–6 e reserva/frequência canônicas mantidos; desconhecimento legado continua marcado, sem clínica inventada. |
+| Indicadores/visita | Limites anteriores, faltas, última presença, grupos, risco e decisão cronológica de visita continuam testados. Justificativa/auditoria não entram no cálculo. |
+| Histórico/Envers | Continuam com finalidades próprias; auditorias novas não são contadas como presença/falta. |
+| Unidades | Escopo inclusive USF específica, administrador, grupo inteiro e paciente transferido conferidos. |
+| Mudanças aprovadas | Lista inclui gatilho confirmado sem forçar vermelho; responsabilidade por atendimento; motivo em correções reais; auditoria append-only; eventos explícitos e distintos RNF17. |
+| Decisões/fluxos futuros | Reconciliação de ambiguidades, cancelamentos incorretos, política temporal definitiva e interface permanecem nas Etapas 4–9. |
+
+Implantação permanece bloqueada: SGBD definitivo não escolhido/validado, concorrência/migração/restauração e privilégios desse banco ainda necessários, CI remota não executada, interface das novas operações incompleta e falhas Angular anteriores abertas. Flyway 11.14.1/Boot 4.0.6/H2 2.4.240 foram exercitados aqui; o aviso de H2 acima da última versão oficialmente verificada pelo Flyway (2.3.232) permanece visível. Nenhuma execução foi em banco real.
+
+### Critérios de aceitação
+
+| Critérios do pedido | Evidência / situação |
+|---|---|
+| 1–2: busca ativa/RF22 | 19 casos HTTP/JPA/Excel da Entrega A; risco e visita independentes. |
+| 3–5: responsável/admin/recepção | 27 casos de autorização; origem autenticada e escopo específico. |
+| 6–8: motivo, legado e grupos | 20 de justificativas e cobertura dos caminhos alternativos; sem bypass por cadastro/estado de resposta. |
+| 9–11: auditoria, fatos e histórico | 27 de auditoria clínica, testes antigos e snapshots; registros distintos e append-only. |
+| 12: RNF17 seguro | 30 casos; backend pronto, UI explicitamente pendente e sem falsa visualização/entrega. |
+| 13–14: atomicidade/indicadores | Rollback completo, 47 disputas reais e regressões de indicadores/visita. |
+| 15–16: baseline/novos | 382 + 131 = 513, sem casos antigos ausentes ou ignorados. |
+| 17: migrações | Nove testes anteriores + oito novos; arquivos H2, versões, reabertura, restauração e CLI empacotada. |
+| 18: Angular | ci/build aprovados; limitações de UI e testes anteriores reprovados explicitadas. |
+| 19–20: dados/Git | Somente sintéticos; branch exigida; sem merge/PR/force push. Confirmação remota na resposta final. |
+
+### Arquivos alterados e integridade de escopo
+
+Inventário completo: **48 arquivos**. Conferência SHA-256 preserva **149 arquivos protegidos**, incluindo todo o frontend, lockfile, CI, segurança/JWT, handler global, enum/conversor legados, V1/V2 e fixture SQL antiga. Nenhum arquivo rastreado foi removido. O diff completo foi revisado e passou em git diff --check.
+
+- [backend/buscaativa/pom.xml](../backend/buscaativa/pom.xml)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/controllers/AgendamentoController.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/controllers/AgendamentoController.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/controllers/AuditoriaBuscaAtivaController.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/controllers/AuditoriaBuscaAtivaController.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/controllers/AuditoriaCorrecaoController.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/controllers/AuditoriaCorrecaoController.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/entities/AuditoriaBuscaAtiva.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/entities/AuditoriaBuscaAtiva.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/entities/AuditoriaCorrecaoFrequencia.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/entities/AuditoriaCorrecaoFrequencia.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/entities/dto/AuditoriaBuscaAtivaDTO.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/entities/dto/AuditoriaBuscaAtivaDTO.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/entities/dto/AuditoriaCorrecaoDTO.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/entities/dto/AuditoriaCorrecaoDTO.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/entities/dto/CorrigirFrequenciasGrupoDTO.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/entities/dto/CorrigirFrequenciasGrupoDTO.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/entities/dto/EncaminhamentoAlertaDTO.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/entities/dto/EncaminhamentoAlertaDTO.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/entities/dto/JustificativaCorrecaoDTO.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/entities/dto/JustificativaCorrecaoDTO.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/entities/dto/VisualizacaoAlertaDTO.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/entities/dto/VisualizacaoAlertaDTO.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/entities/enums/TipoEventoBuscaAtiva.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/entities/enums/TipoEventoBuscaAtiva.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/migration/AgendaMigrationTool.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/migration/AgendaMigrationTool.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/migration/AuditAppendOnlyTrigger.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/migration/AuditAppendOnlyTrigger.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/migration/AuditoriaSchemaGuard.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/migration/AuditoriaSchemaGuard.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/repositories/AuditoriaBuscaAtivaRepository.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/repositories/AuditoriaBuscaAtivaRepository.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/repositories/AuditoriaCorrecaoRepository.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/repositories/AuditoriaCorrecaoRepository.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/repositories/GrupoTerapeuticoRepository.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/repositories/GrupoTerapeuticoRepository.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/repositories/PacienteRepository.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/repositories/PacienteRepository.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/repositories/SessaoGrupoParticipanteRepository.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/repositories/SessaoGrupoParticipanteRepository.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/repositories/SessaoGrupoRepository.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/repositories/SessaoGrupoRepository.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/services/AgendamentoService.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/services/AgendamentoService.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/services/AuditoriaBuscaAtivaService.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/services/AuditoriaBuscaAtivaService.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/services/AuditoriaCorrecaoService.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/services/AuditoriaCorrecaoService.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/services/AutorizacaoClinicaService.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/services/AutorizacaoClinicaService.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/services/PoliticaJustificativaCorrecao.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/services/PoliticaJustificativaCorrecao.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/services/impl/AgendamentoServiceImpl.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/services/impl/AgendamentoServiceImpl.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/services/impl/GrupoTerapeuticoServiceImpl.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/services/impl/GrupoTerapeuticoServiceImpl.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/services/impl/PacienteServiceImpl.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/services/impl/PacienteServiceImpl.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/services/impl/PainelServiceImpl.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/services/impl/PainelServiceImpl.java)
+- [backend/buscaativa/src/main/resources/agenda-migration/h2/V3__auditoria_correcao_frequencia.sql](../backend/buscaativa/src/main/resources/agenda-migration/h2/V3__auditoria_correcao_frequencia.sql)
+- [backend/buscaativa/src/main/resources/agenda-migration/h2/V4__auditoria_eventos_busca_ativa.sql](../backend/buscaativa/src/main/resources/agenda-migration/h2/V4__auditoria_eventos_busca_ativa.sql)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/AgendaConcurrencyTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/AgendaConcurrencyTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/AgendaLegacyMigrationTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/AgendaLegacyMigrationTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/AttendanceCorrectionIntegrityTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/AttendanceCorrectionIntegrityTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/BuscaAtivaAuditIntegrationTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/BuscaAtivaAuditIntegrationTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/BuscaAtivaSelectionTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/BuscaAtivaSelectionTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/CanonicalAppointmentTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/CanonicalAppointmentTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/ClinicalAuditIntegrationTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/ClinicalAuditIntegrationTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/ClinicalAuditMigrationTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/ClinicalAuditMigrationTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/ClinicalAuthorizationTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/ClinicalAuthorizationTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/ClinicalJustificationTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/ClinicalJustificationTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/HistoricalAttendanceReviewTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/HistoricalAttendanceReviewTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/HomeVisitRecalculationTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/HomeVisitRecalculationTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/MigratedAgendaHttpTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/MigratedAgendaHttpTests.java)
+- [docs/etapa3-permissoes-justificativas-auditoria.md](../docs/etapa3-permissoes-justificativas-auditoria.md)
+- [docs/pre-etapa3-correcao-busca-ativa.md](../docs/pre-etapa3-correcao-busca-ativa.md)
+
+### Commits e publicação
+
+Base inicial: `6ad7e0c18b59e8292e7748a358cf92ec3fe7ed38`. Branch única: `correcao-fluxos-assistenciais-sibraps`.
+
+- `e514a85` — fix(busca-ativa): inclui pacientes com gatilho confirmado
+- `6f0f4cc` — docs(seguranca): mapeia responsabilidades e contratos da etapa 3
+- `5bcb51b` — fix(seguranca): exige responsabilidade por atendimento e sessao
+- `d60f73b` — feat(frequencia): exige justificativa em correcoes individuais e de grupo
+- `2443740` — feat(auditoria): persiste correcoes imutaveis com migracao V3
+- `89d5287` — feat(rnf17): audita consultas visualizacoes e encaminhamentos explicitos
+
+O commit de fechamento da B6 contém este resultado final. Seu SHA e a confirmação do push são apresentados na resposta final; o arquivo não contém o próprio hash futuro. Publicação somente por push normal desta branch. Referências remotas verificadas antes de publicar: main `967d5162dd543ec9005608739128423903e75e30`; P03/P04/P05 `05ee61a5123dfe4e914d7c2f5f486f7ecf310164`; branch de trabalho ainda na base recebida. Não houve merge, PR automático, force push, exclusão de branch ou execução em dados reais.
+
+Logs, XMLs, sumários e cópias sintéticas de ensaio ficaram em `/tmp/sibraps-etapa3/`, sem serem incorporados ao repositório. A comparação de casos antigos e a agregação de concorrência foram calculadas dos XMLs/logs finais, não estimadas por contagem de métodos.
