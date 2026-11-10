@@ -475,7 +475,10 @@ public class PacienteServiceImpl implements PacienteService{
         return pacienteRepository
                 .findAll(escopoUnidadeService.<Paciente>specificationPaciente().and((r,q,cb)->cb.and(
                         cb.equal(r.get("statusPaciente"),StatusPaciente.ATIVO),
-                        cb.equal(r.get("classificacaoRisco"),ClassificacaoRisco.VERMELHO))))
+                        cb.or(cb.equal(r.get("classificacaoRisco"),ClassificacaoRisco.VERMELHO),
+                                cb.isTrue(r.get("indicadoresPendentes")),
+                                cb.and(cb.isTrue(r.get("gatilhoVisitaAcionado")),
+                                        cb.isFalse(cb.coalesce(r.<Boolean>get("indicadoresPendentes"), false)))))))
                 .stream()
                 .map(this::montarAlertaBuscaAtiva)
                 .toList();

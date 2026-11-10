@@ -57,7 +57,8 @@ public class PainelServiceImpl implements PainelService {
                 .thenComparing(Paciente::getNome, String.CASE_INSENSITIVE_ORDER);
         List<PacientePainelDTO> prioritarios = ativos.stream()
                 .filter(p -> Boolean.TRUE.equals(p.getIndicadoresPendentes()) || p.getClassificacaoRisco() == ClassificacaoRisco.VERMELHO
-                        || p.getClassificacaoRisco() == ClassificacaoRisco.AMARELO)
+                        || p.getClassificacaoRisco() == ClassificacaoRisco.AMARELO
+                        || Boolean.TRUE.equals(p.getGatilhoVisitaAcionado()))
                 .sorted(prioridade).limit(5).map(this::paraPrioritario).toList();
 
         YearMonth atual = YearMonth.now();

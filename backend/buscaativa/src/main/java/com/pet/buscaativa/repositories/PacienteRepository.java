@@ -58,7 +58,8 @@ public interface PacienteRepository extends JpaRepository<Paciente, Long>, JpaSp
             select p from Paciente p
             left join fetch p.profissionalReferencia pr
             where p.statusPaciente = :status
-              and p.classificacaoRisco = :classificacao
+              and (p.classificacaoRisco = :classificacao or
+                   (p.gatilhoVisitaAcionado = true and coalesce(p.indicadoresPendentes, false) = false))
               and (:dataInicio is null or p.dataUltimaPresenca >= :dataInicio)
               and (:dataFim is null or p.dataUltimaPresenca <= :dataFim)
               and (:profissionalId is null or pr.idPublico = :profissionalId)
