@@ -41,3 +41,7 @@ Matriz: responsável e administrador local autorizados; colega/recepção 403, e
 Histórico individual mantém profissional do atendimento, evento e identidade. Em novas escritas de frequência de grupo, profissional passa a ser o responsável histórico, enquanto executor permanece na auditoria e Envers. Eventos antigos não são reescritos por startup/migração; a correção legítima atualiza sua representação na própria transação. Inscrição retroativa inicial também valida tempo/autorização das sessões realizadas antes de construir a cronologia, protegendo dados incompletos em vez de falhar com NPE.
 
 Validação 4B: 125 testes focados aprovados, incluindo 38 novos de contrato, permissões, direções, idempotência, versão, payload adulterado e rollback após frequência/histórico/INSERT real de auditoria. Todos sem falhas/erros/ignorados.
+
+## 4C — independência da oferta
+
+Quatorze novos casos persistidos, nas duas direções, confirmaram a independência de ausência de oferta, capacidade zero/reduzida/esgotada, bloqueio posterior, turno diferente e grade alterada. Identidade, data, hora, turno, quantidade de atendimentos e histórico são preservados; apenas a frequência, versão, indicadores e auditoria da correção mudam. Essa separação já estava correta desde a Etapa 1; não se removeu validarVaga de criação/remarcação nem se reimplementou o comportamento aprovado. Os casos antigos de nova reserva bloqueada, sem vaga/fora da grade e remarcação indisponível continuam obrigatórios na regressão integrada.
