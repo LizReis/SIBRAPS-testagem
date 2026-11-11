@@ -487,7 +487,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
                 || frequenciaConhecida == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU;
         autorizacaoClinica.validarAgendamento(agendamento, comandoClinico && fatoRegistrado);
         LocalDate dataAgendamento = agendamento.getDataAgendamento();
-        if (dataAgendamento != null && dataAgendamento.isAfter(LocalDate.now())) {
+        if (novoStatus != SituacaoAtendimento.CANCELADO && dataAgendamento != null && dataAgendamento.isAfter(LocalDate.now())) {
             throw new ValidationException(
                     "Não é permitido registrar presença ou falta para agendamentos com data futura.");
         }
@@ -506,6 +506,9 @@ public class AgendamentoServiceImpl implements AgendamentoService {
                 && frequenciaRegistrada && destinoClinico;
         if (agendamento.isMigracaoPendente())
             throw new ConflictException("Atendimento com informações históricas pendentes de revisão; nenhuma alteração foi realizada.");
+        if (novoStatus == SituacaoAtendimento.CANCELADO && (frequenciaRegistrada
+                || agendamento.getSituacaoReserva() == com.pet.buscaativa.entities.enums.SituacaoReserva.SUBSTITUIDA))
+            throw new ConflictException("Cancelamento administrativo não é permitido para frequência registrada ou reserva substituída; a regularização exige fluxo clínico próprio.");
         if (frequenciaRegistrada && (novoStatus == SituacaoAtendimento.AGENDADO || novoStatus == SituacaoAtendimento.REMARCADO))
             throw new ConflictException("A frequência registrada deve ser preservada; esta alteração de reserva exige revisão.");
 
