@@ -20,7 +20,7 @@ public class PendenciaFrequenciaHandler {
             String codigo,String tipoConflito,Long agendamentoId,Long sessaoId){}
     @ExceptionHandler(PendenciaFrequenciaException.class)
     public ResponseEntity<PendenciaDTO> pendencia(PendenciaFrequenciaException e,HttpServletRequest request) {
-        return ResponseEntity.status(409).body(new PendenciaDTO(clock.instant(),409,"Pendência assistencial.",
+        return ResponseEntity.status(409).body(new PendenciaDTO(clock.instant(),409,"Conflito de regra de negócio.",
             e.getMessage(),request.getRequestURI(),e.getCodigo(),e.getTipoConflito(),e.getAgendamentoId(),e.getSessaoId()));
     }
 }

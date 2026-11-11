@@ -55,6 +55,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     private static final long LIMITE_DIAS_CONSULTA_AGENDA = 62;
 
     private final AgendamentoRepository agendamentoRepository;
+    private final com.pet.buscaativa.repositories.SessaoGrupoRepository sessaoGrupoRepository;
     private final BloqueioAgendaRepository bloqueioAgendaRepository;
     private final UsuarioRepository usuarioRepository;
     private final DisponibilidadeRepository disponibilidadeRepository;
@@ -157,7 +158,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
 
     private void validarVaga(Usuario usuario, Paciente paciente, LocalDate data, TurnoEnum turno, LocalTime hora) {
         validarHorario(turno, hora);
-        validarConflitosDeHorario(usuario, paciente, data, hora, false);
+        validarConflitosDeHorario(usuario, paciente, data, hora, null);
 
         if (bloqueioAgendaRepository.isDataBloqueadaParaUsuario(usuario, data)) {
             throw new ConflictException("A agenda do profissional está bloqueada na data informada.");
@@ -183,21 +184,34 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     }
 
     private void validarConflitosDeHorario(Usuario usuario, Paciente paciente, LocalDate data, LocalTime hora,
-            boolean correcaoFrequencia) {
-        String orientacao = correcaoFrequencia ? " Regularize o conflito antes de corrigir a frequência." : "";
+            Long atendimentoEmCorrecao) {
+        boolean correcaoFrequencia = atendimentoEmCorrecao != null;
         boolean horarioJaOcupado = agendamentoRepository.existsAgendamentoAtivoNoMesmoHorario(
                 usuario, data, hora,
                 SITUACOES_ATIVAS);
 
         if (horarioJaOcupado) {
+            if (correcaoFrequencia) throw conflitoAssistencial(atendimentoEmCorrecao,"PROFISSIONAL");
             throw new ConflictException(
-                    "Já existe um atendimento marcado para este profissional nesta data e horário." + orientacao);
+                    "Já existe um atendimento marcado para este profissional nesta data e horário.");
         }
 
         if (agendamentoRepository.existsAtivoDoPacienteNoMesmoHorario(paciente,
                 data, hora, SITUACOES_ATIVAS)) {
-            throw new ConflictException("O paciente já possui um atendimento ativo nesta data e horário." + orientacao);
+            if (correcaoFrequencia) throw conflitoAssistencial(atendimentoEmCorrecao,"PACIENTE");
+            throw new ConflictException("O paciente já possui um atendimento ativo nesta data e horário.");
         }
+        if (correcaoFrequencia && sessaoGrupoRepository.existsSessaoDoResponsavelNoMesmoHorario(usuario,data,hora))
+            throw conflitoAssistencial(atendimentoEmCorrecao,"SESSAO_PROFISSIONAL");
+        // Reuse the existing group participation conflict rule; no group row or third party is changed.
+        if (correcaoFrequencia && sessaoGrupoRepository.existsParticipacaoNoMesmoHorario(paciente,data,hora,
+                com.pet.buscaativa.entities.enums.StatusSessaoGrupo.CANCELADA))
+            throw conflitoAssistencial(atendimentoEmCorrecao,"PARTICIPACAO_GRUPO");
+    }
+
+    private com.pet.buscaativa.services.exceptions.PendenciaFrequenciaException conflitoAssistencial(Long id,String tipo) {
+        return new com.pet.buscaativa.services.exceptions.PendenciaFrequenciaException(
+            "CONFLITO_ASSISTENCIAL_PENDENTE_RECONCILIACAO",tipo,id,null);
     }
 
     private void validarHorario(TurnoEnum turno, LocalTime hora) {
@@ -553,7 +567,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
             // The current row is missed or substituted (inactive), so it cannot conflict with itself.
             // Correct the historical fact under the same locks, independently of the current offer/grid.
             validarConflitosDeHorario(profissionalBloqueado, pacienteBloqueado, agendamento.getDataAgendamento(),
-                    agendamento.getHoraAtendimento(), true);
+                    agendamento.getHoraAtendimento(), agendamento.getId());
         } else if (!correcaoDeSubstituido && SITUACOES_ATIVAS.contains(novoStatus) && !SITUACOES_ATIVAS.contains(statusAnterior)) {
             validarVaga(profissionalBloqueado, pacienteBloqueado, agendamento.getDataAgendamento(),
                     agendamento.getTurnoAgendamento(), agendamento.getHoraAtendimento());

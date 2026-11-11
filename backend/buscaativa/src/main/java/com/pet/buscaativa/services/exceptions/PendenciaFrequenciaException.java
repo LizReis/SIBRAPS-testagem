@@ -7,7 +7,9 @@ public class PendenciaFrequenciaException extends ConflictException {
     private final Long agendamentoId;
     private final Long sessaoId;
     public PendenciaFrequenciaException(String codigo,String tipo,Long agendamento,Long sessao) {
-        super("O atendimento necessita de revisão autorizada na reconciliação; nenhuma frequência foi alterada.");
+        super(codigo.startsWith("CONFLITO_")
+            ? "Regularize o conflito por revisão autorizada na reconciliação; nenhuma frequência foi alterada."
+            : "Horário assistencial pendente de revisão autorizada; nenhuma frequência foi alterada.");
         this.codigo=codigo;this.tipoConflito=tipo;this.agendamentoId=agendamento;this.sessaoId=sessao;
     }
     public String getCodigo(){return codigo;}
