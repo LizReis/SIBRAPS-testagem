@@ -41,6 +41,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     private final InscricaoRetroativaGrupoAuditoriaRepository auditoriaRetroativaRepository;
     private final AgendamentoRepository agendamentoRepository;
     private final Clock clock;
+    private final com.pet.buscaativa.services.PoliticaTemporalFrequencia politicaTemporal;
     private final EscopoUnidadeService escopoUnidadeService;
     private final com.pet.buscaativa.services.AutorizacaoClinicaService autorizacaoClinica;
     private final com.pet.buscaativa.services.PoliticaJustificativaCorrecao politicaJustificativa;
@@ -270,8 +271,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         autorizacaoClinica.validarSessao(sessao);
         if (sessao.getStatus() != StatusSessaoGrupo.AGENDADA)
             throw new ValidationException("A frequência provisória só pode ser alterada em sessão agendada.");
-        if (sessaoAindaNaoIniciou(sessao))
-            throw new ValidationException("Não é possível registrar presença antes do início da sessão.");
+        politicaTemporal.validarSessao(sessao, false);
         SessaoGrupoParticipante participante = buscarParticipante(sessao, pacienteId);
         participante.setStatusPresenca(dto.statusPresenca());
         participanteRepository.save(participante);
@@ -310,8 +310,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
             sessao.setStatus(StatusSessaoGrupo.CANCELADA);
             return toSessaoDTO(sessaoRepository.save(sessao));
         }
-        if (sessaoAindaNaoIniciou(sessao))
-            throw new ValidationException("Não é possível confirmar uma sessão futura.");
+        politicaTemporal.validarSessao(sessao, false);
         List<FrequenciaParticipanteGrupoDTO> recebidas = dto.frequencias() == null ? List.of() : dto.frequencias();
         Set<UUID> ids = new HashSet<>();
         for (var f : recebidas) {
@@ -377,6 +376,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
                 .equals(realizadas.stream().map(SessaoGrupo::getId).collect(java.util.stream.Collectors.toSet())))
             throw new ValidationException("Informe a frequência de todas e somente as sessões passadas realizadas.");
         realizadas.forEach(autorizacaoClinica::validarSessao);
+        realizadas.forEach(s -> politicaTemporal.validarSessao(s, false));
         for (SessaoGrupo s : sessoes)
             if (s.getStatus() == StatusSessaoGrupo.AGENDADA
                     && LocalDateTime.of(s.getDataSessao(), s.getHorario()).isBefore(agora))
@@ -497,6 +497,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         autorizacaoClinica.validarSessao(sessao);
         if (sessao.getStatus() != StatusSessaoGrupo.REALIZADA) throw new ValidationException("Somente sessões realizadas permitem correção de frequência.");
         if (dto.version() != null && !dto.version().equals(sessao.getVersion())) throw new OptimisticLockException("A sessão foi alterada por outro usuário.");
+        politicaTemporal.validarSessao(sessao, true);
         if(dto.frequencias()==null || dto.frequencias().isEmpty())throw new ValidationException("Informe as frequências para correção.");
         Set<UUID> ids = new HashSet<>(); List<SessaoGrupoParticipante> alterados = new ArrayList<>();
         Map<UUID,StatusPresencaGrupo> destinos = new java.util.HashMap<>();

@@ -34,8 +34,10 @@ import tools.jackson.databind.ObjectMapper;
 /** Real H2, independent committed fixtures; concurrent operations never share a test transaction. */
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:agenda-integrity;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=5000",
-        "spring.datasource.hikari.maximum-pool-size=16"})
+        "spring.datasource.hikari.maximum-pool-size=16",
+        "sibraps.test.closed-day-clock=true"})
 @AutoConfigureMockMvc(print = MockMvcPrint.NONE)
+@org.springframework.context.annotation.Import(ClosedDayAgendaClock.class)
 abstract class AgendaIntegritySupport extends SecurityTestSupport {
     @MockitoBean SusApiAdapter susApi;
     @Autowired UsuarioRepository users;

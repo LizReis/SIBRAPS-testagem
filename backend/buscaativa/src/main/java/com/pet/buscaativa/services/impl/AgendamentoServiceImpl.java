@@ -66,6 +66,8 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     private final PacienteService pacienteService;
     private final HistoricoPacienteService historicoPacienteService;
     private final AgendaHorarioProperties agendaHorarioProperties;
+    private final java.time.Clock clock;
+    private final com.pet.buscaativa.services.PoliticaTemporalFrequencia politicaTemporal;
     private final EscopoUnidadeService escopoUnidadeService;
     private final com.pet.buscaativa.services.AutorizacaoClinicaService autorizacaoClinica;
     private final com.pet.buscaativa.services.PoliticaJustificativaCorrecao politicaJustificativa;
@@ -99,7 +101,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
             throw new ValidationException("O usuário selecionado não é um profissional habilitado para atendimento.");
         }
 
-        if (agendamentoDTO.dataAgendamento().isBefore(LocalDate.now())) {
+        if (agendamentoDTO.dataAgendamento().isBefore(LocalDate.now(clock))) {
             throw new ValidationException("Não é permitido criar agendamento em data passada.");
         }
 
@@ -219,7 +221,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
                     "Não é possível sugerir remarcação individual para atendimentos de Grupo Terapêutico.");
         }
 
-        return buscarProximasVagasDisponiveis(original.getUsuario(), original.getTurnoAgendamento(), LocalDate.now(),
+        return buscarProximasVagasDisponiveis(original.getUsuario(), original.getTurnoAgendamento(), LocalDate.now(clock),
                 3);
     }
 
@@ -264,7 +266,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     @Override
     public HorariosDisponiveisDTO buscarHorariosDisponiveis(UUID usuarioIdPublico, LocalDate data, TurnoEnum turno) {
         if (data == null || turno == null) throw new ValidationException("Informe a data e o turno da consulta.");
-        if (data.isBefore(LocalDate.now()))
+        if (data.isBefore(LocalDate.now(clock)))
             throw new ValidationException("Não é permitido consultar horários em data passada.");
         Usuario usuario = usuarioRepository.findByIdPublico(usuarioIdPublico)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado"));
@@ -487,7 +489,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
                 || frequenciaConhecida == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU;
         autorizacaoClinica.validarAgendamento(agendamento, comandoClinico && fatoRegistrado);
         LocalDate dataAgendamento = agendamento.getDataAgendamento();
-        if (novoStatus != SituacaoAtendimento.CANCELADO && dataAgendamento != null && dataAgendamento.isAfter(LocalDate.now())) {
+        if (!comandoClinico && novoStatus != SituacaoAtendimento.CANCELADO && dataAgendamento != null && dataAgendamento.isAfter(LocalDate.now(clock))) {
             throw new ValidationException(
                     "Não é permitido registrar presença ou falta para agendamentos com data futura.");
         }
@@ -511,6 +513,8 @@ public class AgendamentoServiceImpl implements AgendamentoService {
             throw new ConflictException("Cancelamento administrativo não é permitido para frequência registrada ou reserva substituída; a regularização exige fluxo clínico próprio.");
         if (frequenciaRegistrada && (novoStatus == SituacaoAtendimento.AGENDADO || novoStatus == SituacaoAtendimento.REMARCADO))
             throw new ConflictException("A frequência registrada deve ser preservada; esta alteração de reserva exige revisão.");
+
+        if (comandoClinico) politicaTemporal.validarAgendamento(agendamento, fatoRegistrado);
 
         if (statusAnterior == novoStatus || (correcaoDeSubstituido && frequenciaAnterior.name().equals(novoStatus.name()))) {
             return agendamentoMapper.toAgendamentoDTO(agendamento);
