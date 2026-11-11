@@ -34,4 +34,8 @@ class AttendanceTemporalHttpTests extends AgendaIntegritySupport {
         now("2030-04-10T14:59");var a=fact(DAY);var before=database();var payload=Map.of("novaFrequencia","PRESENTE","version",a.getVersion(),"justificativa","Conferência sintética do registro assistencial original.","horarioServidor","2030-04-10T18:00","dataAgendamento","2030-04-09","horaAtendimento","08:00");
         var r=mvc.perform(patch("/api/agendamentos/"+a.getId()+"/frequencia/correcao").header("Authorization","Bearer "+tokens.gerarToken(admin)).contentType("application/json").content(json.writeValueAsString(payload))).andReturn().getResponse();assertEquals(422,r.getStatus());assertEquals(before,database());
     }
+    @Test void historyAbsenceDaysUseOfficialDateAtUtcMidnight() throws Exception {
+        now("2030-04-10T21:10");var a=tx(()->seed(patient,professional,SituacaoAtendimento.AGENDADO,DAY.minusDays(1),"15:00"));
+        assertEquals(200,change(professional,a,"PRESENTE"));var r=mvc.perform(get("/api/pacientes/"+patient.getIdPublico()+"/historico").header("Authorization","Bearer "+tokens.gerarToken(admin))).andReturn().getResponse();assertEquals(200,r.getStatus());assertEquals(1,json.readTree(r.getContentAsString()).get("diasSemComparecer").asInt());assertEquals(DAY.minusDays(1),patients.findById(patient.getId()).orElseThrow().getDataUltimaPresenca());
+    }
 }

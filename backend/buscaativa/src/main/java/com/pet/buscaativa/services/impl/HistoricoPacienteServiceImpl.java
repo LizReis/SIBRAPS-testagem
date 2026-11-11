@@ -36,6 +36,7 @@ import lombok.RequiredArgsConstructor;
 public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
 
     private final HistoricoPacienteRepository historicoRepository;
+    private final java.time.Clock clock;
     private final PacienteRepository pacienteRepository;
     private final UsuarioRepository usuarioRepository;
     private final EscopoUnidadeService escopoUnidadeService;
@@ -60,7 +61,7 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
         long grupos = contar(eventos, TipoEventoHistoricoPaciente.PARTICIPACAO_GRUPO_TERAPEUTICO);
         long buscas = contar(eventos, TipoEventoHistoricoPaciente.BUSCA_ATIVA);
         Long diasSemComparecer = paciente.getDataUltimaPresenca() == null ? null
-                : Math.max(0, ChronoUnit.DAYS.between(paciente.getDataUltimaPresenca(), LocalDate.now()));
+                : Math.max(0, ChronoUnit.DAYS.between(paciente.getDataUltimaPresenca(), LocalDate.now(clock)));
 
         return new HistoricoPacienteDTO( paciente.getNome(),
                 paciente.getStatusPaciente(), paciente.getClassificacaoRisco(), paciente.getTipoAcompanhamento(),

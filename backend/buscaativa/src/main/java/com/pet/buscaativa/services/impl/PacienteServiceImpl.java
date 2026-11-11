@@ -160,7 +160,7 @@ public class PacienteServiceImpl implements PacienteService{
                 .and((r,c,b)->b.equal(r.get("statusPaciente"),StatusPaciente.ATIVO)));
         var resumo=new PacienteResumoDTO(ativos.size(), ativos.stream().filter(p->p.getClassificacaoRisco()==ClassificacaoRisco.AMARELO).count(),
                 ativos.stream().filter(p->p.getClassificacaoRisco()==ClassificacaoRisco.VERMELHO).count(),
-                ativos.stream().filter(p->politicaClassificacao.semPresencaRecente(p, LocalDate.now())).count());
+                ativos.stream().filter(p->politicaClassificacao.semPresencaRecente(p, LocalDate.now(clock))).count());
         return new PacienteListaResponseDTO(resumo, resultado.map(PacienteListaDTO::new).getContent(), page,size,
                 resultado.getTotalElements(), resultado.getTotalPages());
     }
@@ -169,7 +169,7 @@ public class PacienteServiceImpl implements PacienteService{
     public PacienteDetalheDTO findDetalhe(UUID idPublico) {
         Paciente p=pacienteRepository.findByIdPublico(idPublico).filter(escopoUnidadeService::pacientePertenceAoEscopo).orElseThrow(()->new ResourceNotFoundException(idPublico));
         var proximo=agendamentoRepository.findFirstByPacienteAndDataAgendamentoGreaterThanEqualAndSituacaoAtendimentoInOrderByDataAgendamentoAscHoraAtendimentoAsc(
-                p, LocalDate.now(), List.of(SituacaoAtendimento.AGENDADO, SituacaoAtendimento.REMARCADO))
+                p, LocalDate.now(clock), List.of(SituacaoAtendimento.AGENDADO, SituacaoAtendimento.REMARCADO))
                 .map(a->new ProximoAgendamentoDTO(a.getId(),a.getDataAgendamento(),a.getHoraAtendimento(),a.getSituacaoAtendimento())).orElse(null);
         String atencao=p.getStatusPaciente()!=StatusPaciente.ATIVO ? "Acompanhamento "+p.getStatusPaciente().name().toLowerCase().replace('_',' ')
                 : Boolean.TRUE.equals(p.getIndicadoresPendentes()) ? "Indicadores pendentes de revisão do histórico"
