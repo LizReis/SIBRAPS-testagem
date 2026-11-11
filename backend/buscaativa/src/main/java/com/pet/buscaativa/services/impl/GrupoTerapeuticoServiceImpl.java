@@ -340,7 +340,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         }
         participanteRepository.saveAll(participantes);
         sessao.setMotivoCancelamento(null);
-        sessao.setStatus(StatusSessaoGrupo.REALIZADA);
+        sessao.confirmarRealizacao(sessao.getGrupo().getCoordenador());
         sessaoRepository.saveAndFlush(sessao);
         for (Paciente p : pacientes)
             pacienteService.recalcularAssiduidadePaciente(p);
@@ -376,6 +376,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         if (!informadas.keySet()
                 .equals(realizadas.stream().map(SessaoGrupo::getId).collect(java.util.stream.Collectors.toSet())))
             throw new ValidationException("Informe a frequência de todas e somente as sessões passadas realizadas.");
+        realizadas.forEach(autorizacaoClinica::validarSessao);
         for (SessaoGrupo s : sessoes)
             if (s.getStatus() == StatusSessaoGrupo.AGENDADA
                     && LocalDateTime.of(s.getDataSessao(), s.getHorario()).isBefore(agora))
@@ -621,7 +622,10 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
                 .filter(p -> p.statusPresenca() == StatusPresencaGrupo.PRESENTE).count();
         return new SessaoGrupoDTO(s.getId(), s.getGrupo().getId(), s.getGrupo().getTema(),
                 s.getGrupo().getCoordenador().getNome(), s.getDataSessao(), s.getHorario(), s.getStatus(),
-                statusExibicao(s), s.getMotivoCancelamento(), ps, ps.size(), presencas, s.getVersion());
+                statusExibicao(s), s.getMotivoCancelamento(), ps, ps.size(), presencas, s.getVersion(),
+                s.getResponsavelAtendimento()==null?null:s.getResponsavelAtendimento().getIdPublico(),
+                s.getResponsavelAtendimento()==null?null:s.getResponsavelAtendimento().getNome(),
+                s.isResponsabilidadePendente(),s.getMotivoResponsabilidadePendente(),s.getOrigemResponsabilidade());
     }
 
     private StatusExibicaoSessaoGrupo statusExibicao(SessaoGrupo s) {

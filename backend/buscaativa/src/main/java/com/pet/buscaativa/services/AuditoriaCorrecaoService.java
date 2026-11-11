@@ -36,7 +36,7 @@ public class AuditoriaCorrecaoService {
     public void registrarGrupo(SessaoGrupo s,SessaoGrupoParticipante p,StatusPresencaGrupo before,String reason,int previousVersion) {
         authorization.validarSessao(s);
         var actor=scope.usuarioLogado();
-        entityManager.persist(new AuditoriaCorrecaoFrequencia(null,s,p,p.getPaciente(),actor,s.getGrupo().getCoordenador(),scope.unidadePainel().valor(),
+        entityManager.persist(new AuditoriaCorrecaoFrequencia(null,s,p,p.getPaciente(),actor,s.getResponsavelAtendimento(),scope.unidadePainel().valor(),
                 FrequenciaAssistencial.valueOf(before.name()),FrequenciaAssistencial.valueOf(p.getStatusPresenca().name()),reason,clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS),previousVersion,s.getVersion()));
         entityManager.flush();
     }
@@ -49,7 +49,7 @@ public class AuditoriaCorrecaoService {
     @Transactional(readOnly=true)
     public Page<AuditoriaCorrecaoDTO> listarSessao(Long id,int page,int size) {
         var s=sessions.findById(id).orElseThrow(()->new ResourceNotFoundException("Sessão não encontrada."));
-        authorization.validarSessao(s);
+        authorization.validarConsultaAuditoriaSessao(s);
         return records.findBySessao_IdAndUnidade(id,scope.unidadePainel().valor(),pagina(page,size)).map(AuditoriaCorrecaoDTO::new);
     }
     private Pageable pagina(int page,int size) {

@@ -26,10 +26,11 @@ public final class AgendaMigrationTool {
             verificarOrigemVersionada(connection);
         }
         var result = Flyway.configure().dataSource(source).table("sibraps_agenda_schema_history")
-                .locations("classpath:agenda-migration/h2").javaMigrations(new V2__identificar_frequencias_legadas())
+                .locations("classpath:agenda-migration/h2").javaMigrations(new V2__identificar_frequencias_legadas(), new V6__identificar_responsabilidade_historica())
                 .baselineOnMigrate(true).baselineVersion("0").cleanDisabled(true).load().migrate();
         CanonicalAgendaGuard.verificar(source);
         AuditoriaSchemaGuard.verificar(source);
+        ResponsabilidadeSessaoGuard.verificar(source);
         return result;
     }
 

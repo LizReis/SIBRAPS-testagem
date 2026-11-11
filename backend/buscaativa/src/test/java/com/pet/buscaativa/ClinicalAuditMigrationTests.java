@@ -32,7 +32,7 @@ class ClinicalAuditMigrationTests {
         if(version>0)Flyway.configure().dataSource(source).table("sibraps_agenda_schema_history").locations("classpath:agenda-migration/h2")
             .javaMigrations(new V2__identificar_frequencias_legadas()).baselineOnMigrate(true).baselineVersion("0").target(Integer.toString(version)).load().migrate();
         var columns=LegacyMigrationFixture.columns(source);columns.remove("sibraps_agenda_schema_history");var before=LegacyMigrationFixture.snapshot(source,columns);
-        assertEquals(4-version,AgendaMigrationTool.migrar(source).migrationsExecuted);assertEquals(before,LegacyMigrationFixture.snapshot(source,columns));
+        assertEquals(6-version,AgendaMigrationTool.migrar(source).migrationsExecuted);assertEquals(before,LegacyMigrationFixture.snapshot(source,columns));
         var jdbc=new JdbcTemplate(source);assertEquals(0,jdbc.queryForObject("select count(*) from tb_auditoria_correcao_frequencia",Integer.class));
         assertEquals(0,jdbc.queryForObject("select count(*) from tb_auditoria_busca_ativa",Integer.class));
         assertEquals(12,jdbc.queryForObject("select count(*) from tb_agendamento",Integer.class));assertEquals(6,jdbc.queryForObject("select count(*) from tb_historico_paciente",Integer.class));assertEquals(2,jdbc.queryForObject("select count(*) from revinfo",Integer.class));
@@ -56,7 +56,7 @@ class ClinicalAuditMigrationTests {
         assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update(sql,UUID.randomUUID(),1,"FALTOU","PRESENTE",null,0,1));
         assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update(sql,UUID.randomUUID(),1,"FALTOU","PRESENTE","Motivo sintético de retificação",1,1));
         jdbc.update("insert into tb_grupo_terapeutico(id,coordenador_id,tema,ativo,version) values(500,2,'Grupo sintético de constraint',true,0)");
-        jdbc.update("insert into tb_sessao_grupo(id,grupo_id,data_sessao,horario,status,version) values(500,500,DATE '2026-01-01',TIME '09:00','REALIZADA',0)");
+        jdbc.update("insert into tb_sessao_grupo(id,grupo_id,data_sessao,horario,status,version,responsavel_atendimento_id,responsabilidade_pendente) values(500,500,DATE '2026-01-01',TIME '09:00','REALIZADA',0,2,false)");
         jdbc.update("insert into tb_sessao_grupo_participante(id,sessao_grupo_id,paciente_id,status_presenca) values(500,500,1,'FALTOU')");
         assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("""
             insert into tb_auditoria_correcao_frequencia(id,sessao_id,participante_id,paciente_id,ator_id,responsavel_id,perfil,unidade,tipo_correcao,

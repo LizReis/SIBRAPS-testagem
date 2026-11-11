@@ -1000,7 +1000,9 @@ public class DevConfig implements CommandLineRunner {
         sessao.setGrupo(grupo);
         sessao.setDataSessao(data);
         sessao.setHorario(horario);
-        sessao.setStatus(status);
+        sessao.setStatus(StatusSessaoGrupo.AGENDADA);
+        if (status == StatusSessaoGrupo.REALIZADA) sessao.confirmarRealizacao(grupo.getCoordenador());
+        else sessao.setStatus(status);
         return sessao;
     }
 

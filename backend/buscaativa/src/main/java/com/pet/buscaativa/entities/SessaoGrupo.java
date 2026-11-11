@@ -36,6 +36,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @Table(name = "tb_sessao_grupo")
+@org.hibernate.annotations.Check(name="ck_sessao_responsabilidade", constraints="status <> 'REALIZADA' or ((responsavel_atendimento_id is not null and responsabilidade_pendente = false and motivo_responsabilidade_pendente is null) or (responsavel_atendimento_id is null and responsabilidade_pendente = true and motivo_responsabilidade_pendente is not null))")
 public class SessaoGrupo extends AbstractEntities implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -60,6 +61,45 @@ public class SessaoGrupo extends AbstractEntities implements Serializable {
 
     @OneToMany(mappedBy = "sessaoGrupo", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<SessaoGrupoParticipante> participantes = new ArrayList<>();
+
+    /** Consolidated at effective confirmation, independent of later group coordination. */
+    @Setter(lombok.AccessLevel.NONE)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "responsavel_atendimento_id")
+    private Usuario responsavelAtendimento;
+
+    @Setter(lombok.AccessLevel.NONE)
+    @Column(nullable = false)
+    private boolean responsabilidadePendente;
+
+    @Setter(lombok.AccessLevel.NONE)
+    @Column(length = 200)
+    private String motivoResponsabilidadePendente;
+
+    @Setter(lombok.AccessLevel.NONE)
+    @Column(length = 80)
+    private String origemResponsabilidade;
+
+    public void confirmarRealizacao(Usuario responsavelValidado) {
+        if (status != StatusSessaoGrupo.AGENDADA || responsavelAtendimento != null)
+            throw new IllegalStateException("A responsabilidade de sessão realizada não pode ser substituída.");
+        responsavelAtendimento = java.util.Objects.requireNonNull(responsavelValidado);
+        responsabilidadePendente = false;
+        motivoResponsabilidadePendente = null;
+        origemResponsabilidade = "CONFIRMACAO_REALIZACAO";
+        status = StatusSessaoGrupo.REALIZADA;
+    }
+
+    @jakarta.persistence.PrePersist
+    @jakarta.persistence.PreUpdate
+    private void protegerResponsabilidadeDesconhecida() {
+        // Unknown legacy facts remain facts; assigning the current coordinator would invent ownership.
+        if (status == StatusSessaoGrupo.REALIZADA && responsavelAtendimento == null) {
+            responsabilidadePendente = true;
+            motivoResponsabilidadePendente = "RESPONSAVEL_HISTORICO_NAO_COMPROVADO";
+            origemResponsabilidade = "PENDENTE_RECONCILIACAO";
+        }
+    }
 
     @Version
     private Integer version;

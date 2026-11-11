@@ -54,7 +54,7 @@ class ClinicalJustificationTests extends AgendaIntegritySupport {
     }
     private SessaoGrupo groupFact(){return tx(()->{
         var g=new GrupoTerapeutico();g.setCoordenador(professional);g.setTema("Justificativa sintética");groups.saveAndFlush(g);
-        var s=new SessaoGrupo();s.setGrupo(g);s.setStatus(StatusSessaoGrupo.REALIZADA);s.setDataSessao(LocalDate.now().minusDays(2));s.setHorario(LocalTime.of(8,0));sessions.saveAndFlush(s);
+        var s=new SessaoGrupo();s.setGrupo(g);s.setStatus(StatusSessaoGrupo.AGENDADA);s.confirmarRealizacao(professional);s.setDataSessao(LocalDate.now().minusDays(2));s.setHorario(LocalTime.of(8,0));sessions.saveAndFlush(s);
         var p=new SessaoGrupoParticipante();p.setSessaoGrupo(s);p.setPaciente(patient);p.setStatusPresenca(StatusPresencaGrupo.FALTOU);participants.saveAndFlush(p);histories.registrarFrequenciaGrupo(patient,s,StatusPresencaGrupo.FALTOU);return s;});}
     @Test void groupCorrectionWithoutReasonRollsBackWholeBatch() throws Exception {
         var s=groupFact();var before=snapshot(patient,null);var dto=new CorrigirFrequenciasGrupoDTO(List.of(new FrequenciaParticipanteGrupoDTO(patient.getIdPublico(),StatusPresencaGrupo.PRESENTE)),s.getVersion());

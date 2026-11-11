@@ -77,7 +77,7 @@ class ClinicalAuthorizationTests extends AgendaIntegritySupport {
     }
     private SessaoGrupo session(StatusSessaoGrupo status) {
         return tx(()->{var g=new GrupoTerapeutico();g.setCoordenador(professional);g.setTema("Grupo sintético protegido");g.setRecorrencia(RecorrenciaGrupo.UNICA);g.setHorarioPadrao(LocalTime.of(8,0));g=groups.saveAndFlush(g);
-            var s=new SessaoGrupo();s.setGrupo(g);s.setStatus(status);s.setDataSessao(LocalDate.now().minusDays(2));s.setHorario(LocalTime.of(8,0));s=sessions.saveAndFlush(s);
+            var s=new SessaoGrupo();s.setGrupo(g);s.setStatus(StatusSessaoGrupo.AGENDADA);if(status==StatusSessaoGrupo.REALIZADA)s.confirmarRealizacao(professional);else s.setStatus(status);s.setDataSessao(LocalDate.now().minusDays(2));s.setHorario(LocalTime.of(8,0));s=sessions.saveAndFlush(s);
             var p=new SessaoGrupoParticipante();p.setPaciente(patient);p.setSessaoGrupo(s);p.setStatusPresenca(status==StatusSessaoGrupo.REALIZADA?StatusPresencaGrupo.FALTOU:StatusPresencaGrupo.NAO_REGISTRADA);participants.saveAndFlush(p);if(status==StatusSessaoGrupo.REALIZADA)histories.registrarFrequenciaGrupo(patient,s,StatusPresencaGrupo.FALTOU);return s;});
     }
     @ParameterizedTest @CsvSource({"owner,200","colleague,403","admin,200","reception,403","foreign,404"})

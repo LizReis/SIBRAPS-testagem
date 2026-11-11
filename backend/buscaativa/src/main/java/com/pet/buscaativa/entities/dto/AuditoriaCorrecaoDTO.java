@@ -8,9 +8,11 @@ import com.pet.buscaativa.entities.enums.*;
 public record AuditoriaCorrecaoDTO(UUID id,Long agendamentoId,Long sessaoId,Long participanteId,UUID pacienteId,
         UUID usuarioId,TipoUsuario perfil,String unidade,UUID responsavelAtendimentoId,String tipoCorrecao,
         SituacaoReserva situacaoReserva,StatusSessaoGrupo situacaoSessao,FrequenciaAssistencial frequenciaAnterior,
-        FrequenciaAssistencial frequenciaNova,String justificativa,Instant ocorridoEm,Integer versaoAnterior,Integer versaoResultante) {
+        FrequenciaAssistencial frequenciaNova,String justificativa,Instant ocorridoEm,Integer versaoAnterior,Integer versaoResultante,UUID responsavelHistoricoSessaoId,Boolean responsabilidadeSessaoPendente) {
     public AuditoriaCorrecaoDTO(AuditoriaCorrecaoFrequencia a){this(a.getId(),a.getAgendamento()==null?null:a.getAgendamento().getId(),
         a.getSessao()==null?null:a.getSessao().getId(),a.getParticipante()==null?null:a.getParticipante().getId(),a.getPaciente().getIdPublico(),
         a.getAtor().getIdPublico(),a.getPerfil(),a.getUnidade(),a.getResponsavel().getIdPublico(),a.getTipoCorrecao(),a.getSituacaoReserva(),a.getSituacaoSessao(),
-        a.getFrequenciaAnterior(),a.getFrequenciaNova(),a.getJustificativa(),a.getOcorridoEm(),a.getVersaoAnterior(),a.getVersaoResultante());}
+        a.getFrequenciaAnterior(),a.getFrequenciaNova(),a.getJustificativa(),a.getOcorridoEm(),a.getVersaoAnterior(),a.getVersaoResultante(),
+        a.getSessao()==null||a.getSessao().getResponsavelAtendimento()==null?null:a.getSessao().getResponsavelAtendimento().getIdPublico(),
+        a.getSessao()==null?null:a.getSessao().isResponsabilidadePendente());}
 }

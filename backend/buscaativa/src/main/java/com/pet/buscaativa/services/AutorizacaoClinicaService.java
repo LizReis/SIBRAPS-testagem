@@ -23,7 +23,30 @@ public class AutorizacaoClinicaService {
         throw denied();
     }
     public void validarSessao(SessaoGrupo session) {
-        scope.validarSessaoCompleta(session); validarResponsavel(session.getGrupo().getCoordenador());
+        scope.validarSessaoCompleta(session);
+        if (session.getStatus()!=com.pet.buscaativa.entities.enums.StatusSessaoGrupo.REALIZADA) {
+            validarResponsavel(session.getGrupo().getCoordenador()); return;
+        }
+        if (session.isResponsabilidadePendente() || session.getResponsavelAtendimento()==null)
+            throw new com.pet.buscaativa.services.exceptions.ConflictException("Responsabilidade histórica pendente de reconciliação; nenhuma frequência foi alterada.");
+        validarIdentidadeHistorica(session);
+    }
+    public void validarConsultaAuditoriaSessao(SessaoGrupo session) {
+        scope.validarSessaoCompleta(session);
+        if (scope.usuarioLogado().getTipoUsuario()==TipoUsuario.ADMINISTRADOR) return;
+        if (session.getStatus()!=com.pet.buscaativa.entities.enums.StatusSessaoGrupo.REALIZADA) {
+            validarResponsavel(session.getGrupo().getCoordenador()); return;
+        }
+        if (session.isResponsabilidadePendente() || session.getResponsavelAtendimento()==null) throw denied();
+        validarIdentidadeHistorica(session);
+    }
+    private void validarIdentidadeHistorica(SessaoGrupo session) {
+        var actor=scope.usuarioLogado();
+        // Full resource scope was already checked. A moved former owner cannot act in the old unit;
+        // the unit administrator can still supervise without changing that historical identity.
+        if (actor.getTipoUsuario()==TipoUsuario.ADMINISTRADOR || actor.getTipoUsuario()==TipoUsuario.PROFISSIONAL
+                && Objects.equals(actor.getId(),session.getResponsavelAtendimento().getId())) return;
+        throw denied();
     }
     public void validarGrupoClinico(GrupoTerapeutico group) {
         scope.validarGrupo(group); validarResponsavel(group.getCoordenador());
