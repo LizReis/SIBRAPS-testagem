@@ -23,3 +23,21 @@ A mesma política atende individuais, presença provisória, confirmação real 
 Os fixtures de AgendaIntegritySupport agora usam explicitamente Clock.fixed no fim do dia assistencial representado pelos testes. Isso mantém seus cenários de frequência passada, independentemente da hora em que a suíte executa, sem remover validação; novas suítes controlam o relógio antes/exatamente/depois. A configuração é restrita ao classpath e propriedade dos testes, não entra em produção nem contamina aplicações persistidas de validação.
 
 Execução 4A: 603 casos = 579 anteriores + 24 novos, zero falhas/erros/ignorados. Nenhuma migração criada.
+
+## 4B — contrato específico e aplicação compartilhada
+
+PATCH /api/agendamentos/{id}/frequencia/correcao recebe CorrigirFrequenciaDTO: novaFrequencia PRESENTE/FALTOU, version inteira não negativa obrigatória e justificativa entre 10 e 2000 caracteres, validada pela política existente (inclui rejeição de genéricos e normalização). Exemplo:
+
+```json
+{"novaFrequencia":"PRESENTE","version":4,"justificativa":"Presença confirmada após conferência do registro assistencial."}
+```
+
+Retorna 200 com AgendamentoDTO existente: id, situação da reserva preservada, frequenciaAssistencial e version resultante. Ator, responsável, instante e campos da reserva não são argumentos do comando. NR como destino é 422; valores fora do enum não são JSON válido para esse campo (400). Corpo ausente/ilegível segue convenção existente. NR de origem é 409; CANCELADA permanece recusada (422, Etapa 5); SUBSTITUIDA com frequência conhecida é corrigível sem reabertura. Migração pendente continua bloqueada.
+
+Novo endpoint e duas sobrecargas legadas usam uma aplicação central transacional: paciente→profissional→atendimento, escopo e responsável, estado, versão antes de idempotência, política temporal, motivo, conflito, recálculo, histórico e auditoria. Novo endpoint exige versão e motivo também em no-op; legado conserva versão opcional e no-op sem motivo, com escopo/autorização/versão informada/tempo sempre validados. Uma alteração real exige motivo em ambos. Versão obsoleta nunca vira sucesso só por coincidir com o destino atual.
+
+Matriz: responsável e administrador local autorizados; colega/recepção 403, externo 404 e não autenticado 401. USFs com IDs diferentes não compartilham acesso. Recepção mantém registro inicial via status, sem justificativa artificial e com fronteira >= horário. Angular precisará enviar version e motivo ao novo endpoint na Etapa 8; não foi criado bypass visual.
+
+Histórico individual mantém profissional do atendimento, evento e identidade. Em novas escritas de frequência de grupo, profissional passa a ser o responsável histórico, enquanto executor permanece na auditoria e Envers. Eventos antigos não são reescritos por startup/migração; a correção legítima atualiza sua representação na própria transação. Inscrição retroativa inicial também valida tempo/autorização das sessões realizadas antes de construir a cronologia, protegendo dados incompletos em vez de falhar com NPE.
+
+Validação 4B: 125 testes focados aprovados, incluindo 38 novos de contrato, permissões, direções, idempotência, versão, payload adulterado e rollback após frequência/histórico/INSERT real de auditoria. Todos sem falhas/erros/ignorados.

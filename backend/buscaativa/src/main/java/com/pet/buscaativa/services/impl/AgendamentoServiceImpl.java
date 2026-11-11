@@ -470,6 +470,22 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     @Override
     @Transactional
     public AgendamentoDTO atualizarStatus(Long id, SituacaoAtendimento novoStatus, Integer expectedVersion, String justificativa) {
+        return aplicarAtualizacao(id,novoStatus,expectedVersion,justificativa,false);
+    }
+
+    @Override
+    @Transactional
+    public AgendamentoDTO corrigirFrequencia(Long id,com.pet.buscaativa.entities.dto.CorrigirFrequenciaDTO dto) {
+        if (dto==null || dto.novaFrequencia()==null
+                || dto.novaFrequencia()==com.pet.buscaativa.entities.enums.FrequenciaAssistencial.NAO_REGISTRADA
+                || dto.version()==null || dto.version()<0)
+            throw new ValidationException("Informe frequência PRESENTE/FALTOU e versão não negativa para corrigir.");
+        return aplicarAtualizacao(id,SituacaoAtendimento.valueOf(dto.novaFrequencia().name()),dto.version(),dto.justificativa(),true);
+    }
+
+    /** Single application path for the dedicated command, legacy HTTP and both legacy service overloads. */
+    private AgendamentoDTO aplicarAtualizacao(Long id,SituacaoAtendimento novoStatus,Integer expectedVersion,
+            String justificativa,boolean somenteCorrecao) {
         // Read scalar identifiers only; do not cache a stale appointment before obtaining locks.
         var identity = agendamentoRepository.findLockIdentityById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Agendamento não encontrado"));
@@ -511,17 +527,23 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         if (novoStatus == SituacaoAtendimento.CANCELADO && (frequenciaRegistrada
                 || agendamento.getSituacaoReserva() == com.pet.buscaativa.entities.enums.SituacaoReserva.SUBSTITUIDA))
             throw new ConflictException("Cancelamento administrativo não é permitido para frequência registrada ou reserva substituída; a regularização exige fluxo clínico próprio.");
+        if (somenteCorrecao && !frequenciaRegistrada)
+            throw new ConflictException("A rota de correção exige frequência anterior comprovada; registro inicial possui fluxo próprio.");
+        if (comandoClinico && agendamento.getSituacaoReserva()==com.pet.buscaativa.entities.enums.SituacaoReserva.CANCELADA)
+            throw new ValidationException("Atendimento cancelado exige regularização específica; nenhuma frequência foi alterada.");
         if (frequenciaRegistrada && (novoStatus == SituacaoAtendimento.AGENDADO || novoStatus == SituacaoAtendimento.REMARCADO))
             throw new ConflictException("A frequência registrada deve ser preservada; esta alteração de reserva exige revisão.");
 
         if (comandoClinico) politicaTemporal.validarAgendamento(agendamento, fatoRegistrado);
+
+        String motivo = somenteCorrecao ? politicaJustificativa.validar(justificativa) : null;
 
         if (statusAnterior == novoStatus || (correcaoDeSubstituido && frequenciaAnterior.name().equals(novoStatus.name()))) {
             return agendamentoMapper.toAgendamentoDTO(agendamento);
         }
 
 
-        String motivo = frequenciaRegistrada && destinoClinico ? politicaJustificativa.validar(justificativa) : null;
+        if (motivo==null && frequenciaRegistrada && destinoClinico) motivo=politicaJustificativa.validar(justificativa);
 
         if ((novoStatus == SituacaoAtendimento.PRESENTE || novoStatus == SituacaoAtendimento.FALTOU)
                 && (statusAnterior == SituacaoAtendimento.CANCELADO || (statusAnterior == SituacaoAtendimento.REMARCADO_ORIGEM && !correcaoDeSubstituido)))

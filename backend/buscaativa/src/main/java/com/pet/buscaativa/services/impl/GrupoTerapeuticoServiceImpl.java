@@ -370,13 +370,14 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         if (!idsGrupo.containsAll(informadas.keySet()))
             throw new ValidationException("Sessão informada não pertence ao grupo.");
         LocalDateTime agora = LocalDateTime.now(clock);
+        sessoes.stream().filter(s -> s.getStatus()==StatusSessaoGrupo.REALIZADA).forEach(s -> {
+            autorizacaoClinica.validarSessao(s); politicaTemporal.validarSessao(s,false);
+        });
         List<SessaoGrupo> realizadas = sessoes.stream().filter(s -> s.getStatus() == StatusSessaoGrupo.REALIZADA
                 && !LocalDateTime.of(s.getDataSessao(), s.getHorario()).isAfter(agora)).toList();
         if (!informadas.keySet()
                 .equals(realizadas.stream().map(SessaoGrupo::getId).collect(java.util.stream.Collectors.toSet())))
             throw new ValidationException("Informe a frequência de todas e somente as sessões passadas realizadas.");
-        realizadas.forEach(autorizacaoClinica::validarSessao);
-        realizadas.forEach(s -> politicaTemporal.validarSessao(s, false));
         for (SessaoGrupo s : sessoes)
             if (s.getStatus() == StatusSessaoGrupo.AGENDADA
                     && LocalDateTime.of(s.getDataSessao(), s.getHorario()).isBefore(agora))

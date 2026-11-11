@@ -31,6 +31,8 @@ public interface AgendamentoService {
 
     List<AgendamentoDTO> buscarAgendaPorPeriodo(LocalDate dataInicio, LocalDate dataFim, String emailLogado, UUID profissionalIdPublico);
 
+    AgendamentoDTO corrigirFrequencia(Long id, com.pet.buscaativa.entities.dto.CorrigirFrequenciaDTO correcao);
+
     AgendamentoDTO atualizarStatus(Long id, SituacaoAtendimento novoStatus, Integer expectedVersion);
 
     AgendamentoDTO atualizarStatus(Long id, SituacaoAtendimento novoStatus, Integer expectedVersion, String justificativa);

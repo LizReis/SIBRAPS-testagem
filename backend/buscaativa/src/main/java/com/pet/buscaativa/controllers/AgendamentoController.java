@@ -36,6 +36,13 @@ public class AgendamentoController {
 
     private final AgendamentoService agendamentoService;
 
+    @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'PROFISSIONAL')")
+    @PatchMapping("/{id}/frequencia/correcao")
+    public ResponseEntity<AgendamentoDTO> corrigirFrequencia(@PathVariable Long id,
+            @RequestBody @Valid com.pet.buscaativa.entities.dto.CorrigirFrequenciaDTO correcao) {
+        return ResponseEntity.ok(agendamentoService.corrigirFrequencia(id, correcao));
+    }
+
     @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'RECEPCAO')")
     @PostMapping
     public ResponseEntity<AgendamentoDTO> criarAgendamento(@RequestBody @Valid AgendamentoDTO agendamentoDTO) {

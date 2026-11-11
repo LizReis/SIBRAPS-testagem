@@ -163,7 +163,7 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
         TipoEventoHistoricoPaciente tipo = status == StatusPresencaGrupo.PRESENTE
                 ? TipoEventoHistoricoPaciente.PARTICIPACAO_GRUPO_TERAPEUTICO : TipoEventoHistoricoPaciente.FALTA;
         HistoricoPaciente h = new HistoricoPaciente();
-        h.setPaciente(paciente); h.setSessaoGrupo(sessao); h.setProfissional(usuarioLogado()); h.setTipo(tipo);
+        h.setPaciente(paciente); h.setSessaoGrupo(sessao); h.setProfissional(sessao.getResponsavelAtendimento()); h.setTipo(tipo);
         h.setSituacaoAtendimento(status == StatusPresencaGrupo.PRESENTE ? SituacaoAtendimento.PRESENTE : SituacaoAtendimento.FALTOU);
         h.setOcorridoEm(LocalDateTime.of(sessao.getDataSessao(), sessao.getHorario()));
         h.setDescricao("Frequência no grupo " + sessao.getGrupo().getTema() + ", sessão " + sessao.getId() + ".");
@@ -179,7 +179,7 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
         boolean presente = status == StatusPresencaGrupo.PRESENTE;
         h.setTipo(presente ? TipoEventoHistoricoPaciente.PARTICIPACAO_GRUPO_TERAPEUTICO : TipoEventoHistoricoPaciente.FALTA);
         h.setSituacaoAtendimento(presente ? SituacaoAtendimento.PRESENTE : SituacaoAtendimento.FALTOU);
-        h.setProfissional(usuarioLogado());
+        h.setProfissional(sessao.getResponsavelAtendimento());
         h.setDescricao("Frequência corrigida no grupo " + sessao.getGrupo().getTema() + ", sessão " + sessao.getId() + ".");
         h.setNumeroFaltaConsecutiva(presente ? null : paciente.getCountFaltas());
         historicoRepository.save(h);
