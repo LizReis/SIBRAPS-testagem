@@ -1,0 +1,48 @@
+package com.pet.buscaativa;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import java.time.*;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import com.pet.buscaativa.entities.*;
+import com.pet.buscaativa.entities.dto.*;
+import com.pet.buscaativa.entities.enums.*;
+import com.pet.buscaativa.repositories.*;
+import com.pet.buscaativa.services.*;
+
+class GroupFrequencyTemporalTests extends AgendaIntegritySupport {
+    static final LocalDate DAY=LocalDate.of(2030,4,10);
+    static final String REASON="Frequências conferidas no prontuário sintético da sessão realizada.";
+    @MockitoSpyBean Clock clock;
+    @MockitoSpyBean AuditoriaCorrecaoService audit;
+    @Autowired GrupoTerapeuticoService groupService;
+    @Autowired GrupoTerapeuticoRepository groups;
+    @Autowired SessaoGrupoRepository sessions;
+    @Autowired SessaoGrupoParticipanteRepository participants;
+    @Autowired HistoricoPacienteService histories;
+    @Autowired PacienteService clinical;
+    @Autowired AuditoriaCorrecaoRepository audits;
+    private void now(String value){doReturn(LocalDateTime.parse(value).atZone(ZoneId.of("America/Bahia")).toInstant()).when(clock).instant();}
+    @BeforeEach void afterSession(){now("2030-04-10T16:00");}
+    private Object database(){var ds=Objects.requireNonNull(jdbc.getDataSource());return LegacyMigrationFixture.snapshot(ds,LegacyMigrationFixture.columns(ds));}
+    private SessaoGrupo fixture(boolean performed){return tx(()->{var g=new GrupoTerapeutico();g.setCoordenador(professional);g.setTema("Grupo sintético temporal");g.setHorarioPadrao(LocalTime.of(15,0));g.setRecorrencia(RecorrenciaGrupo.UNICA);g.setAtivo(true);groups.saveAndFlush(g);var s=new SessaoGrupo();s.setGrupo(g);s.setDataSessao(DAY);s.setHorario(LocalTime.of(15,0));s.setStatus(StatusSessaoGrupo.AGENDADA);if(performed)s.confirmarRealizacao(professional);sessions.saveAndFlush(s);for(var patient:List.of(patient,other)){var p=new SessaoGrupoParticipante();p.setSessaoGrupo(s);p.setPaciente(patient);p.setStatusPresenca(performed?StatusPresencaGrupo.FALTOU:StatusPresencaGrupo.NAO_REGISTRADA);participants.saveAndFlush(p);if(performed){clinical.recalcularAssiduidadePaciente(patient);histories.registrarFrequenciaGrupo(patient,s,StatusPresencaGrupo.FALTOU);}}return s;});}
+    private CorrigirFrequenciasGrupoDTO batch(SessaoGrupo s){return new CorrigirFrequenciasGrupoDTO(List.of(new FrequenciaParticipanteGrupoDTO(patient.getIdPublico(),StatusPresencaGrupo.PRESENTE),new FrequenciaParticipanteGrupoDTO(other.getIdPublico(),StatusPresencaGrupo.PRESENTE)),s.getVersion(),REASON);}
+    private int correct(Usuario actor,SessaoGrupo s,CorrigirFrequenciasGrupoDTO dto) throws Exception{return businessStatus(mvc.perform(patch("/api/grupos/sessoes/"+s.getId()+"/frequencias").header("Authorization","Bearer "+tokens.gerarToken(actor)).contentType("application/json").content(json.writeValueAsString(dto))).andReturn().getResponse());}
+    @ParameterizedTest @CsvSource({"2030-04-10T14:59,422","2030-04-10T15:00,422","2030-04-10T15:01,200","2030-04-11T09:00,200"})
+    void sameStrictCorrectionBoundaryForAtomicGroupBatch(String time,int expected) throws Exception {var s=fixture(true);now(time);var before=database();long rows=appointments.count(),events=history.count(),count=audits.count();assertEquals(expected,correct(professional,s,batch(s)));if(expected!=200)assertEquals(before,database());else{assertEquals(rows,appointments.count());assertEquals(events,history.count());assertEquals(count+2,audits.count());assertEquals(0,patients.findById(patient.getId()).orElseThrow().getCountFaltas());assertEquals(0,patients.findById(other.getId()).orElseThrow().getCountFaltas());assertEquals(1,sessions.findById(s.getId()).orElseThrow().getVersion());}}
+    @ParameterizedTest @CsvSource({"owner,200","admin,200","colleague,403","foreign,404","reception,403"})
+    void historicalResponsibilityAndActorRemainDifferentAfterTransfer(String role,int expected) throws Exception {var s=fixture(true);var actor=switch(role){case "owner"->professional;case "admin"->admin;case "colleague"->colleague;case "foreign"->tx(()->user(TipoUsuario.ADMINISTRADOR,UnidadeAtuacao.CAPS_I));case "reception"->tx(()->user(TipoUsuario.RECEPCAO,UnidadeAtuacao.CAPS_AD));default->throw new IllegalArgumentException();};authenticate();var g=groups.findById(s.getGrupo().getId()).orElseThrow();groupService.atualizarGrupo(g.getId(),new AtualizarGrupoTerapeuticoDTO(g.getTema(),colleague.getIdPublico(),DAY,LocalTime.of(15,0),RecorrenciaGrupo.UNICA,null,g.getVersion()));var before=database();assertEquals(expected,correct(actor,s,batch(s)));if(expected!=200){assertEquals(before,database());return;}for(var row:jdbc.queryForList("select ator_id,responsavel_id from tb_auditoria_correcao_frequencia where sessao_id=?",s.getId())){assertEquals(actor.getId(),row.get("ATOR_ID"));assertEquals(professional.getId(),row.get("RESPONSAVEL_ID"));}assertEquals(List.of(professional.getId(),professional.getId()),jdbc.queryForList("select profissional_id from tb_historico_paciente where sessao_grupo_id=? order by id",Long.class,s.getId()));}
+    @ParameterizedTest @CsvSource({"2030-04-10T14:59,422","2030-04-10T15:00,200"})
+    void provisionalAndEffectiveInitialGroupRecordingUseInclusiveBoundary(String time,int expected) throws Exception {var s=fixture(false);now(time);var before=database();var r=mvc.perform(patch("/api/grupos/sessoes/"+s.getId()+"/participantes/"+patient.getIdPublico()+"/presenca").header("Authorization","Bearer "+tokens.gerarToken(professional)).contentType("application/json").content("{\"statusPresenca\":\"PRESENTE\"}")).andReturn().getResponse();assertEquals(expected,r.getStatus());if(expected!=200)assertEquals(before,database());var dto=new ConfirmarOcorrenciaGrupoDTO(true,List.of(new FrequenciaParticipanteGrupoDTO(patient.getIdPublico(),StatusPresencaGrupo.PRESENTE),new FrequenciaParticipanteGrupoDTO(other.getIdPublico(),StatusPresencaGrupo.FALTOU)),null,s.getVersion());r=mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/grupos/sessoes/"+s.getId()+"/confirmacao-ocorrencia").header("Authorization","Bearer "+tokens.gerarToken(professional)).contentType("application/json").content(json.writeValueAsString(dto))).andReturn().getResponse();assertEquals(expected,r.getStatus());if(expected!=200)assertEquals(before,database());else{assertEquals(StatusSessaoGrupo.REALIZADA,sessions.findById(s.getId()).orElseThrow().getStatus());assertEquals(0,jdbc.queryForObject("select count(*) from tb_auditoria_correcao_frequencia where sessao_id=?",Integer.class,s.getId()));}}
+    @ParameterizedTest @ValueSource(strings={"duplicate","unknown_patient","unregistered_destination","stale_version"})
+    void invalidBatchDoesNotPartiallyCorrectFirstParticipant(String defect) throws Exception {var s=fixture(true);var good=new FrequenciaParticipanteGrupoDTO(patient.getIdPublico(),StatusPresencaGrupo.PRESENTE);var bad=new FrequenciaParticipanteGrupoDTO(defect.equals("unknown_patient")?UUID.randomUUID():defect.equals("duplicate")?patient.getIdPublico():other.getIdPublico(),defect.equals("unregistered_destination")?StatusPresencaGrupo.NAO_REGISTRADA:StatusPresencaGrupo.PRESENTE);var dto=new CorrigirFrequenciasGrupoDTO(List.of(good,bad),defect.equals("stale_version")?s.getVersion()+1:s.getVersion(),REASON);var before=database();int result=correct(admin,s,dto);assertTrue(result==409||result==422||result==404);assertEquals(before,database());}
+    @Test void failureAfterSecondAuditInsertRollsBackWholeBatch(){var s=fixture(true);var before=database();var n=new AtomicInteger();doAnswer(i->{i.callRealMethod();if(n.incrementAndGet()==2)throw new IllegalStateException("synthetic after second group audit");return null;}).when(org.springframework.test.util.AopTestUtils.<AuditoriaCorrecaoService>getUltimateTargetObject(audit)).registrarGrupo(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyInt());authenticate();assertThrows(IllegalStateException.class,()->groupService.corrigirFrequencias(s.getId(),batch(s)));assertEquals(before,database());}
+    @Test void missingGroupTimeIsStructuredPendingIncludingRetroactiveInitialRoute() throws Exception {var s=fixture(true);tx(()->{var x=sessions.findById(s.getId()).orElseThrow();x.setHorario(null);sessions.saveAndFlush(x);return null;});var before=database();assertEquals(409,correct(admin,sessions.findById(s.getId()).orElseThrow(),batch(sessions.findById(s.getId()).orElseThrow())));assertEquals(before,database());var p=tx(()->patient(CapsEnum.CAPS_AD));before=database();var dto=new InscricaoRetroativaGrupoDTO(p.getIdPublico(),List.of(new FrequenciaSessaoRetroativaDTO(s.getId(),StatusPresencaGrupo.PRESENTE)));var r=mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/grupos/"+s.getGrupo().getId()+"/inscricoes-retroativas").header("Authorization","Bearer "+tokens.gerarToken(admin)).contentType("application/json").content(json.writeValueAsString(dto))).andReturn().getResponse();assertEquals(409,r.getStatus());assertEquals("HORARIO_ASSISTENCIAL_PENDENTE_RECONCILIACAO",json.readTree(r.getContentAsString()).get("codigo").asText());assertEquals(before,database());}
+}
