@@ -130,7 +130,8 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
         if ((novoStatus == SituacaoAtendimento.PRESENTE || novoStatus == SituacaoAtendimento.FALTOU)
                 && (statusAnterior == SituacaoAtendimento.PRESENTE || statusAnterior == SituacaoAtendimento.FALTOU)) {
             HistoricoPaciente atual = historicoRepository.findByAgendamento(agendamento).stream()
-                    .filter(h -> h.getTipo() == TipoEventoHistoricoPaciente.PRESENCA || h.getTipo() == TipoEventoHistoricoPaciente.FALTA)
+                    .filter(h -> h.getTipo() == TipoEventoHistoricoPaciente.PRESENCA || h.getTipo() == TipoEventoHistoricoPaciente.FALTA
+                            || h.getTipo() == TipoEventoHistoricoPaciente.PARTICIPACAO_GRUPO_TERAPEUTICO)
                     .findFirst().orElse(null);
             if (atual != null) {
                 atual.setTipo(tipo);

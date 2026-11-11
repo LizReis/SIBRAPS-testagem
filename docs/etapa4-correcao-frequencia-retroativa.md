@@ -222,3 +222,9 @@ Branch inicial/final: correcao-fluxos-assistenciais-sibraps. Base inicial: 1b073
 20. Nenhuma implementação fora do escopo; alinhamento final do relógio corrigiu somente indicadores dependentes da frequência.
 21. APROVADA PARA REVISÃO, sem declaração de prontidão para produção.
 22. Antes da Etapa 5, revisar esta entrega; permanecem regularização específica, reconciliação, HTTP global, interfaces, testes Angular/CI e SGBD definitivo, conforme Etapas 5–9. Etapa 5 não foi iniciada.
+
+## Regressão adicional de identidade do evento clínico
+
+Na conferência final foi reproduzido um caso não coberto anteriormente: agendamento individual de paciente com tipo de acompanhamento GRUPO_TERAPEUTICO pode representar a presença no histórico como PARTICIPACAO_GRUPO_TERAPEUTICO. A busca anterior da correção procurava somente PRESENCA/FALTA e criava outro evento numa alternância posterior. O teste red comprovou aumento indevido de um para dois eventos. A correção agora reconhece também essa categoria, sempre limitada ao mesmo agendamento, sem tocar eventos de sessões distintas ou mudar a classificação legada do fato.
+
+O novo caso alterna FALTOU→PRESENTE→FALTOU→PRESENTE pela rota específica e comprova IDs e quantidade do histórico estáveis, três auditorias e ausência de contagem duplicada. Não há limpeza de duplicidades preexistentes: reconciliação continua na Etapa 6. Após esse ajuste, mvnw test completo passou com **726 casos, zero falhas/erros/ignorados**. Trata-se de correção do requisito de não duplicar fatos na Etapa 4, sem início da Etapa 5.
