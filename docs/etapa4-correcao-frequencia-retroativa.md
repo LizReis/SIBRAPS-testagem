@@ -87,24 +87,24 @@ Sem skipTests ou testes desabilitados. O test final usa ambiente herdado; verify
 | Casos anteriores retidos | 579 | 579 | 0 | 0 |
 | Novos: tempo unitário e configuração | 14 | 14 | 0 | 0 |
 | Novos: tempo HTTP e resumo institucional | 18 | 18 | 0 | 0 |
-| Novos: contrato, permissões, auditoria e rollback individual | 38 | 38 | 0 | 0 |
+| Novos: contrato, permissões, auditoria e rollback individual | 39 | 39 | 0 | 0 |
 | Novos: independência de oferta | 14 | 14 | 0 | 0 |
 | Novos: identificação de colisões | 21 | 21 | 0 | 0 |
 | Novos: concorrência individual | 15 | 15 | 0 | 0 |
 | Novos: tempo, lote, autorização e rollback de grupo | 17 | 17 | 0 | 0 |
 | Novos: indicadores e P05 | 7 | 7 | 0 | 0 |
 | Novos: persistência/restauração e ambiguidade migrada | 2 | 2 | 0 | 0 |
-| TOTAL de novos casos | 146 | 146 | 0 | 0 |
-| mvnw test final | 725 | 725 | 0 | 0 |
-| mvnw verify final | 725 | 725 | 0 | 0 |
+| TOTAL de novos casos | 147 | 147 | 0 | 0 |
+| mvnw test final | 726 | 726 | 0 | 0 |
+| mvnw verify final | 726 | 726 | 0 | 0 |
 | Angular unitários | 104 | 97 | 7 | 0 |
 
-As linhas são recortes e execuções repetidas, não somar todos os conjuntos. Comparação por classe e nome dos XMLs Surefire: os mesmos **725 casos** nas duas execuções finais, **579 anteriores presentes, nenhum ausente e 146 novos**. Há 43 classes de teste executadas. Nenhum cenário antigo foi removido. A expectativa temporal antiga era aceitar todo o dia; os fixtures antigos agora representam explicitamente depois do horário, enquanto os novos testam a fronteira. Nenhuma validação foi desativada para preservar contagens.
+As linhas são recortes e execuções repetidas, não somar todos os conjuntos. Comparação por classe e nome dos XMLs Surefire: os mesmos **726 casos** nas duas execuções finais, **579 anteriores presentes, nenhum ausente e 147 novos**. Há 43 classes de teste executadas. Nenhum cenário antigo foi removido. A expectativa temporal antiga era aceitar todo o dia; os fixtures antigos agora representam explicitamente depois do horário, enquanto os novos testam a fronteira. Nenhuma validação foi desativada para preservar contagens.
 
 | Execução | Disputas | Operações | Confirmadas | Rejeitadas |
 |---|---:|---:|---:|---:|
-| test final | 68 | 156 | 82 | 74 |
-| verify final | 68 | 156 | 85 | 71 |
+| test final | 68 | 156 | 83 | 73 |
+| verify final | 68 | 156 | 83 | 73 |
 
 São 53 disputas anteriores e 15 novas. A serialização permitida explica a diferença de resultados. Cada operação usa transação e conexão próprias, com conferência posterior de versões, reserva/frequência, auditorias e indicadores. Incluem correção de grupo × transferência, duas correções de lote, individual × versão/criação/remarcação/cancelamento/capacidade/bloqueio e repetição simultânea. Erros técnicos inesperados não contam como rejeição funcional. Locks não foram substituídos por synchronized e nenhuma auditoria clínica usa REQUIRES_NEW.
 
@@ -194,7 +194,9 @@ Commits de implementação:
 - 62fe99c — fix(frequencia): identifica colisoes sem perder integridade.
 - 52ac2d2 — test(frequencia): cobre indicadores grupos e persistencia.
 - 0423938 — fix(tempo): alinha indicadores ao relogio institucional.
-- O commit documental de fechamento contém os resultados e o adendo do plano; seu SHA e a confirmação do push constam da resposta, evitando autorreferência.
+- 447ebc5 — docs(etapa4): registra validacao e pendencias (fechamento intermediário antes do caso adicional).
+- f637462 — fix(historico): preserva evento clinico nas correcoes sucessivas.
+- O commit documental final atualiza os totais após o caso adicional; seu SHA e a confirmação do push constam da resposta, evitando autorreferência.
 
 Branch inicial/final: correcao-fluxos-assistenciais-sibraps. Base inicial: 1b0735d1dad5894737ec92ac691ecb915d339ae9. Antes da publicação, remoto desta branch ainda na base; main em 967d5162dd543ec9005608739128423903e75e30 e P03/P04/P05 em 05ee61a5123dfe4e914d7c2f5f486f7ecf310164. Somente push normal da branch autorizada, sem merge, PR, force push ou rebase. Evidências/XMLs/sumários/cópias sintéticas ficaram em /tmp/sibraps-etapa4, fora do commit. O plano foi atualizado exclusivamente para registrar os compromissos das Etapas 5–9, sem implementá-las.
 
@@ -218,7 +220,7 @@ Branch inicial/final: correcao-fluxos-assistenciais-sibraps. Base inicial: 1b073
 16. Responsabilidade histórica de grupos preservada; nova coordenadora não herda correções antigas.
 17. Registro inicial autorizado da recepção preservado com a nova fronteira temporal inclusiva.
 18. Os 579 casos anteriores passaram, sem ausências ou desativações.
-19. Os 146 novos casos passaram; test e verify finais têm os mesmos 725 casos.
+19. Os 147 novos casos passaram; test e verify finais têm os mesmos 726 casos.
 20. Nenhuma implementação fora do escopo; alinhamento final do relógio corrigiu somente indicadores dependentes da frequência.
 21. APROVADA PARA REVISÃO, sem declaração de prontidão para produção.
 22. Antes da Etapa 5, revisar esta entrega; permanecem regularização específica, reconciliação, HTTP global, interfaces, testes Angular/CI e SGBD definitivo, conforme Etapas 5–9. Etapa 5 não foi iniciada.
@@ -228,3 +230,5 @@ Branch inicial/final: correcao-fluxos-assistenciais-sibraps. Base inicial: 1b073
 Na conferência final foi reproduzido um caso não coberto anteriormente: agendamento individual de paciente com tipo de acompanhamento GRUPO_TERAPEUTICO pode representar a presença no histórico como PARTICIPACAO_GRUPO_TERAPEUTICO. A busca anterior da correção procurava somente PRESENCA/FALTA e criava outro evento numa alternância posterior. O teste red comprovou aumento indevido de um para dois eventos. A correção agora reconhece também essa categoria, sempre limitada ao mesmo agendamento, sem tocar eventos de sessões distintas ou mudar a classificação legada do fato.
 
 O novo caso alterna FALTOU→PRESENTE→FALTOU→PRESENTE pela rota específica e comprova IDs e quantidade do histórico estáveis, três auditorias e ausência de contagem duplicada. Não há limpeza de duplicidades preexistentes: reconciliação continua na Etapa 6. Após esse ajuste, mvnw test completo passou com **726 casos, zero falhas/erros/ignorados**. Trata-se de correção do requisito de não duplicar fatos na Etapa 4, sem início da Etapa 5.
+
+Validação definitiva após a regressão adicional: **mvnw test e mvnw verify com 726/726, 579 anteriores retidos e 147 novos**, sem falhas/erros/ignorados. Conferência por classe/nome e hashes repetida; os totais da seção 4F refletem esta última versão.
