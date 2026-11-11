@@ -431,3 +431,15 @@ Compromissos preservados:
 | 7 | Revisão global dos códigos e mensagens HTTP, distinguindo negócio, concorrência transacional e infraestrutura; handler global não faz parte da 3.1. |
 | 8 | Interfaces Angular para justificativas, auditorias, alertas, RNF17 e indicadores provisórios; apresentar responsável histórico separadamente de coordenador atual e snapshots de auditorias antigas. |
 | 9 | Testes Angular, CI, relatórios, escolha do SGBD e validação de migração, restauração, concorrência e privilégios no banco definitivo. Aprovação H2 não certifica outro banco ou produção. |
+
+## Adendo — Etapa 4 implementada para revisão
+
+A entrega da Etapa 4 está documentada em [etapa4-correcao-frequencia-retroativa.md](etapa4-correcao-frequencia-retroativa.md). Correção específica com versão/motivo, relógio institucional America/Bahia, fronteira estrita após horário e identificação segura de colisões foram implementadas; o registro inicial mantém fronteira inclusiva e permissões anteriores. As seções originais deste plano descrevem seu commit-base e não substituem os relatórios posteriores. Esta entrega não autoriza nem inicia automaticamente a Etapa 5.
+
+| Etapa futura | Compromisso preservado |
+|---|---|
+| 5 — Cancelamentos incorretos | Regularização factual autorizada com justificativa, sobre o registro existente, sem inventar reserva histórica. A rota de correção da Etapa 4 não regulariza CANCELADA. |
+| 6 — Reconciliação | Resolver conflitos reais, frequências ambíguas, horários inconsistentes e responsabilidade histórica pendente, com evidências e autorização. A resposta estruturada da Etapa 4 identifica a tentativa recusada; não é fila persistente ou autorização para resolver automaticamente. |
+| 7 — Erros globais | Revisar 401/403/404/409/422/500 e falhas transacionais/infraestrutura sem ocultar problemas técnicos. O handler global permanece inalterado. |
+| 8 — Angular | Interface da correção com versão/motivo, consulta de auditoria, estados canônicos, alertas, indicadores provisórios e visualização/encaminhamento RNF17 reais. Distinguir colisão, versão obsoleta e pendência histórica nas telas. |
+| 9 — Validação final | Corrigir testes Angular pendentes, revisar painéis/relatórios/indicadores e apresentação de datas, executar CI, escolher SGBD definitivo e validar migração, concorrência, restauração e permissões nele, inclusive integração entre fluxos de grupos e agenda. |

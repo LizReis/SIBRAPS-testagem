@@ -69,3 +69,156 @@ Não foi necessária alteração de schema ou nova migração: V1–V6, índices
 ## Revisão final do relógio nos indicadores
 
 A inspeção após a primeira suíte completa (724/724) identificou duas consultas de PacienteServiceImpl e o resumo de dias sem presença no histórico que ainda usavam LocalDate.now da máquina. Foram alinhados ao Clock institucional já empregado no recálculo, sem mudar limites de risco, frequências ou horários persistidos. Um novo teste HTTP fixa 00h10 UTC/21h10 Bahia e comprova o dia assistencial e o resumo correto. A suíte completa foi repetida: **725 testes, zero falhas/erros/ignorados**. Datas de outras rotinas administrativas e timestamps locais de eventos preexistentes não foram reescritos; uma revisão global de apresentações permanece nas etapas futuras.
+
+## 4F — resultados finais executados
+
+Java 21.0.13, Maven Wrapper, Spring Boot 4.0.6 e H2 2.4.240. Foram executados a partir de backend/buscaativa, com settings/cache e JAVA_HOME do ambiente:
+
+```bash
+bash ./mvnw -s /workspace/.cache/sibraps/maven-settings.xml -B -Dmaven.repo.local=/workspace/.cache/sibraps/m2/repository test
+bash ./mvnw -s /workspace/.cache/sibraps/maven-settings.xml -B -Dmaven.repo.local=/workspace/.cache/sibraps/m2/repository verify
+```
+
+Sem skipTests ou testes desabilitados. O test final usa ambiente herdado; verify também comprova isolamento com SPRING_PROFILES_ACTIVE=dev e credenciais sintéticas fortes no processo. Mockito exigiu anexar o agente Java fora da restrição do sandbox, sem enfraquecer as configurações de segurança. O verify produziu o jar empacotado.
+
+| Conjunto | Executados | Aprovados | Reprovados | Ignorados |
+|---|---:|---:|---:|---:|
+| Baseline inicial verify | 579 | 579 | 0 | 0 |
+| Casos anteriores retidos | 579 | 579 | 0 | 0 |
+| Novos: tempo unitário e configuração | 14 | 14 | 0 | 0 |
+| Novos: tempo HTTP e resumo institucional | 18 | 18 | 0 | 0 |
+| Novos: contrato, permissões, auditoria e rollback individual | 38 | 38 | 0 | 0 |
+| Novos: independência de oferta | 14 | 14 | 0 | 0 |
+| Novos: identificação de colisões | 21 | 21 | 0 | 0 |
+| Novos: concorrência individual | 15 | 15 | 0 | 0 |
+| Novos: tempo, lote, autorização e rollback de grupo | 17 | 17 | 0 | 0 |
+| Novos: indicadores e P05 | 7 | 7 | 0 | 0 |
+| Novos: persistência/restauração e ambiguidade migrada | 2 | 2 | 0 | 0 |
+| TOTAL de novos casos | 146 | 146 | 0 | 0 |
+| mvnw test final | 725 | 725 | 0 | 0 |
+| mvnw verify final | 725 | 725 | 0 | 0 |
+| Angular unitários | 104 | 97 | 7 | 0 |
+
+As linhas são recortes e execuções repetidas, não somar todos os conjuntos. Comparação por classe e nome dos XMLs Surefire: os mesmos **725 casos** nas duas execuções finais, **579 anteriores presentes, nenhum ausente e 146 novos**. Há 43 classes de teste executadas. Nenhum cenário antigo foi removido. A expectativa temporal antiga era aceitar todo o dia; os fixtures antigos agora representam explicitamente depois do horário, enquanto os novos testam a fronteira. Nenhuma validação foi desativada para preservar contagens.
+
+| Execução | Disputas | Operações | Confirmadas | Rejeitadas |
+|---|---:|---:|---:|---:|
+| test final | 68 | 156 | 82 | 74 |
+| verify final | 68 | 156 | 85 | 71 |
+
+São 53 disputas anteriores e 15 novas. A serialização permitida explica a diferença de resultados. Cada operação usa transação e conexão próprias, com conferência posterior de versões, reserva/frequência, auditorias e indicadores. Incluem correção de grupo × transferência, duas correções de lote, individual × versão/criação/remarcação/cancelamento/capacidade/bloqueio e repetição simultânea. Erros técnicos inesperados não contam como rejeição funcional. Locks não foram substituídos por synchronized e nenhuma auditoria clínica usa REQUIRES_NEW.
+
+### Cobertura das matrizes solicitadas
+
+| Matriz | Evidências |
+|---|---|
+| T-01 a T-12 | AttendanceTimePolicyTests e AttendanceTemporalHttpTests: Clock.fixed, limites, fuso, corpo adulterado, recepção, informação temporal incompleta. |
+| CF-01 a CF-16 | SpecificFrequencyCorrectionTests, tempo HTTP e indicadores: ambas as direções, no-op, NR/CANCELADA/SUBSTITUIDA, escopo/USF, motivo, versão, legado e chamadas diretas. |
+| AG-01 a AG-12 | HistoricalCorrectionOfferTests e FrequencyCollisionIdentificationTests, somados aos casos antigos de grade, capacidade, bloqueios e P05 que permanecem presentes. |
+| IN-01 a IN-12 / E-01 a E-07 | SpecificCorrectionIndicatorTests e SpecificCorrectionPersistenceTests, HomeVisitRecalculationTests e demais regressões antigas de cronologia e busca ativa. |
+| AU-01 a AU-12 | Contrato específico, concorrência, lotes, persistência e ClinicalAuditIntegrationTests anteriores: ator/responsável, versões, falhas após escrita real/INSERT de auditoria e reabertura/restauração. |
+| Grupos | GroupFrequencyTemporalTests e os 23 casos anteriores de GroupHistoricalResponsibilityTests, incluindo USFs, nova/antiga coordenadora, responsável transferido de unidade e migração histórica. |
+
+### Contrato de resposta e diferenciação dos erros
+
+Recorte ilustrativo de AgendamentoDTO após corrigir com version=4:
+
+```json
+{"id":42,"situacaoAtendimento":"PRESENTE","situacaoReserva":"AGENDADA","frequenciaAssistencial":"PRESENTE","version":5,"migracaoPendente":false,"ocupaVaga":true}
+```
+
+Os demais campos do DTO existente continuam presentes. No caso SUBSTITUIDA, a situação da reserva e a projeção legada REMARCADO_ORIGEM permanecem, mesmo com frequência PRESENTE.
+
+| Situação | Resultado |
+|---|---|
+| Oferta atual alterada, sem colisão | Correção autorizada após horário, sem consulta à oferta como condição factual. |
+| Colisão real | 409 com código/tipo estruturados e atendimento autorizado; nenhum fato clínico/auditoria de sucesso inserido. |
+| Versão obsoleta | 409 de atualização, antes de idempotência e sem mudanças. |
+| Não responsável/recepção | 403, sem alteração; unidade externa 404, sem expor dados. |
+| Histórico ambíguo | Migração pendente e motivo canônico preservados; 409 sem inventar frequência. |
+| Horário ausente/ambíguo/inexistente | 409 HORARIO_ASSISTENCIAL_PENDENTE_RECONCILIACAO. |
+| Antes ou exatamente no horário de correção | 422; registro inicial exatamente no horário permanece permitido. |
+| Cancelamento incorreto anterior | Continua sem regularização nesta rota, reservado à Etapa 5. |
+
+### Angular
+
+Node 24.19.0 e npm 11.6.2, conforme packageManager. Executados npm ci, npm run build e npm test -- --watch=false: códigos **0, 0 e 1**. Build manteve 847,77 kB e aviso de 347,77 kB acima do orçamento de 500 kB, sem desativar o aviso. Unitários: 28 arquivos (22 aprovados, seis reprovados), 104 casos (97 aprovados, sete falhas, zero ignorados), mais **cinco erros não tratados adicionais**.
+
+O padrão anterior permanece: título de App (um), ActivatedRoute ausente em quatro componentes e mock sem buscarDetalhe em dois casos; os cinco erros adicionais são requisições a /api/usuarios/me. Fontes, testes e lockfile do frontend são idênticos à base. Não houve regressão de arquivos Angular, correção fora do escopo ou apresentação de build como testes aprovados. Integração visual da nova rota, auditoria e RNF17 permanece na Etapa 8; falhas dos testes e CI na 9.
+
+### Migrações e limitações
+
+Nenhuma migração nova necessária ou criada. Todos os testes antigos de V1–V6 e os novos ensaios com a rota específica passaram, inclusive validate após reiniciar e restaurar o backup mais recente em destino isolado. V1–V6 e fixtures SQL publicadas foram preservadas por hash. Nenhum banco real foi utilizado. H2 não certifica PostgreSQL/outro SGBD, privilégios ou concorrência do banco definitivo. O aviso Flyway sobre H2 mais novo permanece.
+
+Guardar backup anterior e o mais recente após novas escritas, incluindo auditorias, Envers e histórico Flyway; restaurar em destino separado com binário compatível. Não existe garantia de downgrade semântico para versão que ignorava horário ou responsabilidade histórica. Não usar clean/repair/exclusão para simular retorno. Não foi executada CI remota nem declarada prontidão para produção.
+
+Não há fila durável de reconciliação: código/tipo e identidade autorizada identificam a recusa, não um caso persistido resolvido. Datas locais históricas não foram convertidas para UTC ou regravadas. Outras apresentações de data fora dos fluxos tratados e integração global entre criação de grupos/agenda pertencem à revisão futura, não a uma alteração silenciosa desta etapa.
+
+## Arquivos, preservação e publicação
+
+SHA-256 confirmou **161 arquivos protegidos idênticos**, incluindo frontend/lockfile, CI, JWT/segurança, handler global, políticas de risco/visita/ocupação, migrações V1–V6 e fixtures SQL anteriores. Nenhum arquivo preexistente foi excluído. git diff --check passou. Inventário completo:
+
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/config/AgendaTempoProperties.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/config/AgendaTempoProperties.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/config/TimeConfig.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/config/TimeConfig.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/controllers/AgendamentoController.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/controllers/AgendamentoController.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/controllers/PendenciaFrequenciaHandler.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/controllers/PendenciaFrequenciaHandler.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/entities/dto/CorrigirFrequenciaDTO.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/entities/dto/CorrigirFrequenciaDTO.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/repositories/SessaoGrupoRepository.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/repositories/SessaoGrupoRepository.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/services/AgendamentoService.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/services/AgendamentoService.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/services/PoliticaTemporalFrequencia.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/services/PoliticaTemporalFrequencia.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/services/exceptions/PendenciaFrequenciaException.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/services/exceptions/PendenciaFrequenciaException.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/services/impl/AgendamentoServiceImpl.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/services/impl/AgendamentoServiceImpl.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/services/impl/GrupoTerapeuticoServiceImpl.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/services/impl/GrupoTerapeuticoServiceImpl.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/services/impl/HistoricoPacienteServiceImpl.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/services/impl/HistoricoPacienteServiceImpl.java)
+- [backend/buscaativa/src/main/java/com/pet/buscaativa/services/impl/PacienteServiceImpl.java](../backend/buscaativa/src/main/java/com/pet/buscaativa/services/impl/PacienteServiceImpl.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/AgendaIntegritySupport.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/AgendaIntegritySupport.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/AttendanceTemporalHttpTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/AttendanceTemporalHttpTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/AttendanceTimePolicyTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/AttendanceTimePolicyTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/ClosedDayAgendaClock.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/ClosedDayAgendaClock.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/FrequencyCollisionIdentificationTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/FrequencyCollisionIdentificationTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/FrequencyCorrectionConcurrencyTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/FrequencyCorrectionConcurrencyTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/FrequencyCorrectionTestSupport.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/FrequencyCorrectionTestSupport.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/GroupFrequencyTemporalTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/GroupFrequencyTemporalTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/HistoricalCorrectionOfferTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/HistoricalCorrectionOfferTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/SpecificCorrectionIndicatorTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/SpecificCorrectionIndicatorTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/SpecificCorrectionPersistenceTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/SpecificCorrectionPersistenceTests.java)
+- [backend/buscaativa/src/test/java/com/pet/buscaativa/SpecificFrequencyCorrectionTests.java](../backend/buscaativa/src/test/java/com/pet/buscaativa/SpecificFrequencyCorrectionTests.java)
+- [docs/etapa4-correcao-frequencia-retroativa.md](../docs/etapa4-correcao-frequencia-retroativa.md)
+- [docs/plano-etapa0-fluxos-assistenciais.md](../docs/plano-etapa0-fluxos-assistenciais.md)
+
+Commits de implementação:
+
+- 3a9e4a1 — feat(agenda): valida horario assistencial por relogio oficial.
+- 24fd20a — feat(frequencia): cria fluxo especifico de correcao.
+- 31f29a0 — test(agenda): confirma independencia da oferta nas correcoes.
+- 62fe99c — fix(frequencia): identifica colisoes sem perder integridade.
+- 52ac2d2 — test(frequencia): cobre indicadores grupos e persistencia.
+- 0423938 — fix(tempo): alinha indicadores ao relogio institucional.
+- O commit documental de fechamento contém os resultados e o adendo do plano; seu SHA e a confirmação do push constam da resposta, evitando autorreferência.
+
+Branch inicial/final: correcao-fluxos-assistenciais-sibraps. Base inicial: 1b0735d1dad5894737ec92ac691ecb915d339ae9. Antes da publicação, remoto desta branch ainda na base; main em 967d5162dd543ec9005608739128423903e75e30 e P03/P04/P05 em 05ee61a5123dfe4e914d7c2f5f486f7ecf310164. Somente push normal da branch autorizada, sem merge, PR, force push ou rebase. Evidências/XMLs/sumários/cópias sintéticas ficaram em /tmp/sibraps-etapa4, fora do commit. O plano foi atualizado exclusivamente para registrar os compromissos das Etapas 5–9, sem implementá-las.
+
+## Respostas finais para revisão
+
+1. Fluxo específico criado, compartilhando a aplicação clínica do legado.
+2. Correção retroativa funciona, sem limite arbitrário de dias.
+3. Correção no mesmo dia depois do horário funciona.
+4. Antes e exatamente no horário de correção são recusados.
+5. Fuso institucional America/Bahia explícito, tipado, injetável e testado independente do host.
+6. Correções não dependem de capacidade atual.
+7. Bloqueios posteriores não impedem isoladamente a correção.
+8. Colisões reais detectáveis na operação continuam bloqueadas, sem mudar terceiros.
+9. Código/tipo e atendimento autorizado identificam conflito para Etapa 6; nenhuma fila/resolução foi antecipada.
+10. Permissões da Etapa 3 preservadas, inclusive USF específica e responsabilidade do atendimento.
+11. Justificativa explicativa obrigatória nas correções, sem preenchimento automático.
+12. Auditoria e Envers consistentes, inclusive rollback após INSERT real e restauração.
+13. Indicadores recalculados pela cronologia completa existente, sem incrementos artificiais.
+14. Gatilho de visita preservado e reavaliado corretamente.
+15. P05 mantém original/sucessor, frequência e flag, inclusive em concorrência.
+16. Responsabilidade histórica de grupos preservada; nova coordenadora não herda correções antigas.
+17. Registro inicial autorizado da recepção preservado com a nova fronteira temporal inclusiva.
+18. Os 579 casos anteriores passaram, sem ausências ou desativações.
+19. Os 146 novos casos passaram; test e verify finais têm os mesmos 725 casos.
+20. Nenhuma implementação fora do escopo; alinhamento final do relógio corrigiu somente indicadores dependentes da frequência.
+21. APROVADA PARA REVISÃO, sem declaração de prontidão para produção.
+22. Antes da Etapa 5, revisar esta entrega; permanecem regularização específica, reconciliação, HTTP global, interfaces, testes Angular/CI e SGBD definitivo, conforme Etapas 5–9. Etapa 5 não foi iniciada.
