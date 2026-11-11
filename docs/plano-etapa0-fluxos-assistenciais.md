@@ -416,3 +416,18 @@ Nenhum dado ou schema foi alterado na Etapa 0. Antes de separar estados:
 | Eventual branch com colchete apenas em outro Codespace | Não observável a partir deste checkout/remoto; não excluir nem sobrescrever trabalho daquele ambiente. |
 
 A Etapa 0 tem como critério de conclusão preservar a base e entregar este diagnóstico com o baseline real, mesmo reprovado pelas nove falhas conhecidas. O commit/publicação documental e as verificações finais de preservação são registrados no relatório de entrega. Não houve decisão funcional nova nem implementação de regra futura. A Etapa 1 pode partir desta branch preservada, com revisão própria e sem integrar a main nesta entrega.
+
+## Adendo — Etapa corretiva 3.1 (10–11/11/2026 UTC)
+
+A Etapa 3.1 é uma verificação/correção limitada entre as Etapas 3 e 4. Sua evidência está em [etapa3-1-ajustes-antes-etapa4.md](etapa3-1-ajustes-antes-etapa4.md). Não altera a ordem nem autoriza antecipar as próximas etapas. As descrições de comportamento atual nas seções originais documentam o respectivo commit-base; devem ser lidas junto das entregas posteriores.
+
+Compromissos preservados:
+
+| Etapa | Trabalho futuro reservado |
+|---|---|
+| 4 | Correções de frequência retroativas e no mesmo dia após o horário previsto; definir relógio/fuso oficial, registro tardio, indicadores e auditoria. A exceção estrita para cancelamento administrativo válido em data futura na 3.1 não implementa a política temporal clínica. |
+| 5 | Regularização específica de cancelamentos incorretos, com justificativa, permissão e auditoria, sobre o registro existente, sem reservas históricas fictícias. Cancelamento genérico de frequência conhecida fica bloqueado na 3.1. |
+| 6 | Reconciliação de registros históricos ambíguos, inclusive responsabilidade de sessões antigas não comprovada. Sessões com responsabilidade pendente preservam seus fatos; não se concede correção clínica por atribuição presumida, nem ao administrador fora do procedimento seguro futuro. |
+| 7 | Revisão global dos códigos e mensagens HTTP, distinguindo negócio, concorrência transacional e infraestrutura; handler global não faz parte da 3.1. |
+| 8 | Interfaces Angular para justificativas, auditorias, alertas, RNF17 e indicadores provisórios; apresentar responsável histórico separadamente de coordenador atual e snapshots de auditorias antigas. |
+| 9 | Testes Angular, CI, relatórios, escolha do SGBD e validação de migração, restauração, concorrência e privilégios no banco definitivo. Aprovação H2 não certifica outro banco ou produção. |
