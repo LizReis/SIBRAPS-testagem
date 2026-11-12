@@ -114,4 +114,12 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long>,
     @Query("SELECT a.horaAtendimento FROM Agendamento a WHERE a.usuario = :usuario AND a.dataAgendamento = :data AND a.turnoAgendamento = :turno AND a.ocupaVaga = true AND a.situacaoAtendimento IN :situacoes ORDER BY a.horaAtendimento")
     List<LocalTime> findHorariosOcupados(@Param("usuario") Usuario usuario, @Param("data") LocalDate data,
             @Param("turno") TurnoEnum turno, @Param("situacoes") List<SituacaoAtendimento> situacoes);
+    @Query("select count(a)>0 from Agendamento a where a.usuario=:usuario and a.dataAgendamento=:data and a.horaAtendimento=:hora and "
+        + "a.frequenciaAssistencial=com.pet.buscaativa.entities.enums.FrequenciaAssistencial.PRESENTE and (:excluir is null or a.id<>:excluir)")
+    boolean existsPresencaDoProfissional(@Param("usuario") Usuario usuario,@Param("data") LocalDate data,@Param("hora") LocalTime hora,@Param("excluir") Long excluir);
+    @Query("select count(a)>0 from Agendamento a where a.paciente=:paciente and a.dataAgendamento=:data and a.horaAtendimento=:hora and "
+        + "a.frequenciaAssistencial=com.pet.buscaativa.entities.enums.FrequenciaAssistencial.PRESENTE and (:excluir is null or a.id<>:excluir)")
+    boolean existsPresencaDoPaciente(@Param("paciente") Paciente paciente,@Param("data") LocalDate data,@Param("hora") LocalTime hora,@Param("excluir") Long excluir);
+    boolean existsByAgendamentoOriginal_Id(Long id);
+    boolean existsByAgendamentoOriginal_IdAndIdNot(Long id,Long atual);
 }

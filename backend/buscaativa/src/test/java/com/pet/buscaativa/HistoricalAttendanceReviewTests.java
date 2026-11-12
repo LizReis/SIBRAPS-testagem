@@ -136,7 +136,7 @@ class HistoricalAttendanceReviewTests extends AgendaIntegritySupport {
         var original = historical(SituacaoAtendimento.CANCELADO);
         changeSchedule(scenario); var before = snapshot(patient, original.getId());
         int result = status(admin, original.getId(), SituacaoAtendimento.AGENDADO);
-        int expected = scenario == Schedule.AVAILABLE ? 200 : 409;
+        int expected = 409; // Stage 5: legacy recovery is forbidden; future availability is tested through its dedicated operation.
         System.out.printf("FREQUENCY_REVIEW CANCELADO_AGENDADO schedule=%s status=%d%n", scenario, result);
         assertEquals(expected, result);
         if (result != 200) assertEquals(before, snapshot(patient, original.getId()));

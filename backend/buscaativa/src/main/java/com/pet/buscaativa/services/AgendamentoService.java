@@ -31,6 +31,9 @@ public interface AgendamentoService {
 
     List<AgendamentoDTO> buscarAgendaPorPeriodo(LocalDate dataInicio, LocalDate dataFim, String emailLogado, UUID profissionalIdPublico);
 
+    AgendamentoDTO recuperarReservaCancelada(Long id,com.pet.buscaativa.entities.dto.RecuperarReservaCanceladaDTO dto);
+    AgendamentoDTO regularizarFrequenciaCancelada(Long id,com.pet.buscaativa.entities.dto.RegularizarFrequenciaCanceladaDTO dto);
+
     AgendamentoDTO corrigirFrequencia(Long id, com.pet.buscaativa.entities.dto.CorrigirFrequenciaDTO correcao);
 
     AgendamentoDTO atualizarStatus(Long id, SituacaoAtendimento novoStatus, Integer expectedVersion);

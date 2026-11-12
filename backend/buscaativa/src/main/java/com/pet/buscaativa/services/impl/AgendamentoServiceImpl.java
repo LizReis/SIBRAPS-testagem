@@ -73,6 +73,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     private final com.pet.buscaativa.services.AutorizacaoClinicaService autorizacaoClinica;
     private final com.pet.buscaativa.services.PoliticaJustificativaCorrecao politicaJustificativa;
     private final com.pet.buscaativa.services.AuditoriaCorrecaoService auditoriaCorrecao;
+    private final com.pet.buscaativa.services.AuditoriaRegularizacaoService auditoriaRegularizacao;
     private static final List<SituacaoAtendimento> SITUACOES_ATIVAS = List.of(
             SituacaoAtendimento.AGENDADO, SituacaoAtendimento.REMARCADO, SituacaoAtendimento.PRESENTE);
 
@@ -157,8 +158,11 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     }
 
     private void validarVaga(Usuario usuario, Paciente paciente, LocalDate data, TurnoEnum turno, LocalTime hora) {
+        validarVaga(usuario,paciente,data,turno,hora,null);
+    }
+    private void validarVaga(Usuario usuario,Paciente paciente,LocalDate data,TurnoEnum turno,LocalTime hora,Long recuperacao) {
         validarHorario(turno, hora);
-        validarConflitosDeHorario(usuario, paciente, data, hora, null);
+        validarConflitosDeHorario(usuario, paciente, data, hora, recuperacao);
 
         if (bloqueioAgendaRepository.isDataBloqueadaParaUsuario(usuario, data)) {
             throw new ConflictException("A agenda do profissional está bloqueada na data informada.");
@@ -200,6 +204,14 @@ public class AgendamentoServiceImpl implements AgendamentoService {
                 data, hora, SITUACOES_ATIVAS)) {
             if (correcaoFrequencia) throw conflitoAssistencial(atendimentoEmCorrecao,"PACIENTE");
             throw new ConflictException("O paciente já possui um atendimento ativo nesta data e horário.");
+        }
+        if (agendamentoRepository.existsPresencaDoProfissional(usuario,data,hora,atendimentoEmCorrecao)) {
+            if(correcaoFrequencia)throw conflitoAssistencial(atendimentoEmCorrecao,"HISTORICO_PROFISSIONAL");
+            throw new ConflictException("Existe fato assistencial incompatível neste horário; revisão autorizada necessária.");
+        }
+        if (agendamentoRepository.existsPresencaDoPaciente(paciente,data,hora,atendimentoEmCorrecao)) {
+            if(correcaoFrequencia)throw conflitoAssistencial(atendimentoEmCorrecao,"HISTORICO_PACIENTE");
+            throw new ConflictException("Existe fato assistencial incompatível neste horário; revisão autorizada necessária.");
         }
         if (correcaoFrequencia && sessaoGrupoRepository.existsSessaoDoResponsavelNoMesmoHorario(usuario,data,hora))
             throw conflitoAssistencial(atendimentoEmCorrecao,"SESSAO_PROFISSIONAL");
@@ -497,10 +509,66 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         return aplicarAtualizacao(id,SituacaoAtendimento.valueOf(dto.novaFrequencia().name()),dto.version(),dto.justificativa(),true);
     }
 
-    /** Single application path for the dedicated command, legacy HTTP and both legacy service overloads. */
-    private AgendamentoDTO aplicarAtualizacao(Long id,SituacaoAtendimento novoStatus,Integer expectedVersion,
-            String justificativa,boolean somenteCorrecao) {
-        // Read scalar identifiers only; do not cache a stale appointment before obtaining locks.
+    @Override @Transactional
+    public AgendamentoDTO recuperarReservaCancelada(Long id,com.pet.buscaativa.entities.dto.RecuperarReservaCanceladaDTO dto) {
+        if(dto==null)throw new ValidationException("Informe versão e justificativa da recuperação.");
+        var a=bloquearAgendamento(id);autorizacaoClinica.validarAgendamento(a,true);
+        validarVersaoRegularizacao(a,dto.version());validarEstadoRegularizacao(a);
+        politicaTemporal.validarRecuperacao(a);String motivo=politicaJustificativa.validar(dto.justificativa());
+        validarCadeiaRegularizacao(a);historicoPacienteService.validarHistoricoRegularizacao(a,false);
+        validarVaga(a.getUsuario(),a.getPaciente(),a.getDataAgendamento(),a.getTurnoAgendamento(),a.getHoraAtendimento(),id);
+        int anterior=a.getVersion();a.recuperarReservaCancelada();agendamentoRepository.saveAndFlush(a);
+        auditoriaRegularizacao.registrar(a,"RECUPERACAO_RESERVA",motivo,anterior);
+        return agendamentoMapper.toAgendamentoDTO(a);
+    }
+
+    @Override @Transactional
+    public AgendamentoDTO regularizarFrequenciaCancelada(Long id,com.pet.buscaativa.entities.dto.RegularizarFrequenciaCanceladaDTO dto) {
+        if(dto==null || (dto.novaFrequencia()!=com.pet.buscaativa.entities.enums.FrequenciaAssistencial.PRESENTE
+                && dto.novaFrequencia()!=com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU))
+            throw new ValidationException("Informe resultado PRESENTE/FALTOU comprovado, versão e justificativa.");
+        var a=bloquearAgendamento(id);autorizacaoClinica.validarAgendamento(a,true);
+        validarVersaoRegularizacao(a,dto.version());validarEstadoRegularizacao(a);
+        politicaTemporal.validarAgendamento(a,true);String motivo=politicaJustificativa.validar(dto.justificativa());
+        validarCadeiaRegularizacao(a);historicoPacienteService.validarHistoricoRegularizacao(a,false);
+        validarConflitosDeHorario(a.getUsuario(),a.getPaciente(),a.getDataAgendamento(),a.getHoraAtendimento(),id);
+        int anterior=a.getVersion();a.registrarFatoEmReservaCancelada(dto.novaFrequencia());agendamentoRepository.saveAndFlush(a);
+        pacienteService.recalcularAssiduidadePaciente(a.getPaciente());
+        historicoPacienteService.registrarFatoRegularizado(a);
+        auditoriaRegularizacao.registrar(a,"REGISTRO_FATO_ASSISTENCIAL",motivo,anterior);
+        return agendamentoMapper.toAgendamentoDTO(a);
+    }
+
+    private void validarVersaoRegularizacao(Agendamento a,Integer versao) {
+        if(versao==null || versao<0)throw new ValidationException("Informe versão esperada não negativa.");
+        if(!versao.equals(a.getVersion()))throw new OptimisticLockException("O atendimento foi alterado. Atualize os dados antes de regularizar.");
+    }
+    private void validarEstadoRegularizacao(Agendamento a) {
+        auditoriaRegularizacao.validarAusenciaDeFatoAnterior(a);
+        if(a.isMigracaoPendente() || a.getSituacaoReserva()!=com.pet.buscaativa.entities.enums.SituacaoReserva.CANCELADA
+                || a.getFrequenciaAssistencial()!=com.pet.buscaativa.entities.enums.FrequenciaAssistencial.NAO_REGISTRADA)
+            throw new ConflictException("Regularização exige reserva cancelada com frequência não registrada e histórico identificado.");
+    }
+    private void validarCadeiaRegularizacao(Agendamento a) {
+        if(agendamentoRepository.existsByAgendamentoOriginal_Id(a.getId()))throw cadeiaPendente(a);
+        var visited=new HashSet<Long>();visited.add(a.getId());var atual=a;
+        while(atual.getAgendamentoOriginal()!=null) {
+            var pai=atual.getAgendamentoOriginal();
+            if(!visited.add(pai.getId()) || !java.util.Objects.equals(pai.getPaciente().getId(),a.getPaciente().getId())
+                || pai.isMigracaoPendente() || pai.getSituacaoReserva()!=com.pet.buscaativa.entities.enums.SituacaoReserva.SUBSTITUIDA
+                || pai.getDataAgendamento()==null || pai.getHoraAtendimento()==null
+                || !java.time.LocalDateTime.of(pai.getDataAgendamento(),pai.getHoraAtendimento()).isBefore(java.time.LocalDateTime.of(atual.getDataAgendamento(),atual.getHoraAtendimento()))
+                || agendamentoRepository.existsByAgendamentoOriginal_IdAndIdNot(pai.getId(),atual.getId()))throw cadeiaPendente(a);
+            escopoUnidadeService.validarAgendamento(pai);atual=pai;
+        }
+        if(atual.isRemarcacaoAposFalta())throw cadeiaPendente(a);
+    }
+    private com.pet.buscaativa.services.exceptions.PendenciaFrequenciaException cadeiaPendente(Agendamento a) {
+        return new com.pet.buscaativa.services.exceptions.PendenciaFrequenciaException("CADEIA_REMARCACAO_PENDENTE_RECONCILIACAO","CADEIA_REMARCACAO",a.getId(),null);
+    }
+
+    private Agendamento bloquearAgendamento(Long id) {
+        // Global individual lock order: patient -> professional -> appointment. Scalar identity avoids stale entities.
         var identity = agendamentoRepository.findLockIdentityById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Agendamento não encontrado"));
         Paciente pacienteBloqueado = pacienteRepository.findByIdPublicoForUpdate(identity.getPacienteId())
@@ -513,11 +581,23 @@ public class AgendamentoServiceImpl implements AgendamentoService {
                 .orElseThrow(() -> new ResourceNotFoundException("Agendamento não encontrado"));
 
         escopoUnidadeService.validarAgendamento(agendamento);
+        return agendamento;
+    }
+
+    /** Single application path for the dedicated command, legacy HTTP and both legacy service overloads. */
+    private AgendamentoDTO aplicarAtualizacao(Long id,SituacaoAtendimento novoStatus,Integer expectedVersion,
+            String justificativa,boolean somenteCorrecao) {
+        Agendamento agendamento=bloquearAgendamento(id);
+        Paciente pacienteBloqueado=agendamento.getPaciente();
+        Usuario profissionalBloqueado=agendamento.getUsuario();
         var frequenciaConhecida = agendamento.getFrequenciaAssistencial();
         boolean comandoClinico = novoStatus == SituacaoAtendimento.PRESENTE || novoStatus == SituacaoAtendimento.FALTOU;
         boolean fatoRegistrado = frequenciaConhecida == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.PRESENTE
                 || frequenciaConhecida == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU;
         autorizacaoClinica.validarAgendamento(agendamento, comandoClinico && fatoRegistrado);
+        if(agendamento.getSituacaoReserva()==com.pet.buscaativa.entities.enums.SituacaoReserva.CANCELADA
+                && !somenteCorrecao && !comandoClinico && novoStatus!=SituacaoAtendimento.CANCELADO)
+            throw new ConflictException("Cancelamento exige operação específica de regularização, com autorização e auditoria.");
         LocalDate dataAgendamento = agendamento.getDataAgendamento();
         if (!comandoClinico && novoStatus != SituacaoAtendimento.CANCELADO && dataAgendamento != null && dataAgendamento.isAfter(LocalDate.now(clock))) {
             throw new ValidationException(
@@ -543,16 +623,22 @@ public class AgendamentoServiceImpl implements AgendamentoService {
             throw new ConflictException("Cancelamento administrativo não é permitido para frequência registrada ou reserva substituída; a regularização exige fluxo clínico próprio.");
         if (somenteCorrecao && !frequenciaRegistrada)
             throw new ConflictException("A rota de correção exige frequência anterior comprovada; registro inicial possui fluxo próprio.");
-        if (comandoClinico && agendamento.getSituacaoReserva()==com.pet.buscaativa.entities.enums.SituacaoReserva.CANCELADA)
+        if (comandoClinico && !somenteCorrecao && agendamento.getSituacaoReserva()==com.pet.buscaativa.entities.enums.SituacaoReserva.CANCELADA)
             throw new ValidationException("Atendimento cancelado exige regularização específica; nenhuma frequência foi alterada.");
         if (frequenciaRegistrada && (novoStatus == SituacaoAtendimento.AGENDADO || novoStatus == SituacaoAtendimento.REMARCADO))
             throw new ConflictException("A frequência registrada deve ser preservada; esta alteração de reserva exige revisão.");
 
         if (comandoClinico) politicaTemporal.validarAgendamento(agendamento, fatoRegistrado);
 
+        boolean correcaoCancelado=somenteCorrecao && agendamento.getSituacaoReserva()==com.pet.buscaativa.entities.enums.SituacaoReserva.CANCELADA;
+        if(correcaoCancelado) {
+            if(!auditoriaRegularizacao.origemFactualConfiavel(agendamento))throw new com.pet.buscaativa.services.exceptions.PendenciaFrequenciaException(
+                "ORIGEM_REGULARIZACAO_PENDENTE_RECONCILIACAO","ORIGEM_REGULARIZACAO",id,null);
+            historicoPacienteService.validarHistoricoRegularizacao(agendamento,true);
+        }
         String motivo = somenteCorrecao ? politicaJustificativa.validar(justificativa) : null;
 
-        if (statusAnterior == novoStatus || (correcaoDeSubstituido && frequenciaAnterior.name().equals(novoStatus.name()))) {
+        if (statusAnterior == novoStatus || ((correcaoDeSubstituido || correcaoCancelado) && frequenciaAnterior.name().equals(novoStatus.name()))) {
             return agendamentoMapper.toAgendamentoDTO(agendamento);
         }
 
@@ -560,7 +646,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         if (motivo==null && frequenciaRegistrada && destinoClinico) motivo=politicaJustificativa.validar(justificativa);
 
         if ((novoStatus == SituacaoAtendimento.PRESENTE || novoStatus == SituacaoAtendimento.FALTOU)
-                && (statusAnterior == SituacaoAtendimento.CANCELADO || (statusAnterior == SituacaoAtendimento.REMARCADO_ORIGEM && !correcaoDeSubstituido)))
+                && ((statusAnterior == SituacaoAtendimento.CANCELADO && !correcaoCancelado) || (statusAnterior == SituacaoAtendimento.REMARCADO_ORIGEM && !correcaoDeSubstituido)))
             throw new ValidationException("Um atendimento cancelado ou substituído não permite registro de frequência.");
 
         if (frequenciaAnterior == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU && novoStatus == SituacaoAtendimento.PRESENTE) {
@@ -587,7 +673,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         }
 
         agendamento = agendamentoRepository.save(agendamento);
-        if (correcaoDeSubstituido)
+        if (correcaoDeSubstituido || correcaoCancelado)
             historicoPacienteService.registrarCorrecaoDeFrequencia(agendamento, frequenciaAnterior);
         else historicoPacienteService.registrarAlteracaoDeAtendimento(agendamento, statusAnterior);
         agendamentoRepository.flush();

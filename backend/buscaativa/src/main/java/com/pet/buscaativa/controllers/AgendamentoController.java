@@ -35,6 +35,24 @@ import lombok.RequiredArgsConstructor;
 public class AgendamentoController {
 
     private final AgendamentoService agendamentoService;
+    private final com.pet.buscaativa.services.AuditoriaRegularizacaoService auditoriaRegularizacao;
+
+    @PreAuthorize("hasAnyRole('ADMINISTRADOR','PROFISSIONAL')")
+    @PostMapping("/{id}/regularizacao-cancelamento/recuperar-reserva")
+    public ResponseEntity<AgendamentoDTO> recuperarReserva(@PathVariable Long id,@RequestBody @Valid com.pet.buscaativa.entities.dto.RecuperarReservaCanceladaDTO dto) {
+        return ResponseEntity.ok(agendamentoService.recuperarReservaCancelada(id,dto));
+    }
+    @PreAuthorize("hasAnyRole('ADMINISTRADOR','PROFISSIONAL')")
+    @PostMapping("/{id}/regularizacao-cancelamento/frequencia")
+    public ResponseEntity<AgendamentoDTO> regularizarFrequencia(@PathVariable Long id,@RequestBody @Valid com.pet.buscaativa.entities.dto.RegularizarFrequenciaCanceladaDTO dto) {
+        return ResponseEntity.ok(agendamentoService.regularizarFrequenciaCancelada(id,dto));
+    }
+    @PreAuthorize("hasAnyRole('ADMINISTRADOR','PROFISSIONAL')")
+    @GetMapping("/{id}/regularizacoes-cancelamento")
+    public ResponseEntity<org.springframework.data.domain.Page<com.pet.buscaativa.entities.dto.AuditoriaRegularizacaoDTO>> regularizacoes(@PathVariable Long id,
+            @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
+        return ResponseEntity.ok(auditoriaRegularizacao.listar(id,page,size));
+    }
 
     @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'PROFISSIONAL')")
     @PatchMapping("/{id}/frequencia/correcao")

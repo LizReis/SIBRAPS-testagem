@@ -106,9 +106,10 @@ class AgendaConcurrencyTests extends AgendaIntegritySupport {
     }
 
     @Test void p0408ReactivationCompetesWithCreation() throws Exception {
-        today(); var original = tx(() -> seed(patient, professional, SituacaoAtendimento.CANCELADO, date, "08:00"));
+        var original = tx(() -> seed(patient, professional, SituacaoAtendimento.CANCELADO, date, "08:00"));
         var r = race("P04-reactivate-create", List.of(
-                () -> changeStatus(original.getId(), SituacaoAtendimento.AGENDADO),
+                () -> businessStatus(mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/agendamentos/"+original.getId()+"/regularizacao-cancelamento/recuperar-reserva")
+                    .header("Authorization","Bearer "+tokens.gerarToken(admin)).contentType("application/json").content(json.writeValueAsString(new com.pet.buscaativa.entities.dto.RecuperarReservaCanceladaDTO(original.getVersion(),"Recuperação sintética após conferência do cancelamento.")))).andReturn().getResponse()),
                 () -> post(dto(patient, colleague, "08:00", TurnoEnum.MANHA, null))));
         assertEquals(new RaceResult(1, 1), r);
         assertEquals(1, active(patient, "08:00"));
