@@ -22,6 +22,10 @@ public interface HistoricoPacienteService {
     void registrarCorrecaoDeFrequencia(Agendamento agendamento,
             com.pet.buscaativa.entities.enums.FrequenciaAssistencial anterior);
 
+    void validarHistoricoRegularizacao(Agendamento agendamento, boolean fatoRegistrado);
+
+    void registrarFatoRegularizado(Agendamento agendamento);
+
     void registrarSituacaoAtual(Paciente paciente, String descricao);
 
     void registrarFrequenciaGrupo(Paciente paciente, SessaoGrupo sessao, StatusPresencaGrupo status);

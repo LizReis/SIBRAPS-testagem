@@ -37,7 +37,7 @@ import lombok.Setter;
 @AllArgsConstructor
 @Getter
 @Setter
-@Table(name = "tb_agendamento")
+@Table(name = "tb_agendamento",uniqueConstraints=@jakarta.persistence.UniqueConstraint(name="uk_agendamento_identidade",columnNames={"id","paciente_id","usuario_id"}))
 public class Agendamento {
     
     private static final long serialVersionUID = 1L;
@@ -129,6 +129,25 @@ public class Agendamento {
             }
         }
         sincronizarProjecoes();
+    }
+
+    public void recuperarReservaCancelada() {
+        exigirCancelamentoSemFrequencia();
+        situacaoReserva=agendamentoOriginal==null?SituacaoReserva.AGENDADA:SituacaoReserva.REMARCADA;
+        sincronizarProjecoes();
+    }
+
+    public void registrarFatoEmReservaCancelada(FrequenciaAssistencial resultado) {
+        exigirCancelamentoSemFrequencia();
+        if(resultado!=FrequenciaAssistencial.PRESENTE && resultado!=FrequenciaAssistencial.FALTOU)
+            throw new IllegalArgumentException("A regularização exige resultado assistencial explícito.");
+        frequenciaAssistencial=resultado;
+        sincronizarProjecoes();
+    }
+
+    private void exigirCancelamentoSemFrequencia() {
+        if(isMigracaoPendente() || situacaoReserva!=SituacaoReserva.CANCELADA || frequenciaAssistencial!=FrequenciaAssistencial.NAO_REGISTRADA)
+            throw new IllegalStateException("Regularização exige reserva cancelada e frequência identificada como não registrada.");
     }
 
     public SituacaoAtendimento getSituacaoAtendimento() {

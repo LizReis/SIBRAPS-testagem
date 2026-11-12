@@ -20,3 +20,13 @@ Planejado: dois DTOs e operações específicas; locks paciente→profissional�
 Colisões estruturadas reutilizam a Etapa 4; histórico incompatível e origem inconsistente também produzem pendência segura. Nenhuma fila/resolução da Etapa 6, interface da 8 ou reescrita global de HTTP da 7 será antecipada. V1–V6, constraints clínicas, risco/visita, RF22/RNF17, JWT/H2 e frontend permanecem protegidos.
 
 Reprodução efetiva anterior à correção: cinco casos falharam em legacy-red — quatro requisições AGENDADO/REMARCADO, com e sem motivo, e uma chamada às sobrecargas diretas. O serviço antigo confirmou a recuperação indevida em vez de recusá-la. Foram falhas funcionais, não falhas técnicas de lock.
+
+## Fundação auditável e primeiras operações
+
+V7 é aditiva: nova tabela de regularizações, FKs, índice de consulta, unicidade por atendimento/versão anterior, CHECK semântico e trigger append-only. FK composta exige que paciente e responsável do registro pertençam à identidade do agendamento. Nenhuma auditoria clínica P↔F foi afrouxada; não há backfill de cancelamentos supostamente incorretos. O schema guard valida a nova proteção; somente H2 em memória descartável create/create-drop recebe instalação automática equivalente para testes/dev. Arquivos persistidos exigem migração explícita.
+
+Cada fluxo possui método de domínio próprio e serviço transacional autorizado. A recuperação deriva AGENDADA/REMARCADA do vínculo original íntegro, não do payload. O registro factual mantém CANCELADA e CANCELADO, com ocupaVaga=false, e cria um único evento clínico datado do atendimento, além da auditoria própria. Justificativa é a declaração explicativa do profissional; não é inventada referência documental ou comprovação externa.
+
+Origem confiável da correção posterior exige uma única auditoria factual correspondente a paciente/responsável/unidade, sequência contígua de versões e frequências nas correções e um evento clínico único compatível com o estado atual. Histórico existente na primeira regularização, origem contraditória, cadeia bifurcada/cíclica ou identidade incompatível bloqueiam a operação para reconciliação.
+
+Primeira rodada focada completa: 90 testes de recuperação, fato, segurança, rollback e migração anterior passaram. As 726 regressões anteriores passaram na primeira rodada integrada; o único caso novo então corrigido era um fixture de capacidade com turno incorreto, sem mudança da regra de capacidade.

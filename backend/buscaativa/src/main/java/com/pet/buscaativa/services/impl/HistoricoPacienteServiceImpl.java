@@ -37,6 +37,7 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
 
     private final HistoricoPacienteRepository historicoRepository;
     private final java.time.Clock clock;
+    private final com.pet.buscaativa.services.AutorizacaoClinicaService autorizacaoClinica;
     private final PacienteRepository pacienteRepository;
     private final UsuarioRepository usuarioRepository;
     private final EscopoUnidadeService escopoUnidadeService;
@@ -147,6 +148,39 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
             salvar(agendamento.getPaciente(), agendamento, agendamento.getUsuario(), tipo, novoStatus,
                     LocalDateTime.now(), "Situação alterada de " + statusAnterior + " para " + novoStatus + ".");
         }
+    }
+
+    private List<HistoricoPaciente> fatosDoAgendamento(Agendamento a) {
+        return historicoRepository.findByAgendamento(a).stream().filter(h ->
+            h.getTipo()==TipoEventoHistoricoPaciente.PRESENCA || h.getTipo()==TipoEventoHistoricoPaciente.FALTA
+            || h.getTipo()==TipoEventoHistoricoPaciente.PARTICIPACAO_GRUPO_TERAPEUTICO).toList();
+    }
+
+    @Override @Transactional
+    public void validarHistoricoRegularizacao(Agendamento a,boolean registrado) {
+        autorizacaoClinica.validarAgendamento(a,true);
+        var fatos=fatosDoAgendamento(a);
+        boolean valid=registrado ? fatos.size()==1 && fatos.getFirst().getSituacaoAtendimento()!=null
+            && fatos.getFirst().getSituacaoAtendimento().name().equals(a.getFrequenciaAssistencial().name())
+            && java.util.Objects.equals(fatos.getFirst().getPaciente().getId(),a.getPaciente().getId())
+            && fatos.getFirst().getProfissional()!=null && java.util.Objects.equals(fatos.getFirst().getProfissional().getId(),a.getUsuario().getId())
+            && java.util.Objects.equals(fatos.getFirst().getOcorridoEm(),LocalDateTime.of(a.getDataAgendamento(),a.getHoraAtendimento()))
+            : fatos.isEmpty();
+        if(!valid)throw new com.pet.buscaativa.services.exceptions.PendenciaFrequenciaException(
+            "HISTORICO_ASSISTENCIAL_PENDENTE_RECONCILIACAO","HISTORICO_ASSISTENCIAL",a.getId(),null);
+    }
+
+    @Override @Transactional
+    public void registrarFatoRegularizado(Agendamento a) {
+        if(a.getSituacaoReserva()!=com.pet.buscaativa.entities.enums.SituacaoReserva.CANCELADA
+            || (a.getFrequenciaAssistencial()!=com.pet.buscaativa.entities.enums.FrequenciaAssistencial.PRESENTE
+            && a.getFrequenciaAssistencial()!=com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU))
+            throw new com.pet.buscaativa.services.exceptions.ConflictException("Resultado factual não comprovado no atendimento cancelado.");
+        validarHistoricoRegularizacao(a,false);
+        boolean presente=a.getFrequenciaAssistencial()==com.pet.buscaativa.entities.enums.FrequenciaAssistencial.PRESENTE;
+        salvar(a.getPaciente(),a,a.getUsuario(),presente?TipoEventoHistoricoPaciente.PRESENCA:TipoEventoHistoricoPaciente.FALTA,
+            presente?SituacaoAtendimento.PRESENTE:SituacaoAtendimento.FALTOU,
+            LocalDateTime.of(a.getDataAgendamento(),a.getHoraAtendimento()),"Resultado assistencial regularizado no atendimento original, preservando a reserva cancelada.");
     }
 
     @Override

@@ -31,7 +31,7 @@ class GroupResponsibilityMigrationTests {
     }
     @Test void actualV4EnversRecoversAWithoutRewritingOldBPolicyAudit() throws Exception {
         var source=v4("actual-v4");var jdbc=new JdbcTemplate(source);var columns=LegacyMigrationFixture.columns(source);columns.remove("sibraps_agenda_schema_history");var before=LegacyMigrationFixture.snapshot(source,columns);
-        assertEquals(2,AgendaMigrationTool.migrar(source).migrationsExecuted);assertEquals(before,LegacyMigrationFixture.snapshot(source,columns));
+        assertEquals(3,AgendaMigrationTool.migrar(source).migrationsExecuted);assertEquals(before,LegacyMigrationFixture.snapshot(source,columns));
         assertEquals(2L,jdbc.queryForObject("select responsavel_atendimento_id from tb_sessao_grupo where id=1",Long.class));assertEquals(3L,jdbc.queryForObject("select coordenador_id from tb_grupo_terapeutico where id=1",Long.class));
         assertEquals("ENVERS_TRANSICAO_REALIZADA",jdbc.queryForObject("select origem_responsabilidade from tb_sessao_grupo where id=1",String.class));assertEquals(List.of(2L,3L),jdbc.queryForList("select responsavel_id from tb_auditoria_correcao_frequencia order by ocorrido_em",Long.class));
         assertNull(jdbc.queryForObject("select responsavel_atendimento_id from tb_sessao_grupo where id=2",Long.class));assertTrue(jdbc.queryForObject("select responsabilidade_pendente from tb_sessao_grupo where id=2",Boolean.class));

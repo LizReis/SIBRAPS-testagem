@@ -10,5 +10,6 @@ import com.pet.buscaativa.entities.AuditoriaCorrecaoFrequencia;
 public interface AuditoriaCorrecaoRepository extends Repository<AuditoriaCorrecaoFrequencia,UUID> {
     Page<AuditoriaCorrecaoFrequencia> findByAgendamento_IdAndUnidade(Long id,String unidade,Pageable pageable);
     Page<AuditoriaCorrecaoFrequencia> findBySessao_IdAndUnidade(Long id,String unidade,Pageable pageable);
+    boolean existsByAgendamento_Id(Long id);
     long count();
 }

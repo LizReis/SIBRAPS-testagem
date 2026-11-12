@@ -18,13 +18,19 @@ public class PoliticaTemporalFrequencia {
     public void validarSessao(SessaoGrupo s,boolean correcao) {
         validar(s.getDataSessao(),s.getHorario(),correcao,null,s.getId());
     }
-    private void validar(LocalDate data,LocalTime hora,boolean correcao,Long agendamento,Long sessao) {
-        if(data==null || hora==null)
-            throw horarioPendente(agendamento,sessao);
+    public void validarRecuperacao(Agendamento a) {
+        var previsto=previsto(a.getDataAgendamento(),a.getHoraAtendimento(),a.getId(),null);
+        if(!previsto.isAfter(LocalDateTime.ofInstant(clock.instant(),tempo.getFuso())))
+            throw new ConflictException("Recuperação exige horário estritamente futuro; nenhum fato assistencial foi presumido.");
+    }
+    private LocalDateTime previsto(LocalDate data,LocalTime hora,Long agendamento,Long sessao) {
+        if(data==null || hora==null)throw horarioPendente(agendamento,sessao);
         var previsto=LocalDateTime.of(data,hora);
-        // Do not silently select an offset or shift a legacy appointment across a historical DST gap.
-        if(tempo.getFuso().getRules().getValidOffsets(previsto).size()!=1)
-            throw horarioPendente(agendamento,sessao);
+        if(tempo.getFuso().getRules().getValidOffsets(previsto).size()!=1)throw horarioPendente(agendamento,sessao);
+        return previsto;
+    }
+    private void validar(LocalDate data,LocalTime hora,boolean correcao,Long agendamento,Long sessao) {
+        var previsto=previsto(data,hora,agendamento,sessao);
         var agora=LocalDateTime.ofInstant(clock.instant(),tempo.getFuso());
         if(correcao ? !previsto.isBefore(agora) : previsto.isAfter(agora))
             throw new ValidationException(correcao
