@@ -443,3 +443,16 @@ A entrega da Etapa 4 está documentada em [etapa4-correcao-frequencia-retroativa
 | 7 — Erros globais | Revisar 401/403/404/409/422/500 e falhas transacionais/infraestrutura sem ocultar problemas técnicos. O handler global permanece inalterado. |
 | 8 — Angular | Interface da correção com versão/motivo, consulta de auditoria, estados canônicos, alertas, indicadores provisórios e visualização/encaminhamento RNF17 reais. Distinguir colisão, versão obsoleta e pendência histórica nas telas. |
 | 9 — Validação final | Corrigir testes Angular pendentes, revisar painéis/relatórios/indicadores e apresentação de datas, executar CI, escolher SGBD definitivo e validar migração, concorrência, restauração e permissões nele, inclusive integração entre fluxos de grupos e agenda. |
+
+## Adendo — Etapa 5 implementada para revisão
+
+A Etapa 5 está documentada em [etapa5-regularizacao-cancelamentos-incorretos.md](etapa5-regularizacao-cancelamentos-incorretos.md). Duas operações específicas foram implementadas: recuperação de reserva estritamente futura com oferta e registro factual estritamente passado no atendimento cancelado existente. O fato mantém CANCELADA, projeção CANCELADO e ocupaVaga=false; gera histórico/auditoria próprios e recálculo canônico. A correção P↔F posterior exige origem auditada confiável. O bypass genérico foi fechado. A corrida real recuperação × capacidade exigiu compartilhar o lock do profissional nas escritas de oferta/bloqueio. V7 é aditiva e não presume cancelamentos incorretos em dados antigos.
+
+As seções originais preservam o diagnóstico de seu commit-base. Este adendo não inicia a Etapa 6 e não declara prontidão de produção.
+
+| Etapa futura | Escopo preservado |
+|---|---|
+| 6 — Reconciliação | Resolução autorizada de colisões, registros históricos ambíguos, responsabilidade de sessões antigas e possíveis duplicações clínicas preexistentes. Pendências da Etapa 5 não autorizam corrigir terceiros automaticamente. |
+| 7 — Erros HTTP | Revisão global de exceções, mensagens e respostas; separar regra de negócio, conflito transacional e infraestrutura, sem esconder falhas internas em 409. |
+| 8 — Angular | Interfaces distintas de recuperação/fato e de correção, justificativas, auditorias, indicadores provisórios, busca ativa, RF22 e RNF17. Apresentar reserva e frequência canônicas sem depender somente da projeção CANCELADO. |
+| 9 — Validação final | Testes Angular, relatórios, indicadores, CI, SGBD definitivo, migração, concorrência, restauração e segurança operacional. As sete falhas Angular e cinco erros não tratados anteriores continuam reservados às etapas próprias. |
