@@ -24,11 +24,13 @@ public class BloqueioAgendaServiceImpl implements BloqueioAgendaService {
 
     private final BloqueioAgendaRepository bloqueioRepository;
     private final UsuarioContextService usuarioContextService;
+    private final jakarta.persistence.EntityManager entityManager;
     private final AgendamentoRepository agendamentoRepository;
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public BloqueioAgendaDTO save(BloqueioAgendaDTO bloqueioAgendaDTO, String emailLogado) {
-        Usuario usuario = usuarioContextService.determinarUsuarioAlvo(bloqueioAgendaDTO.usuarioId(), emailLogado);
+        Usuario usuario = usuarioContextService.bloquearUsuarioAlvo(bloqueioAgendaDTO.usuarioId(), emailLogado);
 
         if (bloqueioAgendaDTO.dataFim().isBefore(bloqueioAgendaDTO.dataInicio())) {
             throw new ValidationException("A data final não pode ser anterior à data inicial.");
@@ -69,10 +71,14 @@ public class BloqueioAgendaServiceImpl implements BloqueioAgendaService {
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public void deletarBloqueio(Long id, String emailLogado) {
         BloqueioAgenda bloqueio = bloqueioRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Bloqueio não encontrado."));
-        usuarioContextService.validarAlteracao(bloqueio.getUsuario(), emailLogado);
+        var proprietario=usuarioContextService.bloquearProprietario(bloqueio.getUsuario(),emailLogado);
+        entityManager.refresh(bloqueio,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if(!java.util.Objects.equals(proprietario.getId(),bloqueio.getUsuario().getId()))
+            throw new ConflictException("A configuração mudou de responsável; atualize os dados antes de tentar novamente.");
         bloqueioRepository.delete(bloqueio);
     }
 

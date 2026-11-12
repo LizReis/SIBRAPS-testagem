@@ -30,11 +30,13 @@ public class DisponibilidadeServiceImpl implements DisponibilidadeService {
 
     private final DisponibilidadeRepository disponibilidadeRepository;
     private final UsuarioContextService usuarioContextService;
+    private final jakarta.persistence.EntityManager entityManager;
     private final AgendamentoRepository agendamentoRepository;
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public DisponibilidadeDTO save(DisponibilidadeDTO disponibilidadeDTO, String emailLogado) {
-        Usuario usuario = usuarioContextService.determinarUsuarioAlvo(disponibilidadeDTO.usuarioId(), emailLogado);
+        Usuario usuario = usuarioContextService.bloquearUsuarioAlvo(disponibilidadeDTO.usuarioId(), emailLogado);
 
         Optional<Disponibilidade> checarDisponibilidade = disponibilidadeRepository
                 .findByUsuarioAndDiaDaSemanaAndTurno(usuario, disponibilidadeDTO.diaSemana(), disponibilidadeDTO.turno());
@@ -93,7 +95,10 @@ public class DisponibilidadeServiceImpl implements DisponibilidadeService {
     public void deletarDisponibilidade(Long id, String emailLogado) {
         Disponibilidade disponibilidade = disponibilidadeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Disponibilidade não encontrada."));
-        usuarioContextService.validarAlteracao(disponibilidade.getUsuario(), emailLogado);
+        var proprietario=usuarioContextService.bloquearProprietario(disponibilidade.getUsuario(),emailLogado);
+        entityManager.refresh(disponibilidade,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if(!java.util.Objects.equals(proprietario.getId(),disponibilidade.getUsuario().getId()))
+            throw new ConflictException("A configuração mudou de responsável; atualize os dados antes de tentar novamente.");
         int diaBanco = disponibilidade.getDiaDaSemana().getValue() % 7 + 1;
         long conflitos = agendamentoRepository.contarConflitosDisponibilidade(disponibilidade.getUsuario(),
                 LocalDate.now(), diaBanco, disponibilidade.getTurno(),

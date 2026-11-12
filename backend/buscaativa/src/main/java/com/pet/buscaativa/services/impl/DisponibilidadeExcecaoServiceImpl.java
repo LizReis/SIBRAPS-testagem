@@ -26,6 +26,7 @@ public class DisponibilidadeExcecaoServiceImpl implements DisponibilidadeExcecao
 
     private final DisponibilidadeExcecaoRepository excecaoRepository;
     private final UsuarioContextService usuarioContextService;
+    private final jakarta.persistence.EntityManager entityManager;
     private final AgendamentoRepository agendamentoRepository;
     private final DisponibilidadeRepository disponibilidadeRepository;
 
@@ -33,8 +34,9 @@ public class DisponibilidadeExcecaoServiceImpl implements DisponibilidadeExcecao
             SituacaoAtendimento.AGENDADO, SituacaoAtendimento.REMARCADO, SituacaoAtendimento.PRESENTE);
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public DisponibilidadeExcecaoDTO save(DisponibilidadeExcecaoDTO dto, String emailLogado) {
-        Usuario usuario = usuarioContextService.determinarUsuarioAlvo(dto.usuarioId(), emailLogado);
+        Usuario usuario = usuarioContextService.bloquearUsuarioAlvo(dto.usuarioId(), emailLogado);
 
         Optional<DisponibilidadeExcecao> existente = excecaoRepository
                 .findByUsuarioAndDataAndTurno(usuario, dto.data(), dto.turno());
@@ -93,10 +95,14 @@ public class DisponibilidadeExcecaoServiceImpl implements DisponibilidadeExcecao
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public void deletar(Long id, String emailLogado) {
         DisponibilidadeExcecao excecao = excecaoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Configuração não encontrada."));
-        usuarioContextService.validarAlteracao(excecao.getUsuario(), emailLogado);
+        var proprietario=usuarioContextService.bloquearProprietario(excecao.getUsuario(),emailLogado);
+        entityManager.refresh(excecao,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if(!java.util.Objects.equals(proprietario.getId(),excecao.getUsuario().getId()))
+            throw new ConflictException("A configuração mudou de responsável; atualize os dados antes de tentar novamente.");
         int capacidadeResultante = disponibilidadeRepository
                 .findByUsuarioAndDiaDaSemanaAndTurno(excecao.getUsuario(), excecao.getData().getDayOfWeek(), excecao.getTurno())
                 .map(d -> d.getCapacidade()).orElse(0);

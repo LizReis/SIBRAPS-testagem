@@ -51,6 +51,23 @@ public class UsuarioContextService {
         return logado;
     }
 
+    /** Mutating agenda configuration shares the professional lock held by booking/recovery. */
+    @org.springframework.transaction.annotation.Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public Usuario bloquearUsuarioAlvo(UUID usuarioIdPublico,String emailLogado) {
+        var autorizado=determinarUsuarioAlvo(usuarioIdPublico,emailLogado);
+        var bloqueado=usuarioRepository.findByIdPublicoForUpdate(autorizado.getIdPublico())
+            .orElseThrow(()->new ResourceNotFoundException("Profissional não encontrado."));
+        escopoUnidadeService.validarUsuario(bloqueado);
+        return bloqueado;
+    }
+
+    @org.springframework.transaction.annotation.Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public Usuario bloquearProprietario(Usuario proprietario,String emailLogado) {
+        validarAlteracao(proprietario,emailLogado);
+        return usuarioRepository.findByIdPublicoForUpdate(proprietario.getIdPublico())
+            .orElseThrow(()->new ResourceNotFoundException("Profissional não encontrado."));
+    }
+
     public void validarAlteracao(Usuario proprietario, String emailLogado) {
         escopoUnidadeService.validarUsuario(proprietario);
         Usuario logado = usuarioRepository.findByEmail(emailLogado)
