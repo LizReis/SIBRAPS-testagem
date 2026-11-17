@@ -68,6 +68,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     private final HistoricoPacienteService historicoPacienteService;
     private final AgendaHorarioProperties agendaHorarioProperties;
     private final java.time.Clock clock;
+    private final jakarta.persistence.EntityManager entityManager;
     private final com.pet.buscaativa.services.PoliticaTemporalFrequencia politicaTemporal;
     private final EscopoUnidadeService escopoUnidadeService;
     private final com.pet.buscaativa.services.AutorizacaoClinicaService autorizacaoClinica;
@@ -90,18 +91,16 @@ public class AgendamentoServiceImpl implements AgendamentoService {
                 .orElseThrow(() -> new ResourceNotFoundException("Paciente não encontrado"));
 
         escopoUnidadeService.validarAcesso(paciente);
-        if (paciente.getStatusPaciente() != StatusPaciente.ATIVO) {
-            throw new ValidationException("Somente pacientes ativos podem ser agendados.");
-        }
+        entityManager.refresh(paciente, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        escopoUnidadeService.validarAcesso(paciente);
+        validarPacienteElegivelParaReserva(paciente);
 
         Usuario usuario = usuarioRepository.findByIdPublicoForUpdate(agendamentoDTO.usuarioId())
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado"));
 
+        entityManager.refresh(usuario, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         escopoUnidadeService.validarUsuario(usuario);
-        if (usuario.getTipoUsuario() != TipoUsuario.PROFISSIONAL
-                && usuario.getTipoUsuario() != TipoUsuario.ADMINISTRADOR) {
-            throw new ValidationException("O usuário selecionado não é um profissional habilitado para atendimento.");
-        }
+        validarProfissionalElegivelParaReserva(usuario);
 
         if (agendamentoDTO.dataAgendamento().isBefore(LocalDate.now(clock))) {
             throw new ValidationException("Não é permitido criar agendamento em data passada.");
@@ -155,6 +154,19 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         historicoPacienteService.registrarAgendamento(agendamento);
         if (agendamentoDTO.agendamentoOriginalId() != null) pacienteService.recalcularAssiduidadePaciente(paciente);
         return agendamentoMapper.toAgendamentoDTO(agendamento);
+    }
+
+    private void validarPacienteElegivelParaReserva(Paciente paciente) {
+        if (paciente.getStatusPaciente() != StatusPaciente.ATIVO) {
+            throw new ValidationException("Somente pacientes ativos podem ser agendados.");
+        }
+    }
+
+    private void validarProfissionalElegivelParaReserva(Usuario usuario) {
+        if (usuario.getTipoUsuario() != TipoUsuario.PROFISSIONAL
+                && usuario.getTipoUsuario() != TipoUsuario.ADMINISTRADOR) {
+            throw new ValidationException("O usuário selecionado não é um profissional habilitado para atendimento.");
+        }
     }
 
     private void validarVaga(Usuario usuario, Paciente paciente, LocalDate data, TurnoEnum turno, LocalTime hora) {
@@ -515,6 +527,12 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         var a=bloquearAgendamento(id);autorizacaoClinica.validarAgendamento(a,true);
         validarVersaoRegularizacao(a,dto.version());validarEstadoRegularizacao(a);
         politicaTemporal.validarRecuperacao(a);String motivo=politicaJustificativa.validar(dto.justificativa());
+        // O lock já foi adquirido na ordem paciente -> profissional -> atendimento.
+        entityManager.refresh(a.getPaciente(), jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        entityManager.refresh(a.getUsuario(), jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        autorizacaoClinica.validarAgendamento(a,true);
+        validarPacienteElegivelParaReserva(a.getPaciente());
+        validarProfissionalElegivelParaReserva(a.getUsuario());
         validarCadeiaRegularizacao(a);historicoPacienteService.validarHistoricoRegularizacao(a,false);
         validarVaga(a.getUsuario(),a.getPaciente(),a.getDataAgendamento(),a.getTurnoAgendamento(),a.getHoraAtendimento(),id);
         int anterior=a.getVersion();a.recuperarReservaCancelada();agendamentoRepository.saveAndFlush(a);

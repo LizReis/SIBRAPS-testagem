@@ -19,6 +19,7 @@ public class UsuarioContextService {
 
     private final UsuarioRepository usuarioRepository;
     private final EscopoUnidadeService escopoUnidadeService;
+    private final jakarta.persistence.EntityManager entityManager;
 
     public Usuario determinarUsuarioAlvo(UUID usuarioIdPublico, String emailLogado) {
         if (emailLogado == null || emailLogado.isBlank()) {
@@ -66,6 +67,32 @@ public class UsuarioContextService {
         validarAlteracao(proprietario,emailLogado);
         return usuarioRepository.findByIdPublicoForUpdate(proprietario.getIdPublico())
             .orElseThrow(()->new ResourceNotFoundException("Profissional não encontrado."));
+    }
+
+    /** Bloqueia origem e destino em ordem estável, sem adquirir locks de pacientes. */
+    @org.springframework.transaction.annotation.Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public Usuario bloquearConfiguracao(UUID destino, UUID origem, String emailLogado) {
+        if (!java.util.Objects.equals(escopoUnidadeService.usuarioLogado().getEmail(), emailLogado))
+            throw new AccessDeniedException("Identidade do executor incompatível com a autenticação.");
+        Usuario alvo = determinarUsuarioAlvo(destino, emailLogado);
+        var ids = new java.util.TreeSet<UUID>();
+        ids.add(alvo.getIdPublico());
+        if (origem != null) {
+            var anterior = usuarioRepository.findByIdPublico(origem)
+                    .orElseThrow(() -> new ResourceNotFoundException("Profissional não encontrado."));
+            validarAlteracao(anterior, emailLogado);
+            ids.add(origem);
+        }
+        Usuario resultado = null;
+        for (UUID id : ids) {
+            var bloqueado = usuarioRepository.findByIdPublicoForUpdate(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("Profissional não encontrado."));
+            // findByIdPublico pode ter carregado o objeto no contexto antes da espera pelo lock.
+            entityManager.refresh(bloqueado, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            validarAlteracao(bloqueado, emailLogado);
+            if (id.equals(alvo.getIdPublico())) resultado = bloqueado;
+        }
+        return java.util.Objects.requireNonNull(resultado);
     }
 
     public void validarAlteracao(Usuario proprietario, String emailLogado) {

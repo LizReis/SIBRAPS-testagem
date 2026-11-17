@@ -456,3 +456,18 @@ As seções originais preservam o diagnóstico de seu commit-base. Este adendo n
 | 7 — Erros HTTP | Revisão global de exceções, mensagens e respostas; separar regra de negócio, conflito transacional e infraestrutura, sem esconder falhas internas em 409. |
 | 8 — Angular | Interfaces distintas de recuperação/fato e de correção, justificativas, auditorias, indicadores provisórios, busca ativa, RF22 e RNF17. Apresentar reserva e frequência canônicas sem depender somente da projeção CANCELADO. |
 | 9 — Validação final | Testes Angular, relatórios, indicadores, CI, SGBD definitivo, migração, concorrência, restauração e segurança operacional. As sete falhas Angular e cinco erros não tratados anteriores continuam reservados às etapas próprias. |
+
+## Adendo — Etapa corretiva 5.1 (17/11/2026)
+
+A revisão e os resultados da Etapa 5.1 estão registrados em [etapa5-1-ajustes-antes-etapa6.md](etapa5-1-ajustes-antes-etapa6.md). A base da entrega é `37d8b26`; 53 novos casos foram adicionados e a regressão `verify` final no Codespaces aprovou 925 testes, sem falhas, erros ou ignorados. A caracterização inicial registrou 18 falhas entre 25 novos casos, posteriormente aprovados. A etapa é aprovada para continuidade do desenvolvimento, sem certificação de produção.
+
+A recuperação operacional exige paciente ATIVO e profissional com perfil assistencial elegível; a regularização/correção factual histórica preserva o estado atual do paciente e a identidade do responsável. Oferta semanal, exceções e bloqueios passam a validar a configuração de origem e destino, com locks determinísticos dos profissionais afetados. A oferta semanal usa o relógio institucional. Não foi introduzido cancelamento automático de reservas existentes após encerramento do acompanhamento ou mudança de perfil: essa política precisa de decisão própria. Migrações V1–V7 e frontend permanecem inalterados.
+
+| Etapa futura | Compromisso preservado |
+|---|---|
+| 6 — Reconciliação | Resolver ambiguidades e colisões mediante autorização, evidência, justificativa e auditoria; tratar históricos contraditórios/duplicados, frequências desconhecidas, cadeias de remarcação, horários, origem de regularização e responsabilidade histórica incerta. Investigar proteção bidirecional individual/grupo (criação, remarcação, recuperação, sessões, inscrições, coordenador, confirmação, correção e concorrência), incluindo limites do legado de remarcação. Não alterar terceiros automaticamente. |
+| 7 — Erros HTTP | Diferenciar falhas de negócio, versão, concorrência e infraestrutura com tratamento global apropriado. |
+| 8 — Angular | Exibir estados canônicos, fluxos dedicados de recuperação/regularização/correção/reconciliação, justificativas, auditorias, indicadores provisórios, RF22 e RNF17. |
+| 9 — Validação final | Testes Angular e falhas conhecidas, alertas de dependências, JDK 21, CI, relatórios, indicadores, SGBD definitivo, migração, backup, restauração e concorrência. |
+
+Preferir suítes focadas nas alterações durante o desenvolvimento e uma regressão completa ao fechar cada etapa. Não repetir test e verify sem necessidade. As descrições originais deste plano permanecem como registro de seus respectivos commits-base; este adendo não inicia a Etapa 6.

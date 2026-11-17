@@ -38,10 +38,11 @@ public class UsuarioServiceImpl implements UsuarioService {
     private final EscopoUnidadeService escopoUnidadeService;
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public UsuarioDTO save(UsuarioDTO usuarioDTO) {
         Usuario usuarioSalvar = null;
         if (usuarioDTO.idPublico() != null) {
-            usuarioSalvar = usuarioRepository.findByIdPublico(usuarioDTO.idPublico())
+            usuarioSalvar = usuarioRepository.findByIdPublicoForUpdate(usuarioDTO.idPublico())
                     .filter(escopoUnidadeService::usuarioPertenceAoEscopo)
                     .orElseThrow(() -> new ResourceNotFoundException(usuarioDTO.idPublico()));
         }

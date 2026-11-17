@@ -100,6 +100,14 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long>,
                                                     @Param("turno") TurnoEnum turno, @Param("situacoes") List<SituacaoAtendimento> situacoes);
 
 
+    @Query("SELECT a.dataAgendamento FROM Agendamento a WHERE a.usuario = :usuario " +
+            "AND a.dataAgendamento >= :inicio AND a.turnoAgendamento = :turno " +
+            "AND a.ocupaVaga = true AND a.situacaoAtendimento IN :situacoes " +
+            "GROUP BY a.dataAgendamento")
+    List<LocalDate> datasOcupadasParaOferta(@Param("usuario") Usuario usuario,
+            @Param("inicio") LocalDate inicio, @Param("turno") TurnoEnum turno,
+            @Param("situacoes") List<SituacaoAtendimento> situacoes);
+
     // Verifica se já existe um agendamento ativo do profissional na mesma data e horário exato
     @Query("SELECT COUNT(a) > 0 FROM Agendamento a WHERE a.usuario = :usuario " +
             "AND a.dataAgendamento = :data AND a.horaAtendimento = :hora " +

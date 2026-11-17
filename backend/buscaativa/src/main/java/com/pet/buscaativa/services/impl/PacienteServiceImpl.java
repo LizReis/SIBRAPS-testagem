@@ -74,7 +74,7 @@ public class PacienteServiceImpl implements PacienteService{
         Paciente pacienteSalvar = null;
 
         if(pacienteDTO.idPublico() != null){
-            pacienteSalvar = pacienteRepository.findByIdPublico(pacienteDTO.idPublico())
+            pacienteSalvar = pacienteRepository.findByIdPublicoForUpdate(pacienteDTO.idPublico())
                     .filter(escopoUnidadeService::pacientePertenceAoEscopo)
                     .orElseThrow(() -> new DatabaseException("Paciente não encontrado!"));
         }
@@ -119,8 +119,9 @@ public class PacienteServiceImpl implements PacienteService{
     }
 
     @Override
+    @Transactional
     public void inativarPaciente(UUID idPublico) {
-        Paciente paciente = pacienteRepository.findByIdPublico(idPublico)
+        Paciente paciente = pacienteRepository.findByIdPublicoForUpdate(idPublico)
                 .filter(escopoUnidadeService::pacientePertenceAoEscopo)
                 .orElseThrow(() -> new DatabaseException("Paciente não encontrado!"));
 

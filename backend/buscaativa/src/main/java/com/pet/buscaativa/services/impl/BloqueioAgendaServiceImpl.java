@@ -10,11 +10,7 @@ import com.pet.buscaativa.entities.Usuario;
 import com.pet.buscaativa.entities.dto.BloqueioAgendaDTO;
 import com.pet.buscaativa.repositories.BloqueioAgendaRepository;
 import com.pet.buscaativa.services.BloqueioAgendaService;
-import com.pet.buscaativa.repositories.AgendamentoRepository;
-import com.pet.buscaativa.entities.enums.SituacaoAtendimento;
-import com.pet.buscaativa.services.exceptions.ConflictException;
 import com.pet.buscaativa.services.exceptions.ValidationException;
-import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
 
 import lombok.RequiredArgsConstructor;
 
@@ -24,41 +20,26 @@ public class BloqueioAgendaServiceImpl implements BloqueioAgendaService {
 
     private final BloqueioAgendaRepository bloqueioRepository;
     private final UsuarioContextService usuarioContextService;
-    private final jakarta.persistence.EntityManager entityManager;
-    private final AgendamentoRepository agendamentoRepository;
+    private final IntegridadeOfertaService integridade;
 
     @Override
     @org.springframework.transaction.annotation.Transactional
-    public BloqueioAgendaDTO save(BloqueioAgendaDTO bloqueioAgendaDTO, String emailLogado) {
-        Usuario usuario = usuarioContextService.bloquearUsuarioAlvo(bloqueioAgendaDTO.usuarioId(), emailLogado);
-
-        if (bloqueioAgendaDTO.dataFim().isBefore(bloqueioAgendaDTO.dataInicio())) {
+    public BloqueioAgendaDTO save(BloqueioAgendaDTO dto, String emailLogado) {
+        if (dto == null || dto.dataInicio() == null || dto.dataFim() == null
+                || dto.motivoBloqueio() == null || dto.motivoBloqueio().isBlank())
+            throw new ValidationException("Informe o período e o motivo do bloqueio.");
+        if (dto.dataFim().isBefore(dto.dataInicio()))
             throw new ValidationException("A data final não pode ser anterior à data inicial.");
-        }
-
-        BloqueioAgenda bloqueio = new BloqueioAgenda();
-        if (bloqueioAgendaDTO.id() != null) {
-            bloqueio = bloqueioRepository.findById(bloqueioAgendaDTO.id())
-                    .orElseThrow(() -> new ResourceNotFoundException("Bloqueio não encontrado."));
-            usuarioContextService.validarAlteracao(bloqueio.getUsuario(), emailLogado);
-        }
-
-        long conflitos = agendamentoRepository.contarAtivosNoPeriodo(usuario,
-                bloqueioAgendaDTO.dataInicio(), bloqueioAgendaDTO.dataFim(),
-                List.of(SituacaoAtendimento.AGENDADO, SituacaoAtendimento.REMARCADO, SituacaoAtendimento.PRESENTE));
-        if (conflitos > 0) {
-            throw new ConflictException("Não é possível bloquear este período porque existem " + conflitos
-                    + " atendimentos agendados. Cancele ou remarque esses atendimentos antes de continuar.");
-        }
-
-        bloqueio.setUsuario(usuario);
-        bloqueio.setDataInicio(bloqueioAgendaDTO.dataInicio());
-        bloqueio.setDataFim(bloqueioAgendaDTO.dataFim());
-        bloqueio.setMotivoBloqueio(bloqueioAgendaDTO.motivoBloqueio());
-
-        bloqueio = bloqueioRepository.save(bloqueio);
-
-        return toDTO(bloqueio);
+        var origem = integridade.origem(BloqueioAgenda.class, dto.id());
+        Usuario usuario = integridade.bloquear(dto.usuarioId(), origem, emailLogado);
+        BloqueioAgenda item = dto.id() == null ? new BloqueioAgenda() : integridade.carregar(BloqueioAgenda.class, dto.id());
+        if (dto.id() != null) integridade.conferirOrigem(item, origem, emailLogado);
+        integridade.validarBloqueio(usuario, dto.dataInicio(), dto.dataFim());
+        item.setUsuario(usuario);
+        item.setDataInicio(dto.dataInicio());
+        item.setDataFim(dto.dataFim());
+        item.setMotivoBloqueio(dto.motivoBloqueio());
+        return toDTO(bloqueioRepository.saveAndFlush(item));
     }
 
     @Override
@@ -73,13 +54,12 @@ public class BloqueioAgendaServiceImpl implements BloqueioAgendaService {
     @Override
     @org.springframework.transaction.annotation.Transactional
     public void deletarBloqueio(Long id, String emailLogado) {
-        BloqueioAgenda bloqueio = bloqueioRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Bloqueio não encontrado."));
-        var proprietario=usuarioContextService.bloquearProprietario(bloqueio.getUsuario(),emailLogado);
-        entityManager.refresh(bloqueio,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
-        if(!java.util.Objects.equals(proprietario.getId(),bloqueio.getUsuario().getId()))
-            throw new ConflictException("A configuração mudou de responsável; atualize os dados antes de tentar novamente.");
-        bloqueioRepository.delete(bloqueio);
+        var origem = integridade.origem(BloqueioAgenda.class, id);
+        integridade.bloquear(origem.dono(), origem, emailLogado);
+        BloqueioAgenda item = integridade.carregar(BloqueioAgenda.class, id);
+        integridade.conferirOrigem(item, origem, emailLogado);
+        bloqueioRepository.delete(item);
+        bloqueioRepository.flush();
     }
 
     private BloqueioAgendaDTO toDTO(BloqueioAgenda b) {
