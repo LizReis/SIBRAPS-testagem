@@ -471,3 +471,19 @@ A recuperação operacional exige paciente ATIVO e profissional com perfil assis
 | 9 — Validação final | Testes Angular e falhas conhecidas, alertas de dependências, JDK 21, CI, relatórios, indicadores, SGBD definitivo, migração, backup, restauração e concorrência. |
 
 Preferir suítes focadas nas alterações durante o desenvolvimento e uma regressão completa ao fechar cada etapa. Não repetir test e verify sem necessidade. As descrições originais deste plano permanecem como registro de seus respectivos commits-base; este adendo não inicia a Etapa 6.
+
+## Adendo — Etapa 6.1: diagnóstico de conflitos assistenciais (17/11/2026)
+
+Base `9a58f80179381186e39dc12d9de1f455b288028c`, branch `correcao-fluxos-assistenciais-sibraps`. O relatório [etapa6-1-diagnostico-caracterizacao-conflitos.md](etapa6-1-diagnostico-caracterizacao-conflitos.md) registra 63 invocações diagnósticas opt-in em seis classes (29 aprovadas, incluindo seis observacionais; 34 falhas de asserção; zero erros e ignorados), 12 disputas/24 operações (20 confirmações e quatro recusas, sete disputas incompatíveis com dois resultados persistidos). Não são 34 causas independentes. O baseline de 925 testes foi aprovado na 5.1 e não foi repetido neste diagnóstico. Nenhuma alteração intencional em produção, Angular ou V1–V7. A validação local do inventário/hashes precede o commit. Os testes diagnósticos não integram a seleção padrão por nome; deverão ser promovidos à regressão quando as falhas forem corrigidas e as expectativas estiverem decididas.
+
+**Regra de assiduidade obrigatória reafirmada com base nas entrevistas das preceptoras:** contagem unificada, qualquer presença comprovada individual ou em grupo zera a sequência anterior; falta legítima posterior incrementa. Não implementar contadores separados. Preservar limites de risco e regra RF22, distinguir ausência de um atendimento em dia/horário diferente (legítima) de conflito ou empate histórico que exige investigação. Não escolher arbitrariamente a ordem de fatos de mesmo instante por modalidade/ID. Não presumir falta/presença em dado desconhecido. Duplicidade comprovada perde contribuição indevida, preservando registro/evidências/auditoria. Responsabilidade histórica sem prova requer revisão, não atribuição automática. Abertura de pendência não altera fatos; resolução autorizada, distinta, fundamentada e auditada. Profissional resolve somente próprios atendimentos; administrador da unidade resolve os de responsáveis distintos dentro do escopo; recepção não faz reconciliação clínica. Não alterar terceiros nem dados reais automaticamente.
+
+| Subetapa | Prioridade |
+|---|---|
+| 6.2 | Prevenir colisões operacionais e factuais em todos os caminhos pertinentes; bloquear bypass legado de remarcação e correção comum contraditória; validação compartilhada, locks e rollback. Caracterizar cenários residuais operacionais antes da mudança respectiva. |
+| 6.3 | Modelo de pendência persistente, autorização, consulta, evidências/versões e encaminhamento, sem mutação clínica na abertura. |
+| 6.4 | Resolver fatos contraditórios/duplicidades com decisão e auditoria, preservar contagem unificada e consumidores de histórico. |
+| 6.5 | Resolver ambiguidades de tempo, responsabilidade, frequência, cadeia e proveniência; não acionar visita confirmada por cadeia inválida. |
+| 6.6 | Indicadores provisórios, recálculo, RF22/RNF17, relatórios, autorização, concorrência, migrações aditivas se necessárias, promoção e regressão integral com comparação nominal. |
+
+Constam no relatório a matriz de cobertura residual, decisões ainda necessárias e limites da evidência. A conclusão é de diagnóstico inicial para revisão e continuidade, não aprovação de todas as combinações, de toda a Etapa 6 ou produção. Manter as etapas 7–9 e referências protegidas. Executar testes focados e uma regressão completa no encerramento da Etapa 6, salvo necessidade concreta. Não integrar à main.
