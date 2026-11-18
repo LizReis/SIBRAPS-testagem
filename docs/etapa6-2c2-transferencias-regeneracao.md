@@ -1,0 +1,11 @@
+# Etapa 6.2C2 — transferência de coordenação e regeneração de séries
+
+Base cb3d78cb21e7c199828cf8bffd17d17720f0c75d. A C1 teve 25/25 testes de colisão e 40/40 regressões aprovados após o ajuste de responsabilidade histórica (Actions 44414534796). 15 dos 40 casos-alvo de prevenção validados antes desta entrega.
+
+## Escopo e protocolo
+- Transferência: descoberta escalar do coordenador, locks dos profissionais de origem e destino em ordem determinística, depois grupo; revalidar escopo, autoridade, versão e coordenação. Validar todos os compromissos AGENDADA do destino com exclusão exclusiva da sessão em análise. Não tratar REALIZADA ou CANCELADA como novo compromisso. Não alterar responsáveis históricos nem exigir elegibilidade dos participantes em transferência simples.
+- Regeneração: descobrir previamente os participantes por projeção escalar se houver intenção de alteração estrutural; bloqueá-los antes dos profissionais e grupo; se a intenção ou o conjunto divergir após proteção, recusar em vez de adquirir locks tardios. Preservar o veto estrutural após início e listas diferentes. Validar todas as novas datas e participantes antes de excluir qualquer sessão. Excluir somente a sessão antiga do mesmo instante que será substituída; duplicidade da origem exige revisão. Não ocultar todo o grupo. Preservar transação, contratos e guardas anteriores.
+- Operações clínicas mantêm o protocolo da C1 até 6.2D. Sessões AGENDADA passadas ainda seguem a coordenação vigente; a ambiguidade histórica da confirmação tardia permanece 6.5. Nenhuma mudança de regra clínica, migração, frontend, disponibilidade por turno ou duração presumida.
+
+## Validação prevista
+GI-06, GR-07, SR-03, SR-05; cinco contraprovas GroupSeriesUpdate62Tests (regeneração compatível com reaproveitamento de instantes, conflitos de grupo e coordenador, transferência com realização histórica e sessão cancelada); CO-08 transferência vs consulta em conexões independentes. Total 10 invocações esperadas. Regressões direcionadas de responsabilidade, frequência e reservas/séries da C1 (50 invocações esperadas) somente se seleção principal passar. Não executar suíte integral nesta entrega. Resultados pendentes; concorrência ampla, locks factuais, rollback injetado e histórico ambíguo terão tratamento nas subetapas já planejadas.

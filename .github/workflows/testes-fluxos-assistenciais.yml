@@ -9,7 +9,7 @@ permissions:
   contents: read
 jobs:
   backend:
-    name: 6.2C1 - Java 21
+    name: 6.2C2 - Java 21
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -25,23 +25,23 @@ jobs:
           java-version: '21'
           cache: maven
           cache-dependency-path: backend/buscaativa/pom.xml
-      - name: Colisoes operacionais 6.2C1
+      - name: Colisoes de transferencia e regeneracao 6.2C2
         shell: bash
         run: |
           set -o pipefail
-          bash ./mvnw -B -ntp '-Dtest=IndividualGroupCollision61Characterization#gi01*+gi02*+gi03*+gi04*+gi10*+gr01*+gr02*+gr03*+gr04*+gr05*+gr06*+gr08*+gr09*,AgendaSeries62Characterization#sr01*+sr02*+sr04*+sr06*,GroupReservation62Tests' test 2>&1 | tee etapa62c1-colisoes.log
+          bash ./mvnw -B -ntp '-Dtest=IndividualGroupCollision61Characterization#gi06*+gr07*,AgendaSeries62Characterization#sr03*+sr05*,GroupSeriesUpdate62Tests,ReconciliationConcurrency61Characterization#co08*' test 2>&1 | tee etapa62c2-colisoes.log
       - name: Regressoes direcionadas de grupo
         shell: bash
         run: |
           set -o pipefail
-          bash ./mvnw -B -ntp -Dtest=GroupHistoricalResponsibilityTests,GroupFrequencyTemporalTests test 2>&1 | tee etapa62c1-regressao.log
+          bash ./mvnw -B -ntp '-Dtest=GroupHistoricalResponsibilityTests,GroupFrequencyTemporalTests,GroupReservation62Tests,AgendaSeries62Characterization#sr01*+sr02*+sr04*+sr06*' test 2>&1 | tee etapa62c2-regressao.log
       - name: Relatorios de testes
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: etapa62c1-relatorios
+          name: etapa62c2-relatorios
           path: |
             backend/buscaativa/target/surefire-reports/
-            backend/buscaativa/etapa62c1-*.log
+            backend/buscaativa/etapa62c2-*.log
           retention-days: 7
           if-no-files-found: warn

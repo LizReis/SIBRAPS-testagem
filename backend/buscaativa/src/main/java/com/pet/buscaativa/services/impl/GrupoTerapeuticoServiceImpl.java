@@ -145,13 +145,20 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public GrupoTerapeuticoDTO atualizarGrupo(Long grupoId, AtualizarGrupoTerapeuticoDTO dto) {
-        GrupoTerapeutico grupo = grupoRepository.findByIdForUpdate(grupoId).filter(escopoUnidadeService::grupoPertenceAoEscopo)
-                .orElseThrow(() -> new ResourceNotFoundException("Grupo não encontrado."));
+        UUID coordenadorOrigem = coordenadorEscalar(grupoId);
+        // Descoberta escalar: só a regeneração altera vínculos dos pacientes.
+        // Transferência simples não revalida elegibilidade do participante histórico.
+        boolean regeneracaoPrevista = alteracaoEstruturalEscalar(grupoId, dto);
+        Set<UUID> participantesBloqueados = regeneracaoPrevista ? participantesSerieEscalar(grupoId) : Set.of();
+        var recursos = agendaAssistencialLocks.bloquear(participantesBloqueados,
+                List.of(coordenadorOrigem, dto.coordenadorId()));
+        GrupoTerapeutico grupo = bloquearGrupoAposSujeitos(grupoId);
         autorizacaoClinica.validarEdicaoGrupo(grupo);
         if (!dto.version().equals(grupo.getVersion()))
             throw new OptimisticLockException("O grupo foi alterado por outro usuário.");
-        Usuario coordenador = usuarioRepository.findByIdPublico(dto.coordenadorId())
-                .orElseThrow(() -> new ResourceNotFoundException("Coordenador não encontrado."));
+        if (!coordenadorOrigem.equals(grupo.getCoordenador().getIdPublico()))
+            throw new ConflictException("A coordenação foi alterada; atualize o grupo antes de tentar novamente.");
+        Usuario coordenador = recursos.profissional(dto.coordenadorId());
         escopoUnidadeService.validarUsuario(coordenador);
         if (coordenador.getTipoUsuario() != TipoUsuario.PROFISSIONAL && coordenador.getTipoUsuario() != TipoUsuario.ADMINISTRADOR)
             throw new ValidationException("O coordenador deve ser profissional ou administrador.");
@@ -164,6 +171,8 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         boolean estrutural = !primeira.getDataSessao().equals(dto.dataPrimeiraSessao())
                 || !grupo.getHorarioPadrao().equals(dto.horario()) || grupo.getRecorrencia() != dto.recorrencia()
                 || !java.util.Objects.equals(grupo.getDataFimRecorrencia(), dto.dataFimRecorrencia());
+        if (estrutural && (!regeneracaoPrevista || !participantesBloqueados.equals(participantesSerieEscalar(grupoId))))
+            throw new ConflictException("A estrutura ou os participantes foram alterados; atualize o grupo antes de tentar novamente.");
         if (iniciado && estrutural) {
             sessoes.forEach(escopoUnidadeService::validarSessaoCompleta);
             throw new ConflictException("Após o início do grupo, data, horário e recorrência não podem ser alterados.");
@@ -179,12 +188,34 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
                     dto.dataPrimeiraSessao(), dto.dataFimRecorrencia(), dto.horario(), List.copyOf(participantes));
             validarPeriodoRecorrencia(validacao);
             if (dto.dataPrimeiraSessao().isBefore(LocalDate.now(clock))) throw new ValidationException("A primeira sessão não pode estar no passado.");
+            List<LocalDate> datas = gerarDatasDaSerie(dto.dataPrimeiraSessao(), dto.dataFimRecorrencia(), dto.recorrencia());
+            // Excluir exclusivamente a sessão antiga que será substituída naquele instante.
+            // Não ocultar outras sessões da mesma série ou de outros grupos.
+            Map<IntegridadeAgendaAssistencialService.Instante, Long> origens = new java.util.HashMap<>();
+            for (SessaoGrupo antiga : sessoes) {
+                var instante = new IntegridadeAgendaAssistencialService.Instante(antiga.getDataSessao(), antiga.getHorario());
+                if (origens.putIfAbsent(instante, antiga.getId()) != null)
+                    throw new ConflictException("A série possui sessões simultâneas e exige revisão antes da regeneração.");
+            }
+            for (LocalDate data : datas) {
+                Long excluir = origens.get(new IntegridadeAgendaAssistencialService.Instante(data, dto.horario()));
+                validarCompromissoCoordenador(coordenador, data, dto.horario(), excluir);
+                for (UUID pacienteId : participantes)
+                    validarNovaParticipacao(recursos.paciente(pacienteId), data, dto.horario(), excluir);
+            }
             sessaoRepository.deleteAll(sessoes);
             sessaoRepository.flush();
-            for (LocalDate data : gerarDatasDaSerie(dto.dataPrimeiraSessao(), dto.dataFimRecorrencia(), dto.recorrencia())) {
+            for (LocalDate data : datas) {
                 SessaoGrupo nova = sessaoRepository.save(novaSessao(grupo, data, dto.horario()));
                 for (UUID pacienteId : participantes) adicionarParticipanteInterno(nova, pacienteId);
             }
+        }
+        if (!estrutural && !coordenadorOrigem.equals(dto.coordenadorId())) {
+            // REALIZADA mantém o responsável histórico; CANCELADA não cria compromisso.
+            // AGENDADA ainda segue a coordenação vigente, inclusive confirmação tardia legada.
+            for (SessaoGrupo sessao : sessoes)
+                if (sessao.getStatus() == StatusSessaoGrupo.AGENDADA)
+                    validarCompromissoCoordenador(coordenador, sessao.getDataSessao(), sessao.getHorario(), sessao.getId());
         }
         grupo.setTema(dto.tema().trim()); grupo.setCoordenador(coordenador); grupo.setHorarioPadrao(dto.horario());
         grupo.setRecorrencia(dto.recorrencia()); grupo.setDataFimRecorrencia(dto.dataFimRecorrencia());
@@ -542,6 +573,26 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         return entityManager.createQuery("select g.coordenador.idPublico from GrupoTerapeutico g where g.id=:id", UUID.class)
                 .setParameter("id", grupoId).getResultList().stream().findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException("Grupo não encontrado."));
+    }
+
+    private boolean alteracaoEstruturalEscalar(Long grupoId, AtualizarGrupoTerapeuticoDTO dto) {
+        Object[] dados = entityManager.createQuery(
+                "select g.horarioPadrao, g.recorrencia, g.dataFimRecorrencia from GrupoTerapeutico g where g.id=:id",
+                Object[].class).setParameter("id", grupoId).getResultList().stream().findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("Grupo não encontrado."));
+        LocalDate primeira = entityManager.createQuery(
+                "select min(s.dataSessao) from SessaoGrupo s where s.grupo.id=:id", LocalDate.class)
+                .setParameter("id", grupoId).getSingleResult();
+        return !java.util.Objects.equals(primeira, dto.dataPrimeiraSessao())
+                || !java.util.Objects.equals(dados[0], dto.horario())
+                || dados[1] != dto.recorrencia()
+                || !java.util.Objects.equals(dados[2], dto.dataFimRecorrencia());
+    }
+
+    private Set<UUID> participantesSerieEscalar(Long grupoId) {
+        return new HashSet<>(entityManager.createQuery(
+                "select distinct p.paciente.idPublico from SessaoGrupoParticipante p where p.sessaoGrupo.grupo.id=:id",
+                UUID.class).setParameter("id", grupoId).getResultList());
     }
 
     private GrupoTerapeutico bloquearGrupoComSujeitos(Long grupoId, java.util.Collection<UUID> pacientes) {
