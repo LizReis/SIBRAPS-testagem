@@ -55,6 +55,8 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     private static final long LIMITE_DIAS_CONSULTA_AGENDA = 62;
 
     private final AgendamentoRepository agendamentoRepository;
+    private final AgendaAssistencialLocks agendaAssistencialLocks;
+    private final IntegridadeAgendaAssistencialService integridadeAgendaAssistencial;
     private final com.pet.buscaativa.repositories.SessaoGrupoRepository sessaoGrupoRepository;
     private final BloqueioAgendaRepository bloqueioAgendaRepository;
     private final UsuarioRepository usuarioRepository;
@@ -86,28 +88,34 @@ public class AgendamentoServiceImpl implements AgendamentoService {
             throw new ValidationException("Informe paciente, profissional e data do atendimento.");
         }
         validarHorario(agendamentoDTO.turnoAgendamento(), agendamentoDTO.horaAtendimento());
-        // Global agenda lock order: patient -> professional -> original appointment.
-        Paciente paciente = pacienteRepository.findByIdPublicoForUpdate(agendamentoDTO.pacienteId())
-                .orElseThrow(() -> new ResourceNotFoundException("Paciente não encontrado"));
-
-        escopoUnidadeService.validarAcesso(paciente);
-        entityManager.refresh(paciente, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
-        escopoUnidadeService.validarAcesso(paciente);
+        // Descoberta escalar antes de qualquer lock: remarcação também afeta a oferta de origem.
+        Long originalId = agendamentoDTO.agendamentoOriginalId();
+        var identidadeOriginal = originalId == null ? null : agendamentoRepository.findLockIdentityById(originalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Agendamento original não encontrado"));
+        var pacientesIds = new HashSet<UUID>();
+        var profissionaisIds = new HashSet<UUID>();
+        pacientesIds.add(agendamentoDTO.pacienteId());
+        profissionaisIds.add(agendamentoDTO.usuarioId());
+        if (identidadeOriginal != null) {
+            pacientesIds.add(identidadeOriginal.getPacienteId());
+            profissionaisIds.add(identidadeOriginal.getUsuarioId());
+        }
+        var recursos = agendaAssistencialLocks.bloquear(pacientesIds, profissionaisIds);
+        Paciente paciente = recursos.paciente(agendamentoDTO.pacienteId());
+        Usuario usuario = recursos.profissional(agendamentoDTO.usuarioId());
+        Agendamento original = identidadeOriginal == null ? null : carregarAgendamentoBloqueado(originalId, identidadeOriginal);
+        if (original != null && !java.util.Objects.equals(original.getPaciente().getId(), paciente.getId())) {
+            throw new ValidationException("A remarcação deve pertencer ao mesmo paciente do atendimento original.");
+        }
         validarPacienteElegivelParaReserva(paciente);
-
-        Usuario usuario = usuarioRepository.findByIdPublicoForUpdate(agendamentoDTO.usuarioId())
-                .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado"));
-
-        entityManager.refresh(usuario, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
-        escopoUnidadeService.validarUsuario(usuario);
         validarProfissionalElegivelParaReserva(usuario);
 
         if (agendamentoDTO.dataAgendamento().isBefore(LocalDate.now(clock))) {
             throw new ValidationException("Não é permitido criar agendamento em data passada.");
         }
 
-        validarVaga(usuario, paciente, agendamentoDTO.dataAgendamento(),
-                agendamentoDTO.turnoAgendamento(), agendamentoDTO.horaAtendimento());
+        validarVagaOperacional(usuario, paciente, agendamentoDTO.dataAgendamento(),
+                agendamentoDTO.turnoAgendamento(), agendamentoDTO.horaAtendimento(), null);
 
         Agendamento agendamento = new Agendamento();
         agendamento.setUsuario(usuario);
@@ -116,14 +124,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         agendamento.setTurnoAgendamento(agendamentoDTO.turnoAgendamento());
         agendamento.setHoraAtendimento(agendamentoDTO.horaAtendimento());
 
-        if (agendamentoDTO.agendamentoOriginalId() != null) {
-            var original = agendamentoRepository.findByIdForUpdate(agendamentoDTO.agendamentoOriginalId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Agendamento original não encontrado"));
-
-            escopoUnidadeService.validarAgendamento(original);
-            if (!java.util.Objects.equals(original.getPaciente().getId(), paciente.getId())) {
-                throw new ValidationException("A remarcação deve pertencer ao mesmo paciente do atendimento original.");
-            }
+        if (original != null) {
             if (original.isMigracaoPendente())
                 throw new ConflictException("Atendimento original com informações históricas pendentes de revisão; nenhuma remarcação foi realizada.");
             if (agendamentoDTO.id() != null && agendamentoDTO.id().equals(agendamentoDTO.agendamentoOriginalId())) {
@@ -175,7 +176,50 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     private void validarVaga(Usuario usuario,Paciente paciente,LocalDate data,TurnoEnum turno,LocalTime hora,Long recuperacao) {
         validarHorario(turno, hora);
         validarConflitosDeHorario(usuario, paciente, data, hora, recuperacao);
+        validarOferta(usuario, data, turno);
+    }
 
+    /** Operações de reserva; o caminho factual legado fica intacto até 6.2D. */
+    private void validarVagaOperacional(Usuario usuario, Paciente paciente, LocalDate data, TurnoEnum turno,
+            LocalTime hora, Long recuperacao) {
+        validarHorario(turno, hora);
+        var instante = new IntegridadeAgendaAssistencialService.Instante(data, hora);
+        var exclusao = new IntegridadeAgendaAssistencialService.Exclusao(recuperacao, null);
+        var profissional = integridadeAgendaAssistencial.avaliarProfissional(usuario, instante, exclusao);
+        var pessoa = integridadeAgendaAssistencial.avaliarPaciente(paciente, instante, exclusao);
+        validarSinaisDeReserva(profissional, pessoa, recuperacao);
+        validarOferta(usuario, data, turno);
+    }
+
+    private void validarSinaisDeReserva(IntegridadeAgendaAssistencialService.Avaliacao profissional,
+            IntegridadeAgendaAssistencialService.Avaliacao pessoa, Long recuperacao) {
+        var ocupacao = IntegridadeAgendaAssistencialService.Sinal.OCUPACAO_INDIVIDUAL;
+        var presenca = IntegridadeAgendaAssistencialService.Sinal.PRESENCA_INDIVIDUAL;
+        if (profissional.tem(ocupacao)) recusarReserva(recuperacao, "PROFISSIONAL",
+                "Já existe um atendimento marcado para este profissional nesta data e horário.");
+        if (pessoa.tem(ocupacao)) recusarReserva(recuperacao, "PACIENTE",
+                "O paciente já possui um atendimento ativo nesta data e horário.");
+        if (profissional.tem(presenca)) recusarReserva(recuperacao, "HISTORICO_PROFISSIONAL",
+                "Existe fato assistencial incompatível neste horário; revisão autorizada necessária.");
+        if (pessoa.tem(presenca)) recusarReserva(recuperacao, "HISTORICO_PACIENTE",
+                "Existe fato assistencial incompatível neste horário; revisão autorizada necessária.");
+        if (profissional.tem(IntegridadeAgendaAssistencialService.Sinal.SESSAO_AGENDADA)
+                || profissional.tem(IntegridadeAgendaAssistencialService.Sinal.SESSAO_REALIZADA))
+            recusarReserva(recuperacao, "SESSAO_PROFISSIONAL", "O profissional possui compromisso assistencial incompatível neste horário.");
+        // Recuperação mantém a guarda conservadora anterior para participação realizada com falta ou resultado desconhecido.
+        if (pessoa.tem(IntegridadeAgendaAssistencialService.Sinal.INSCRICAO_AGENDADA)
+                || pessoa.tem(IntegridadeAgendaAssistencialService.Sinal.PRESENCA_GRUPO)
+                || (recuperacao != null && (pessoa.tem(IntegridadeAgendaAssistencialService.Sinal.FALTA_GRUPO)
+                    || pessoa.tem(IntegridadeAgendaAssistencialService.Sinal.FREQUENCIA_GRUPO_DESCONHECIDA))))
+            recusarReserva(recuperacao, "PARTICIPACAO_GRUPO", "O paciente possui compromisso assistencial incompatível neste horário.");
+    }
+
+    private void recusarReserva(Long recuperacao, String tipo, String mensagem) {
+        if (recuperacao != null) throw conflitoAssistencial(recuperacao,tipo);
+        throw new ConflictException(mensagem);
+    }
+
+    private void validarOferta(Usuario usuario, LocalDate data, TurnoEnum turno) {
         if (bloqueioAgendaRepository.isDataBloqueadaParaUsuario(usuario, data)) {
             throw new ConflictException("A agenda do profissional está bloqueada na data informada.");
         }
@@ -527,14 +571,12 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         var a=bloquearAgendamento(id);autorizacaoClinica.validarAgendamento(a,true);
         validarVersaoRegularizacao(a,dto.version());validarEstadoRegularizacao(a);
         politicaTemporal.validarRecuperacao(a);String motivo=politicaJustificativa.validar(dto.justificativa());
-        // O lock já foi adquirido na ordem paciente -> profissional -> atendimento.
-        entityManager.refresh(a.getPaciente(), jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
-        entityManager.refresh(a.getUsuario(), jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        // Sujeitos já foram recarregados sob lock antes do atendimento.
         autorizacaoClinica.validarAgendamento(a,true);
         validarPacienteElegivelParaReserva(a.getPaciente());
         validarProfissionalElegivelParaReserva(a.getUsuario());
         validarCadeiaRegularizacao(a);historicoPacienteService.validarHistoricoRegularizacao(a,false);
-        validarVaga(a.getUsuario(),a.getPaciente(),a.getDataAgendamento(),a.getTurnoAgendamento(),a.getHoraAtendimento(),id);
+        validarVagaOperacional(a.getUsuario(),a.getPaciente(),a.getDataAgendamento(),a.getTurnoAgendamento(),a.getHoraAtendimento(),id);
         int anterior=a.getVersion();a.recuperarReservaCancelada();agendamentoRepository.saveAndFlush(a);
         auditoriaRegularizacao.registrar(a,"RECUPERACAO_RESERVA",motivo,anterior);
         return agendamentoMapper.toAgendamentoDTO(a);
@@ -589,15 +631,17 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         // Global individual lock order: patient -> professional -> appointment. Scalar identity avoids stale entities.
         var identity = agendamentoRepository.findLockIdentityById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Agendamento não encontrado"));
-        Paciente pacienteBloqueado = pacienteRepository.findByIdPublicoForUpdate(identity.getPacienteId())
-                .orElseThrow(() -> new ResourceNotFoundException("Paciente não encontrado"));
-        escopoUnidadeService.validarAcesso(pacienteBloqueado);
-        Usuario profissionalBloqueado = usuarioRepository.findByIdPublicoForUpdate(identity.getUsuarioId())
-                .orElseThrow(() -> new ResourceNotFoundException("Profissional não encontrado"));
-        escopoUnidadeService.validarUsuario(profissionalBloqueado);
+        agendaAssistencialLocks.bloquear(List.of(identity.getPacienteId()), List.of(identity.getUsuarioId()));
+        return carregarAgendamentoBloqueado(id, identity);
+    }
+
+    private Agendamento carregarAgendamentoBloqueado(Long id, AgendamentoRepository.LockIdentity identidade) {
         Agendamento agendamento = agendamentoRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Agendamento não encontrado"));
-
+        entityManager.refresh(agendamento, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (!identidade.getPacienteId().equals(agendamento.getPaciente().getIdPublico())
+                || !identidade.getUsuarioId().equals(agendamento.getUsuario().getIdPublico()))
+            throw new ConflictException("A identidade do atendimento mudou; atualize a agenda antes de tentar novamente.");
         escopoUnidadeService.validarAgendamento(agendamento);
         return agendamento;
     }
