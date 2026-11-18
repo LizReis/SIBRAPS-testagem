@@ -7,7 +7,7 @@ Base de publicação 4596de82ff5a75a0e8e96d36764f6639534c2937; 6.2A/B recuperada
 - Próxima sessão: coordenador descoberto por projeção escalar, pacientes e coordenador bloqueados antes do grupo; identidade do coordenador e escopo revalidados após refresh; verifica compromisso do coordenador e todos os participantes.
 - Adição isolada e inscrição futura: validação compartilhada para novos compromissos; preserva a rejeição de participação coletiva antiga e reserva individual; exclusão somente da sessão atual; duplicidade isolada continua recusada pelo método interno.
 - Inscrição retroativa: verifica novas inscrições agendadas antes da gravação de qualquer item. Fatos históricos (sessões realizadas) continuam para 6.2D. Remoções de participantes também compartilham o lock do coordenador vigente.
-- Bloqueio de sessão: pacientes ordenados, coordenador vigente, grupo, sessão; exige lista de participantes idêntica à descoberta. As guardas de autorização por operação já existentes permanecem. A aquisição do responsável histórico (quando distinto) e as verificações factuais serão tratadas na 6.2D.
+- Bloqueio operacional de sessão: pacientes ordenados, coordenador vigente, grupo, sessão. Comandos clínicos conservam pacientes ordenados, grupo e sessão; autorização após o bloqueio. Ambos revalidam a lista de participantes. A integração dos locks de profissionais nos comandos factuais (inclusive responsável histórico distinto) e as verificações factuais serão tratadas na 6.2D.
 - O helper interno anterior permanece intacto para a regeneração ainda não integrada. Sem alteração de regra de contagem unificada, risco, RF22, RNF17, frontend, migrações, DTOs ou contratos HTTP.
 
 ## Limites explícitos
@@ -18,3 +18,6 @@ Quatro invocações novas em GroupReservation62Tests: presença cancelada canôn
 
 ## Execução no GitHub Actions
 Workflow de testes direcionados atualizado para a C1. Regressão de grupo executada somente se a seleção principal passar. Não houve alteração da suite padrão, migrações ou frontend. Resultados desta entrega ainda pendentes na publicação.
+
+## Primeira execução e ajuste de regressão (18/11/2026)
+GitHub Actions 44413266336, commit fd322e3b51aafceb84e81a1091b7f86df5d5a906: seleção principal 25/25 aprovada; regressão 35/40, cinco falhas de asserção e zero erros. GroupFrequencyTemporalTests 17/17; GroupHistoricalResponsibilityTests 18/23. As falhas GR11 concentram-se em confirmação/correção concorrente com transferência: a guarda de mudança do coordenador descoberto antes dos locks devolvia 409 em comandos clínicos que deveriam ser autorizados com o estado consolidado ou recusados com 403. Ajuste restrito à C1: distinguir bloqueio operacional (mantém lock do coordenador e guarda de divergência) e clínico (mantém o protocolo anterior de pacientes -> grupo -> sessão, com refresh do grupo e a autorização vigente após aquisição). Sem relaxar testes, sem antecipar transferência/regeneração da C2, sem afirmar proteção factual completa. A reexecução da seleção original e das regressões permanece necessária; resultados pendentes neste commit.

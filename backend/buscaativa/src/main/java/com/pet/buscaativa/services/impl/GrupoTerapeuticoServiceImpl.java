@@ -246,7 +246,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public SessaoGrupoDTO adicionarParticipante(Long sessaoId, AdicionarParticipanteDTO dto) {
-        SessaoGrupo sessao = bloquearSessao(sessaoId, List.of(dto.pacienteId()));
+        SessaoGrupo sessao = bloquearSessao(sessaoId, List.of(dto.pacienteId()), FinalidadeBloqueioSessao.OPERACIONAL);
 
         validarSessaoEditavel(sessao);
         var paciente = pacienteRepository.findByIdPublico(dto.pacienteId()).orElseThrow();
@@ -260,7 +260,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public SessaoGrupoDTO removerParticipante(Long sessaoId, UUID pacienteId) {
-        SessaoGrupo sessao = bloquearSessao(sessaoId, List.of(pacienteId));
+        SessaoGrupo sessao = bloquearSessao(sessaoId, List.of(pacienteId), FinalidadeBloqueioSessao.OPERACIONAL);
 
         validarSessaoEditavel(sessao);
 
@@ -275,7 +275,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public SessaoGrupoDTO registrarPresenca(Long sessaoId, UUID pacienteId, RegistrarPresencaGrupoDTO dto) {
-        SessaoGrupo sessao = bloquearSessao(sessaoId, List.of(pacienteId));
+        SessaoGrupo sessao = bloquearSessao(sessaoId, List.of(pacienteId), FinalidadeBloqueioSessao.CLINICA);
         autorizacaoClinica.validarSessao(sessao);
         if (sessao.getStatus() != StatusSessaoGrupo.AGENDADA)
             throw new ValidationException("A frequência provisória só pode ser alterada em sessão agendada.");
@@ -289,7 +289,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public SessaoGrupoDTO atualizarStatus(Long sessaoId, StatusSessaoGrupo novoStatus, Integer expectedVersion) {
-        SessaoGrupo sessao = bloquearSessao(sessaoId, List.of());
+        SessaoGrupo sessao = bloquearSessao(sessaoId, List.of(), FinalidadeBloqueioSessao.CLINICA);
         autorizacaoClinica.validarSessao(sessao);
         if (expectedVersion != null && !expectedVersion.equals(sessao.getVersion()))
             throw new OptimisticLockException(
@@ -304,7 +304,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public SessaoGrupoDTO confirmarOcorrencia(Long sessaoId, ConfirmarOcorrenciaGrupoDTO dto) {
-        SessaoGrupo sessao = bloquearSessao(sessaoId, List.of());
+        SessaoGrupo sessao = bloquearSessao(sessaoId, List.of(), FinalidadeBloqueioSessao.CLINICA);
         autorizacaoClinica.validarSessao(sessao);
         if (sessao.getStatus() != StatusSessaoGrupo.AGENDADA)
             throw new ConflictException("Sessão já foi confirmada como " + sessao.getStatus() + ".");
@@ -505,7 +505,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public SessaoGrupoDTO corrigirFrequencias(Long sessaoId, CorrigirFrequenciasGrupoDTO dto) {
-        SessaoGrupo sessao = bloquearSessao(sessaoId, List.of());
+        SessaoGrupo sessao = bloquearSessao(sessaoId, List.of(), FinalidadeBloqueioSessao.CLINICA);
         autorizacaoClinica.validarSessao(sessao);
         if (sessao.getStatus() != StatusSessaoGrupo.REALIZADA) throw new ValidationException("Somente sessões realizadas permitem correção de frequência.");
         if (dto.version() != null && !dto.version().equals(sessao.getVersion())) throw new OptimisticLockException("A sessão foi alterada por outro usuário.");
@@ -547,22 +547,40 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     private GrupoTerapeutico bloquearGrupoComSujeitos(Long grupoId, java.util.Collection<UUID> pacientes) {
         UUID coordenador = coordenadorEscalar(grupoId);
         agendaAssistencialLocks.bloquear(pacientes, List.of(coordenador));
-        var grupo = grupoRepository.findByIdForUpdate(grupoId)
-                .orElseThrow(() -> new ResourceNotFoundException("Grupo não encontrado."));
-        entityManager.refresh(grupo, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
-        escopoUnidadeService.validarGrupo(grupo);
+        var grupo = bloquearGrupoAposSujeitos(grupoId);
         if (!coordenador.equals(grupo.getCoordenador().getIdPublico()))
             throw new ConflictException("A coordenação foi alterada; atualize o grupo antes de tentar novamente.");
         return grupo;
     }
 
-    /** Pacientes -> coordenador vigente -> grupo -> sessão. Responsável factual: complementar em 6.2D. */
-    private SessaoGrupo bloquearSessao(Long id,List<UUID> additionalPatients) {
+    private GrupoTerapeutico bloquearGrupoAposSujeitos(Long grupoId) {
+        var grupo = grupoRepository.findByIdForUpdate(grupoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Grupo não encontrado."));
+        entityManager.refresh(grupo, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        escopoUnidadeService.validarGrupo(grupo);
+        return grupo;
+    }
+
+    private enum FinalidadeBloqueioSessao { OPERACIONAL, CLINICA }
+
+    /**
+     * Reservas: pacientes -> coordenador vigente -> grupo -> sessão.
+     * Comandos clínicos: mantém pacientes -> grupo -> sessão até integrar a
+     * proteção factual em 6.2D. Autorizar após o lock do grupo/sessão, nunca
+     * com base em um coordenador descoberto antes de aguardar uma transferência.
+     */
+    private SessaoGrupo bloquearSessao(Long id,List<UUID> additionalPatients,
+            FinalidadeBloqueioSessao finalidade) {
         Long groupId=sessaoRepository.findGrupoId(id).orElseThrow(()->new ResourceNotFoundException("Sessão não encontrada."));
         Set<UUID> inscritos = new HashSet<>(participanteRepository.findPacienteIds(id));
         Set<UUID> lockedIds = new HashSet<>(inscritos);
         lockedIds.addAll(additionalPatients);
-        bloquearGrupoComSujeitos(groupId, lockedIds);
+        if (finalidade == FinalidadeBloqueioSessao.OPERACIONAL) {
+            bloquearGrupoComSujeitos(groupId, lockedIds);
+        } else {
+            agendaAssistencialLocks.bloquear(lockedIds, List.of());
+            bloquearGrupoAposSujeitos(groupId);
+        }
         if (!inscritos.equals(new HashSet<>(participanteRepository.findPacienteIds(id))))
             throw new ConflictException("A lista de participantes foi alterada; atualize a sessão antes de tentar novamente.");
         var sessao = sessaoRepository.findByIdForUpdate(id).orElseThrow(()->new ResourceNotFoundException("Sessão não encontrada."));
