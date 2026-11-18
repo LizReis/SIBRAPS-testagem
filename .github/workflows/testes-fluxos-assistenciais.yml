@@ -1,0 +1,42 @@
+name: SIBRAPS - Testes assistenciais
+on:
+  push:
+    branches: [correcao-fluxos-assistenciais-sibraps]
+    paths:
+      - 'backend/buscaativa/**'
+      - '.github/workflows/testes-fluxos-assistenciais.yml'
+permissions:
+  contents: read
+jobs:
+  backend:
+    name: Piloto 6.2A/B - Java 21
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend/buscaativa
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: backend/buscaativa/pom.xml
+      - name: Executar testes direcionados
+        shell: bash
+        run: |
+          set -o pipefail
+          bash ./mvnw -B -ntp '-Dtest=AgendaAssistencialArchitecture62Tests,AgendaAssistencialLocks62Tests,IndividualReservation62Tests,IndividualGroupCollision61Characterization#ig*' test 2>&1 | tee piloto-62.log
+      - name: Relatorios de testes
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: piloto-62-relatorios
+          path: |
+            backend/buscaativa/target/surefire-reports/
+            backend/buscaativa/piloto-62.log
+          retention-days: 7
+          if-no-files-found: warn
