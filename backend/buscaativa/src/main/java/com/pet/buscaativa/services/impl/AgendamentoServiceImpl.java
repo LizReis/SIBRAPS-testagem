@@ -243,6 +243,30 @@ public class AgendamentoServiceImpl implements AgendamentoService {
 
     }
 
+    private void validarPresencaIndividual(Agendamento atendimento) {
+        var instante = new IntegridadeAgendaAssistencialService.Instante(
+                atendimento.getDataAgendamento(), atendimento.getHoraAtendimento());
+        var exclusao = new IntegridadeAgendaAssistencialService.Exclusao(atendimento.getId(), null);
+        var profissional = integridadeAgendaAssistencial.avaliarProfissional(atendimento.getUsuario(), instante, exclusao);
+        var paciente = integridadeAgendaAssistencial.avaliarPaciente(atendimento.getPaciente(), instante, exclusao);
+        if (profissional.tem(IntegridadeAgendaAssistencialService.Sinal.OCUPACAO_INDIVIDUAL))
+            throw conflitoAssistencial(atendimento.getId(), "PROFISSIONAL");
+        if (paciente.tem(IntegridadeAgendaAssistencialService.Sinal.OCUPACAO_INDIVIDUAL))
+            throw conflitoAssistencial(atendimento.getId(), "PACIENTE");
+        if (profissional.tem(IntegridadeAgendaAssistencialService.Sinal.PRESENCA_INDIVIDUAL))
+            throw conflitoAssistencial(atendimento.getId(), "HISTORICO_PROFISSIONAL");
+        if (paciente.tem(IntegridadeAgendaAssistencialService.Sinal.PRESENCA_INDIVIDUAL))
+            throw conflitoAssistencial(atendimento.getId(), "HISTORICO_PACIENTE");
+        if (profissional.tem(IntegridadeAgendaAssistencialService.Sinal.SESSAO_AGENDADA)
+                || profissional.tem(IntegridadeAgendaAssistencialService.Sinal.SESSAO_REALIZADA))
+            throw conflitoAssistencial(atendimento.getId(), "SESSAO_PROFISSIONAL");
+        if (paciente.tem(IntegridadeAgendaAssistencialService.Sinal.INSCRICAO_AGENDADA)
+                || paciente.tem(IntegridadeAgendaAssistencialService.Sinal.PRESENCA_GRUPO))
+            throw conflitoAssistencial(atendimento.getId(), "PARTICIPACAO_GRUPO");
+        // Falta em outra modalidade não prova presença. As guardas legadas mais
+        // conservadoras de correção e regularização permanecem nos chamadores.
+    }
+
     private void validarConflitosDeHorario(Usuario usuario, Paciente paciente, LocalDate data, LocalTime hora,
             Long atendimentoEmCorrecao) {
         boolean correcaoFrequencia = atendimentoEmCorrecao != null;
@@ -591,6 +615,8 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         validarVersaoRegularizacao(a,dto.version());validarEstadoRegularizacao(a);
         politicaTemporal.validarAgendamento(a,true);String motivo=politicaJustificativa.validar(dto.justificativa());
         validarCadeiaRegularizacao(a);historicoPacienteService.validarHistoricoRegularizacao(a,false);
+        if (dto.novaFrequencia() == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.PRESENTE)
+            validarPresencaIndividual(a);
         validarConflitosDeHorario(a.getUsuario(),a.getPaciente(),a.getDataAgendamento(),a.getHoraAtendimento(),id);
         int anterior=a.getVersion();a.registrarFatoEmReservaCancelada(dto.novaFrequencia());agendamentoRepository.saveAndFlush(a);
         pacienteService.recalcularAssiduidadePaciente(a.getPaciente());
@@ -710,6 +736,11 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         if ((novoStatus == SituacaoAtendimento.PRESENTE || novoStatus == SituacaoAtendimento.FALTOU)
                 && ((statusAnterior == SituacaoAtendimento.CANCELADO && !correcaoCancelado) || (statusAnterior == SituacaoAtendimento.REMARCADO_ORIGEM && !correcaoDeSubstituido)))
             throw new ValidationException("Um atendimento cancelado ou substituído não permite registro de frequência.");
+
+        // A presença efetiva não pode ignorar compromissos e fatos canônicos de outra modalidade.
+        // Exclui somente o próprio atendimento; sem exigir oferta atual ou justificativa inicial.
+        if (novoStatus == SituacaoAtendimento.PRESENTE)
+            validarPresencaIndividual(agendamento);
 
         if (frequenciaAnterior == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU && novoStatus == SituacaoAtendimento.PRESENTE) {
             // The current row is missed or substituted (inactive), so it cannot conflict with itself.

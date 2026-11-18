@@ -130,10 +130,7 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
 
         if ((novoStatus == SituacaoAtendimento.PRESENTE || novoStatus == SituacaoAtendimento.FALTOU)
                 && (statusAnterior == SituacaoAtendimento.PRESENTE || statusAnterior == SituacaoAtendimento.FALTOU)) {
-            HistoricoPaciente atual = historicoRepository.findByAgendamento(agendamento).stream()
-                    .filter(h -> h.getTipo() == TipoEventoHistoricoPaciente.PRESENCA || h.getTipo() == TipoEventoHistoricoPaciente.FALTA
-                            || h.getTipo() == TipoEventoHistoricoPaciente.PARTICIPACAO_GRUPO_TERAPEUTICO)
-                    .findFirst().orElse(null);
+            HistoricoPaciente atual = eventoIndividualCoerente(agendamento, statusAnterior);
             if (atual != null) {
                 atual.setTipo(tipo);
                 atual.setSituacaoAtendimento(novoStatus);
@@ -145,9 +142,42 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
             }
         }
         if (tipo != null) {
+            if ((novoStatus == SituacaoAtendimento.PRESENTE || novoStatus == SituacaoAtendimento.FALTOU)
+                    && statusAnterior != SituacaoAtendimento.PRESENTE && statusAnterior != SituacaoAtendimento.FALTOU
+                    && !fatosDoAgendamento(agendamento).isEmpty())
+                throw historicoIndividualPendente(agendamento);
             salvar(agendamento.getPaciente(), agendamento, agendamento.getUsuario(), tipo, novoStatus,
                     LocalDateTime.now(), "Situação alterada de " + statusAnterior + " para " + novoStatus + ".");
         }
+    }
+
+    /**
+     * Valida a evidência anterior à correção, não a frequência já alterada no objeto.
+     * O histórico legado usa horário de registro e pode representar uma presença
+     * individual como PARTICIPACAO_GRUPO_TERAPEUTICO. Não impor o horário da regularização.
+     * A ausência de evento mantém o fallback legado (diagnóstico separado, sem escolher fatos).
+     */
+    private HistoricoPaciente eventoIndividualCoerente(Agendamento a, SituacaoAtendimento anterior) {
+        var fatos = fatosDoAgendamento(a);
+        if (fatos.isEmpty()) return null;
+        if (fatos.size() != 1) throw historicoIndividualPendente(a);
+        var evento = fatos.getFirst();
+        boolean tipoCoerente = anterior == SituacaoAtendimento.FALTOU
+                ? evento.getTipo() == TipoEventoHistoricoPaciente.FALTA
+                : evento.getTipo() == TipoEventoHistoricoPaciente.PRESENCA
+                    || evento.getTipo() == TipoEventoHistoricoPaciente.PARTICIPACAO_GRUPO_TERAPEUTICO;
+        if (!tipoCoerente || evento.getSituacaoAtendimento() != anterior
+                || evento.getSessaoGrupo() != null
+                || !java.util.Objects.equals(evento.getPaciente().getId(), a.getPaciente().getId())
+                || evento.getProfissional() == null
+                || !java.util.Objects.equals(evento.getProfissional().getId(), a.getUsuario().getId()))
+            throw historicoIndividualPendente(a);
+        return evento;
+    }
+
+    private com.pet.buscaativa.services.exceptions.PendenciaFrequenciaException historicoIndividualPendente(Agendamento a) {
+        return new com.pet.buscaativa.services.exceptions.PendenciaFrequenciaException(
+                "HISTORICO_ASSISTENCIAL_PENDENTE_RECONCILIACAO", "HISTORICO_ASSISTENCIAL", a.getId(), null);
     }
 
     private List<HistoricoPaciente> fatosDoAgendamento(Agendamento a) {
