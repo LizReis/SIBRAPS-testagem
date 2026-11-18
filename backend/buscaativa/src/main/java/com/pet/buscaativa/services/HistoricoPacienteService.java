@@ -30,5 +30,7 @@ public interface HistoricoPacienteService {
 
     void registrarFrequenciaGrupo(Paciente paciente, SessaoGrupo sessao, StatusPresencaGrupo status);
 
+    void validarHistoricoCorrecaoGrupo(Paciente paciente, SessaoGrupo sessao, StatusPresencaGrupo anterior);
+
     void corrigirFrequenciaGrupo(Paciente paciente, SessaoGrupo sessao, StatusPresencaGrupo status);
 }

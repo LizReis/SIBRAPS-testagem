@@ -9,7 +9,7 @@ permissions:
   contents: read
 jobs:
   backend:
-    name: 6.2D1 - Java 21
+    name: 6.2D2 - Java 21
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -25,23 +25,23 @@ jobs:
           java-version: '21'
           cache: maven
           cache-dependency-path: backend/buscaativa/pom.xml
-      - name: Frequencia individual e historico 6.2D1
+      - name: Frequencias coletivas 6.2D2
         shell: bash
         run: |
           set -o pipefail
-          bash ./mvnw -B -ntp '-Dtest=HistoricalCollision61Characterization#initialIndividualPresence*+ordinaryInitialPresence*,ClinicalIndicators61Characterization#contradictoryHistory*,IndividualFactual62Tests' test 2>&1 | tee etapa62d1-colisoes.log
-      - name: Regressoes de frequencia individual e regularizacao
+          bash ./mvnw -B -ntp '-Dtest=HistoricalCollision61Characterization,ClinicalIndicators61Characterization#unknownRealizedGroupFrequencyRejectsOrdinaryCorrection*,GroupFactual62Tests,ReconciliationConcurrency61Characterization#co09*+co10*+co11*' test 2>&1 | tee etapa62d2-colisoes.log
+      - name: Regressoes de grupo e frequencia
         shell: bash
         run: |
           set -o pipefail
-          bash ./mvnw -B -ntp '-Dtest=SpecificFrequencyCorrectionTests,FrequencyCollisionIdentificationTests,AttendanceTemporalHttpTests,CancelledFactualIntegrationTests,CancellationAmbiguityCollisionTests,CancelRecoveryIntegrationTests,FrequencyCorrectionConcurrencyTests' test 2>&1 | tee etapa62d1-regressao.log
+          bash ./mvnw -B -ntp '-Dtest=GroupHistoricalResponsibilityTests,GroupFrequencyTemporalTests,ClinicalAuthorizationTests,ClinicalAuditIntegrationTests,ClinicalJustificationTests,GroupReservation62Tests,GroupSeriesUpdate62Tests,AgendaSeries62Characterization,SpecificFrequencyCorrectionTests,IndividualFactual62Tests' test 2>&1 | tee etapa62d2-regressao.log
       - name: Relatorios de testes
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: etapa62d1-relatorios
+          name: etapa62d2-relatorios
           path: |
             backend/buscaativa/target/surefire-reports/
-            backend/buscaativa/etapa62d1-*.log
+            backend/buscaativa/etapa62d2-*.log
           retention-days: 7
           if-no-files-found: warn

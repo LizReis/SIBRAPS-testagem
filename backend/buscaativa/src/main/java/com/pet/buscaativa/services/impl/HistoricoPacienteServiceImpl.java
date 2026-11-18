@@ -237,11 +237,38 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
         historicoRepository.save(h);
     }
 
+    private com.pet.buscaativa.services.exceptions.PendenciaFrequenciaException historicoGrupoPendente(SessaoGrupo sessao) {
+        return new com.pet.buscaativa.services.exceptions.PendenciaFrequenciaException(
+                "HISTORICO_ASSISTENCIAL_PENDENTE_RECONCILIACAO", "HISTORICO_ASSISTENCIAL", null, sessao.getId());
+    }
+
+    private HistoricoPaciente eventoUnicoGrupo(Paciente paciente, SessaoGrupo sessao) {
+        var eventos = historicoRepository.findAllByPacienteAndSessaoGrupo(paciente, sessao);
+        // Preserva a recusa anterior quando não existe histórico; não cria evidência retroativa.
+        if (eventos.isEmpty()) throw new ResourceNotFoundException("Histórico da frequência não encontrado.");
+        if (eventos.size() != 1) throw historicoGrupoPendente(sessao);
+        return eventos.getFirst();
+    }
+
+    @Override
+    @Transactional
+    public void validarHistoricoCorrecaoGrupo(Paciente paciente, SessaoGrupo sessao, StatusPresencaGrupo anterior) {
+        var evento = eventoUnicoGrupo(paciente, sessao);
+        boolean presente = anterior == StatusPresencaGrupo.PRESENTE;
+        if ((anterior != StatusPresencaGrupo.PRESENTE && anterior != StatusPresencaGrupo.FALTOU)
+                || evento.getTipo() != (presente ? TipoEventoHistoricoPaciente.PARTICIPACAO_GRUPO_TERAPEUTICO : TipoEventoHistoricoPaciente.FALTA)
+                || evento.getSituacaoAtendimento() != (presente ? SituacaoAtendimento.PRESENTE : SituacaoAtendimento.FALTOU)
+                || evento.getAgendamento() != null || evento.getProfissional() == null
+                || sessao.getResponsavelAtendimento() == null
+                || !java.util.Objects.equals(evento.getProfissional().getId(), sessao.getResponsavelAtendimento().getId()))
+            throw historicoGrupoPendente(sessao);
+    }
+
     @Override
     @Transactional
     public void corrigirFrequenciaGrupo(Paciente paciente, SessaoGrupo sessao, StatusPresencaGrupo status) {
-        HistoricoPaciente h = historicoRepository.findByPacienteAndSessaoGrupo(paciente, sessao)
-                .orElseThrow(() -> new ResourceNotFoundException("Histórico da frequência não encontrado."));
+        // O lote validou a evidência anterior antes da primeira alteração; não escolher arbitrariamente.
+        HistoricoPaciente h = eventoUnicoGrupo(paciente, sessao);
         boolean presente = status == StatusPresencaGrupo.PRESENTE;
         h.setTipo(presente ? TipoEventoHistoricoPaciente.PARTICIPACAO_GRUPO_TERAPEUTICO : TipoEventoHistoricoPaciente.FALTA);
         h.setSituacaoAtendimento(presente ? SituacaoAtendimento.PRESENTE : SituacaoAtendimento.FALTOU);

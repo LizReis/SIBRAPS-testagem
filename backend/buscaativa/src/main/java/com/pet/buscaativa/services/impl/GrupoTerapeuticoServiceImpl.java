@@ -146,11 +146,15 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Transactional
     public GrupoTerapeuticoDTO atualizarGrupo(Long grupoId, AtualizarGrupoTerapeuticoDTO dto) {
         UUID coordenadorOrigem = coordenadorEscalar(grupoId);
-        // Descoberta escalar: só a regeneração altera vínculos dos pacientes.
-        // Transferência simples não revalida elegibilidade do participante histórico.
+        // Transferência e confirmação compartilham os pacientes antes de ler/
+        // bloquear responsáveis. Não impor elegibilidade nova ao paciente histórico.
         boolean regeneracaoPrevista = alteracaoEstruturalEscalar(grupoId, dto);
-        Set<UUID> participantesBloqueados = regeneracaoPrevista ? participantesSerieEscalar(grupoId) : Set.of();
-        var recursos = agendaAssistencialLocks.bloquear(participantesBloqueados,
+        boolean transferenciaPrevista = !coordenadorOrigem.equals(dto.coordenadorId());
+        Set<UUID> participantesBloqueados = regeneracaoPrevista || transferenciaPrevista
+                ? participantesSerieEscalar(grupoId) : Set.of();
+        if (!regeneracaoPrevista && transferenciaPrevista)
+            agendaAssistencialLocks.bloquearPacientesParaTransferencia(participantesBloqueados);
+        var recursos = agendaAssistencialLocks.bloquear(regeneracaoPrevista ? participantesBloqueados : Set.of(),
                 List.of(coordenadorOrigem, dto.coordenadorId()));
         GrupoTerapeutico grupo = bloquearGrupoAposSujeitos(grupoId);
         autorizacaoClinica.validarEdicaoGrupo(grupo);
@@ -171,7 +175,8 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         boolean estrutural = !primeira.getDataSessao().equals(dto.dataPrimeiraSessao())
                 || !grupo.getHorarioPadrao().equals(dto.horario()) || grupo.getRecorrencia() != dto.recorrencia()
                 || !java.util.Objects.equals(grupo.getDataFimRecorrencia(), dto.dataFimRecorrencia());
-        if (estrutural && (!regeneracaoPrevista || !participantesBloqueados.equals(participantesSerieEscalar(grupoId))))
+        if ((estrutural && !regeneracaoPrevista)
+                || ((estrutural || transferenciaPrevista) && !participantesBloqueados.equals(participantesSerieEscalar(grupoId))))
             throw new ConflictException("A estrutura ou os participantes foram alterados; atualize o grupo antes de tentar novamente.");
         if (iniciado && estrutural) {
             sessoes.forEach(escopoUnidadeService::validarSessaoCompleta);
@@ -366,13 +371,15 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
             throw new ValidationException("Uma frequência informada não pertence à sessão.");
         List<SessaoGrupoParticipante> participantes = sessao.getParticipantes().stream()
                 .sorted(Comparator.comparing(p -> p.getPaciente().getIdPublico())).toList();
+        // A realização compromete o responsável mesmo com lista vazia ou só faltas.
+        validarRealizacaoColetiva(sessao);
+        for (var p : participantes)
+            if (mapa.getOrDefault(p.getPaciente().getIdPublico(), StatusPresencaGrupo.FALTOU) == StatusPresencaGrupo.PRESENTE)
+                validarPresencaColetiva(p.getPaciente(), sessao);
         List<Paciente> pacientes = new ArrayList<>();
-
+        // Todos os pacientes já foram adquiridos antes dos profissionais/grupo/sessão.
         for (var p : participantes) {
-            Paciente bloqueado = pacienteRepository.findByIdPublicoForUpdate(p.getPaciente().getIdPublico())
-                    .orElseThrow(() -> new ResourceNotFoundException("Paciente não encontrado."));
-            escopoUnidadeService.validarAcesso(bloqueado);
-            p.setPaciente(bloqueado);
+            Paciente bloqueado = p.getPaciente();
             p.setStatusPresenca(mapa.getOrDefault(bloqueado.getIdPublico(), StatusPresencaGrupo.FALTOU));
             pacientes.add(bloqueado);
         }
@@ -390,7 +397,15 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public SessaoGrupoDTO inscreverRetroativamente(Long grupoId, InscricaoRetroativaGrupoDTO dto) {
-        GrupoTerapeutico grupo = bloquearGrupoComSujeitos(grupoId, List.of(dto.pacienteId()));
+        agendaAssistencialLocks.bloquear(List.of(dto.pacienteId()), List.of());
+        UUID coordenador = coordenadorEscalar(grupoId);
+        Set<UUID> historicos = responsaveisHistoricosEscalares(grupoId);
+        agendaAssistencialLocks.bloquearResponsaveisClinicos(List.of(coordenador), historicos);
+        GrupoTerapeutico grupo = bloquearGrupoAposSujeitos(grupoId);
+        autorizacaoClinica.validarGrupoClinico(grupo);
+        if (!coordenador.equals(grupo.getCoordenador().getIdPublico())
+                || !historicos.equals(responsaveisHistoricosEscalares(grupoId)))
+            throw new ConflictException("A responsabilidade da série foi alterada; atualize antes de tentar novamente.");
         Paciente paciente = pacienteRepository.findByIdPublico(dto.pacienteId()).orElseThrow();
         autorizacaoClinica.validarGrupoClinico(grupo);
         if (paciente.getStatusPaciente() != StatusPaciente.ATIVO)
@@ -426,7 +441,10 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
                     || existente.get().getStatusPresenca() != StatusPresencaGrupo.NAO_REGISTRADA))
                 throw new ConflictException("Paciente já possui frequência na sessão " + s.getId() + ".");
         }
-        // Somente a parte operacional da inscrição retroativa é integrada nesta entrega.
+        // Pré-validação factual e operacional de todo o lote, antes de gravar.
+        for (SessaoGrupo s : realizadas)
+            if (informadas.get(s.getId()) == StatusPresencaGrupo.PRESENTE)
+                validarPresencaColetiva(paciente, s);
         for (SessaoGrupo s : sessoes) {
             if (s.getStatus() == StatusSessaoGrupo.AGENDADA
                     && participanteRepository.findBySessaoGrupoAndPaciente(s, paciente).isEmpty())
@@ -556,7 +574,12 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         String motivo=politicaJustificativa.validar(dto.justificativa());
         int versaoAnterior=sessao.getVersion();
         Map<Long,StatusPresencaGrupo> anteriores=new java.util.HashMap<>();
-        for(var p:alterados)anteriores.put(p.getId(),p.getStatusPresenca());
+        for(var p:alterados) {
+            anteriores.put(p.getId(),p.getStatusPresenca());
+            if (destinos.get(p.getPaciente().getIdPublico()) == StatusPresencaGrupo.PRESENTE)
+                validarPresencaColetiva(p.getPaciente(), sessao);
+            historicoPacienteService.validarHistoricoCorrecaoGrupo(p.getPaciente(), sessao, p.getStatusPresenca());
+        }
         entityManager.lock(sessao,jakarta.persistence.LockModeType.PESSIMISTIC_FORCE_INCREMENT);
         for(var p:alterados)p.setStatusPresenca(destinos.get(p.getPaciente().getIdPublico()));
         participanteRepository.saveAll(alterados); sessaoRepository.saveAndFlush(sessao);
@@ -614,11 +637,29 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
 
     private enum FinalidadeBloqueioSessao { OPERACIONAL, CLINICA }
 
+    private record ResponsabilidadeSessao(StatusSessaoGrupo status, UUID responsavel) {}
+
+    private ResponsabilidadeSessao responsabilidadeEscalar(Long id) {
+        Object[] dados = entityManager.createQuery(
+                "select s.status, g.coordenador.idPublico, r.idPublico from SessaoGrupo s join s.grupo g left join s.responsavelAtendimento r where s.id=:id",
+                Object[].class).setParameter("id", id).getResultList().stream().findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("Sessão não encontrada."));
+        var status = (StatusSessaoGrupo) dados[0];
+        return new ResponsabilidadeSessao(status, (UUID) (status == StatusSessaoGrupo.REALIZADA ? dados[2] : dados[1]));
+    }
+
+    private Set<UUID> responsaveisHistoricosEscalares(Long grupoId) {
+        return new HashSet<>(entityManager.createQuery(
+                "select distinct r.idPublico from SessaoGrupo s join s.responsavelAtendimento r where s.grupo.id=:id and s.status=:status",
+                UUID.class).setParameter("id", grupoId).setParameter("status", StatusSessaoGrupo.REALIZADA).getResultList());
+    }
+
     /**
-     * Reservas: pacientes -> coordenador vigente -> grupo -> sessão.
-     * Comandos clínicos: mantém pacientes -> grupo -> sessão até integrar a
-     * proteção factual em 6.2D. Autorizar após o lock do grupo/sessão, nunca
-     * com base em um coordenador descoberto antes de aguardar uma transferência.
+     * Pacientes -> responsável vigente ou histórico -> grupo -> sessão.
+     * Na confirmação, descobrir a coordenação após os locks de pacientes:
+     * a transferência de grupo com participantes usa a mesma ordem.
+     * Sem adquirir novo recurso depois do grupo; identidade divergente exige
+     * autorização consolidada antes de eventual recusa segura para nova tentativa.
      */
     private SessaoGrupo bloquearSessao(Long id,List<UUID> additionalPatients,
             FinalidadeBloqueioSessao finalidade) {
@@ -626,10 +667,17 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         Set<UUID> inscritos = new HashSet<>(participanteRepository.findPacienteIds(id));
         Set<UUID> lockedIds = new HashSet<>(inscritos);
         lockedIds.addAll(additionalPatients);
+        ResponsabilidadeSessao descoberta = null;
         if (finalidade == FinalidadeBloqueioSessao.OPERACIONAL) {
             bloquearGrupoComSujeitos(groupId, lockedIds);
         } else {
             agendaAssistencialLocks.bloquear(lockedIds, List.of());
+            descoberta = responsabilidadeEscalar(id);
+            var responsaveis = descoberta.responsavel() == null ? List.<UUID>of() : List.of(descoberta.responsavel());
+            if (descoberta.status() == StatusSessaoGrupo.REALIZADA)
+                agendaAssistencialLocks.bloquearResponsaveisClinicos(List.of(), responsaveis);
+            else
+                agendaAssistencialLocks.bloquearResponsaveisClinicos(responsaveis, List.of());
             bloquearGrupoAposSujeitos(groupId);
         }
         if (!inscritos.equals(new HashSet<>(participanteRepository.findPacienteIds(id))))
@@ -637,7 +685,33 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         var sessao = sessaoRepository.findByIdForUpdate(id).orElseThrow(()->new ResourceNotFoundException("Sessão não encontrada."));
         if (!groupId.equals(sessao.getGrupo().getId()))
             throw new ConflictException("A estrutura da sessão foi alterada; atualize antes de tentar novamente.");
+        if (descoberta != null && !descoberta.equals(responsabilidadeEscalar(id))) {
+            autorizacaoClinica.validarSessao(sessao);
+            throw new ConflictException("A responsabilidade da sessão foi alterada; atualize antes de tentar novamente.");
+        }
         return sessao;
+    }
+
+    private PendenciaFrequenciaException conflitoFactualGrupo(SessaoGrupo sessao, String tipo) {
+        return new PendenciaFrequenciaException("CONFLITO_ASSISTENCIAL_PENDENTE_RECONCILIACAO", tipo, null, sessao.getId());
+    }
+
+    private void validarRealizacaoColetiva(SessaoGrupo sessao) {
+        var quando = new IntegridadeAgendaAssistencialService.Instante(sessao.getDataSessao(), sessao.getHorario());
+        var exclusao = new IntegridadeAgendaAssistencialService.Exclusao(null, sessao.getId());
+        var avaliacao = integridadeAgendaAssistencial.avaliarProfissional(sessao.getGrupo().getCoordenador(), quando, exclusao);
+        if (avaliacao.temImpedimentoOperacional())
+            throw conflitoFactualGrupo(sessao, "SESSAO_PROFISSIONAL");
+    }
+
+    private void validarPresencaColetiva(Paciente paciente, SessaoGrupo sessao) {
+        var quando = new IntegridadeAgendaAssistencialService.Instante(sessao.getDataSessao(), sessao.getHorario());
+        var exclusao = new IntegridadeAgendaAssistencialService.Exclusao(null, sessao.getId());
+        var avaliacao = integridadeAgendaAssistencial.avaliarPaciente(paciente, quando, exclusao);
+        if (avaliacao.temImpedimentoOperacional())
+            throw conflitoFactualGrupo(sessao, "HISTORICO_PACIENTE");
+        // FALTOU não representa presença física. Não resolver empates de indicadores aqui.
+        // Correção/retroativa de sessão realizada não criam um novo fato do responsável.
     }
 
     private void validarCompromissoCoordenador(Usuario coordenador, LocalDate data, LocalTime hora, Long sessaoId) {

@@ -19,6 +19,7 @@ public interface HistoricoPacienteRepository extends JpaRepository<HistoricoPaci
     boolean existsByPacienteAndSessaoGrupo(com.pet.buscaativa.entities.Paciente paciente,
                                             com.pet.buscaativa.entities.SessaoGrupo sessaoGrupo);
     java.util.Optional<HistoricoPaciente> findByPacienteAndSessaoGrupo(Paciente paciente, SessaoGrupo sessaoGrupo);
+    List<HistoricoPaciente> findAllByPacienteAndSessaoGrupo(Paciente paciente, SessaoGrupo sessaoGrupo);
     List<HistoricoPaciente> findByAgendamento(Agendamento agendamento);
 
     @Query("""

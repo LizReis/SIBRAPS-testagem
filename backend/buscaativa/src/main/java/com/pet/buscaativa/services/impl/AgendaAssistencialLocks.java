@@ -71,6 +71,39 @@ public class AgendaAssistencialLocks {
         return new Recursos(ps, us);
     }
 
+    /**
+     * Uso interno da transferência: identidades descobertas exclusivamente do grupo,
+     * para serializar a confirmação e a mudança de coordenação antes dos profissionais.
+     * Não devolve dados de pacientes, não altera vínculos nem impõe nova elegibilidade;
+     * o serviço deve revalidar grupo, escopo, autoridade e conjunto após os locks.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    void bloquearPacientesParaTransferencia(Collection<UUID> ids) {
+        for (UUID id : ordenar(ids)) {
+            var p = pacientes.findByIdPublicoForUpdate(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("Paciente não encontrado."));
+            em.refresh(p, LockModeType.PESSIMISTIC_WRITE);
+        }
+    }
+
+    /**
+     * Uso restrito a responsáveis descobertos de sessões/grupos no banco.
+     * A coordenação vigente exige escopo; o responsável histórico pode ter
+     * mudado de unidade. Seu lock serializa o fato, não concede acesso à sua
+     * agenda. O chamador revalida as identidades e autoriza a sessão consolidada.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    void bloquearResponsaveisClinicos(Collection<UUID> atuais, Collection<UUID> historicos) {
+        var ordem = ordenar(atuais);
+        ordem.addAll(ordenar(historicos));
+        for (UUID id : ordem) {
+            var u = usuarios.findByIdPublicoForUpdate(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("Profissional não encontrado."));
+            em.refresh(u, LockModeType.PESSIMISTIC_WRITE);
+            if (atuais.contains(id)) escopo.validarUsuario(u);
+        }
+    }
+
     private TreeSet<UUID> ordenar(Collection<UUID> ids) {
         if (ids == null || ids.stream().anyMatch(java.util.Objects::isNull))
             throw new ValidationException("Identidades dos recursos da agenda inválidas.");
