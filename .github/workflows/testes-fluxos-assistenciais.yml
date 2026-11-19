@@ -1,17 +1,20 @@
-name: SIBRAPS - Testes assistenciais
+name: SIBRAPS - Validacao final 6.2G
 on:
   push:
     branches: [correcao-fluxos-assistenciais-sibraps]
     paths:
       - 'backend/buscaativa/**'
+      - 'frontend/sentinela-pet/**'
       - '.github/workflows/testes-fluxos-assistenciais.yml'
+
 permissions:
   contents: read
+
 jobs:
   backend:
-    name: 6.2F3B - Java 21
+    name: 6.2G - Backend Java 21 / verify
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: backend/buscaativa
@@ -25,23 +28,87 @@ jobs:
           java-version: '21'
           cache: maven
           cache-dependency-path: backend/buscaativa/pom.xml
-      - name: Ordens e rollback de series 6.2F3B
+      - name: Regressao integral e empacotamento backend
         shell: bash
         run: |
           set -o pipefail
-          bash ./mvnw -B -ntp '-Dtest=OrderedAtomicity62Tests' test 2>&1 | tee etapa62f3b-colisoes.log
-      - name: Regressoes de todas as entregas F
+          bash ./mvnw -B -ntp verify 2>&1 | tee etapa62g-backend-verify.log
+      - name: Matriz de concorrencia 6.1 corrigida (opt-in)
         shell: bash
         run: |
           set -o pipefail
-          bash ./mvnw -B -ntp '-Dtest=ReconciliationConcurrency61Characterization,AdditionalConcurrency62Tests,AtomicityIsolation62Tests,GroupHistoricalResponsibilityTests,GroupSeriesUpdate62Tests,GroupReservation62Tests,ClinicalAuditIntegrationTests,SpecificFrequencyCorrectionTests,ClinicalAuthorizationTests,IsolamentoUnidadeTests,AgendaRescheduleTests' test 2>&1 | tee etapa62f3b-regressao.log
-      - name: Relatorios de testes
+          bash ./mvnw -B -ntp '-Dtest=ReconciliationConcurrency61Characterization' test 2>&1 | tee etapa62g-concorrencia.log
+      - name: Relatorios backend
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: etapa62f3b-relatorios
+          name: etapa62g-backend-relatorios
           path: |
             backend/buscaativa/target/surefire-reports/
-            backend/buscaativa/etapa62f3b-*.log
+            backend/buscaativa/etapa62g-*.log
+          retention-days: 7
+          if-no-files-found: warn
+
+  frontend-build:
+    name: 6.2G - Frontend Angular / build
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: frontend/sentinela-pet
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/sentinela-pet/package-lock.json
+      - run: npm install --global npm@11.6.2
+      - run: npm ci
+      - name: Compilacao de producao Angular
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee etapa62g-angular-build.log
+      - name: Relatorio build frontend
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: etapa62g-angular-build
+          path: frontend/sentinela-pet/etapa62g-angular-build.log
+          retention-days: 7
+          if-no-files-found: warn
+
+  frontend-tests:
+    name: 6.2G - Angular testes diagnosticos (Q01-Q04)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: frontend/sentinela-pet
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/sentinela-pet/package-lock.json
+      - run: npm install --global npm@11.6.2
+      - run: npm ci
+      - name: Testes Angular com diagnostico explicito de falhas existentes
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test -- --watch=false 2>&1 | tee etapa62g-angular-testes.log
+      - name: Relatorio testes frontend
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: etapa62g-angular-testes
+          path: frontend/sentinela-pet/etapa62g-angular-testes.log
           retention-days: 7
           if-no-files-found: warn
