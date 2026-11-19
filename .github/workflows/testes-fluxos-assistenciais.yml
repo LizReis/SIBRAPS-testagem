@@ -9,7 +9,7 @@ permissions:
   contents: read
 jobs:
   backend:
-    name: 6.2F1 - Java 21
+    name: 6.2F2 - Java 21
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -25,23 +25,23 @@ jobs:
           java-version: '21'
           cache: maven
           cache-dependency-path: backend/buscaativa/pom.xml
-      - name: Matriz de concorrencia assistencial 6.2F1
+      - name: Concorrencia complementar 6.2F2
         shell: bash
         run: |
           set -o pipefail
-          bash ./mvnw -B -ntp '-Dtest=ReconciliationConcurrency61Characterization' test 2>&1 | tee etapa62f1-colisoes.log
-      - name: Regressoes de concorrencia, responsabilidade e rollback
+          bash ./mvnw -B -ntp '-Dtest=AdditionalConcurrency62Tests' test 2>&1 | tee etapa62f2-colisoes.log
+      - name: Regressoes de concorrencia e responsabilidade
         shell: bash
         run: |
           set -o pipefail
-          bash ./mvnw -B -ntp '-Dtest=AgendaConcurrencyTests,AgendaCombinedTests,AgendaRescheduleTests,GroupHistoricalResponsibilityTests,FrequencyCorrectionConcurrencyTests,ClinicalAuditIntegrationTests,GroupFrequencyTemporalTests,CancellationConcurrencyTests' test 2>&1 | tee etapa62f1-regressao.log
+          bash ./mvnw -B -ntp '-Dtest=ReconciliationConcurrency61Characterization,AgendaConcurrencyTests,GroupHistoricalResponsibilityTests,FrequencyCorrectionConcurrencyTests,ClinicalAuditIntegrationTests,GroupFrequencyTemporalTests,GroupSeriesUpdate62Tests,GroupReservation62Tests,AgendaRescheduleTests' test 2>&1 | tee etapa62f2-regressao.log
       - name: Relatorios de testes
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: etapa62f1-relatorios
+          name: etapa62f2-relatorios
           path: |
             backend/buscaativa/target/surefire-reports/
-            backend/buscaativa/etapa62f1-*.log
+            backend/buscaativa/etapa62f2-*.log
           retention-days: 7
           if-no-files-found: warn
