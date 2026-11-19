@@ -9,7 +9,7 @@ permissions:
   contents: read
 jobs:
   backend:
-    name: 6.2F3A - Java 21
+    name: 6.2F3B - Java 21
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -25,23 +25,23 @@ jobs:
           java-version: '21'
           cache: maven
           cache-dependency-path: backend/buscaativa/pom.xml
-      - name: Rollback e isolamento 6.2F3A
+      - name: Ordens e rollback de series 6.2F3B
         shell: bash
         run: |
           set -o pipefail
-          bash ./mvnw -B -ntp '-Dtest=AtomicityIsolation62Tests' test 2>&1 | tee etapa62f3a-colisoes.log
-      - name: Regressoes de auditoria, seguranca e concorrencia
+          bash ./mvnw -B -ntp '-Dtest=OrderedAtomicity62Tests' test 2>&1 | tee etapa62f3b-colisoes.log
+      - name: Regressoes de todas as entregas F
         shell: bash
         run: |
           set -o pipefail
-          bash ./mvnw -B -ntp '-Dtest=ClinicalAuditIntegrationTests,SpecificFrequencyCorrectionTests,CancellationSecurityAuditTests,GroupHistoricalResponsibilityTests,IsolamentoUnidadeTests,ClinicalAuthorizationTests,RecordedFrequencyCancellationTests,GroupFactual62Tests,CancellationConcurrencyTests,ReconciliationConcurrency61Characterization' test 2>&1 | tee etapa62f3a-regressao.log
+          bash ./mvnw -B -ntp '-Dtest=ReconciliationConcurrency61Characterization,AdditionalConcurrency62Tests,AtomicityIsolation62Tests,GroupHistoricalResponsibilityTests,GroupSeriesUpdate62Tests,GroupReservation62Tests,ClinicalAuditIntegrationTests,SpecificFrequencyCorrectionTests,ClinicalAuthorizationTests,IsolamentoUnidadeTests,AgendaRescheduleTests' test 2>&1 | tee etapa62f3b-regressao.log
       - name: Relatorios de testes
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: etapa62f3a-relatorios
+          name: etapa62f3b-relatorios
           path: |
             backend/buscaativa/target/surefire-reports/
-            backend/buscaativa/etapa62f3a-*.log
+            backend/buscaativa/etapa62f3b-*.log
           retention-days: 7
           if-no-files-found: warn
