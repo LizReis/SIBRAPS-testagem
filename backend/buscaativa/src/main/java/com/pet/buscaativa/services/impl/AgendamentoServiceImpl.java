@@ -130,10 +130,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
             if (agendamentoDTO.id() != null && agendamentoDTO.id().equals(agendamentoDTO.agendamentoOriginalId())) {
                 throw new ValidationException("Um agendamento não pode ser vinculado a ele mesmo.");
             }
-            if (!List.of(SituacaoAtendimento.AGENDADO, SituacaoAtendimento.REMARCADO,
-                    SituacaoAtendimento.FALTOU).contains(original.getSituacaoAtendimento())) {
-                throw new ConflictException("O agendamento original não está em situação compatível com remarcação.");
-            }
+            validarOrigemDaRemarcacao(original, agendamentoDTO.dataAgendamento(), agendamentoDTO.horaAtendimento());
 
             if (paciente.getTipoAcompanhamento() == TipoAcompanhamento.GRUPO_TERAPEUTICO) {
                 throw new ValidationException(
@@ -155,6 +152,64 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         historicoPacienteService.registrarAgendamento(agendamento);
         if (agendamentoDTO.agendamentoOriginalId() != null) pacienteService.recalcularAssiduidadePaciente(paciente);
         return agendamentoMapper.toAgendamentoDTO(agendamento);
+    }
+
+    /**
+     * A criação de sucessor é o único caminho operacional de remarcação.
+     * Verifica a cadeia existente, sem atribuir legitimidade a fatos históricos
+     * ambíguos e antes de modificar a reserva original.
+     *
+     * O lock do atendimento original já foi adquirido no protocolo global.
+     * A integração concorrente completa de registros legados é revisitada em 6.2F.
+     */
+    private void validarOrigemDaRemarcacao(Agendamento original, LocalDate novaData, LocalTime novaHora) {
+        var reserva = original.getSituacaoReserva();
+        if (reserva != com.pet.buscaativa.entities.enums.SituacaoReserva.AGENDADA
+                && reserva != com.pet.buscaativa.entities.enums.SituacaoReserva.REMARCADA)
+            throw new ConflictException("A reserva original não permite criar sucessor por remarcação.");
+
+        if (!List.of(SituacaoAtendimento.AGENDADO, SituacaoAtendimento.REMARCADO,
+                SituacaoAtendimento.FALTOU).contains(original.getSituacaoAtendimento()))
+            throw new ConflictException("O agendamento original não está em situação compatível com remarcação.");
+
+        // Não há segundo sucessor legítimo para a mesma origem. O eventual estado
+        // legado AGENDADO da origem não pode mascarar um sucessor já existente.
+        if (agendamentoRepository.existsByAgendamentoOriginal_Id(original.getId()))
+            throw cadeiaPendente(original);
+
+        if (original.getDataAgendamento() == null || original.getHoraAtendimento() == null
+                || !java.time.LocalDateTime.of(original.getDataAgendamento(), original.getHoraAtendimento())
+                        .isBefore(java.time.LocalDateTime.of(novaData, novaHora)))
+            throw new ConflictException("A remarcação deve ocorrer após o atendimento original.");
+
+        var visitados = new HashSet<Long>();
+        Agendamento atual = original;
+        while (atual != null) {
+            if (!visitados.add(atual.getId()) || atual.isMigracaoPendente())
+                throw cadeiaPendente(original);
+            var pai = atual.getAgendamentoOriginal();
+            if (pai == null) {
+                if (atual.getSituacaoReserva() == com.pet.buscaativa.entities.enums.SituacaoReserva.REMARCADA
+                        || atual.isRemarcacaoAposFalta())
+                    throw cadeiaPendente(original);
+                break;
+            }
+            escopoUnidadeService.validarAgendamento(pai);
+            if (!java.util.Objects.equals(atual.getPaciente().getId(), pai.getPaciente().getId())
+                    || pai.getSituacaoReserva() != com.pet.buscaativa.entities.enums.SituacaoReserva.SUBSTITUIDA
+                    || pai.getDataAgendamento() == null || pai.getHoraAtendimento() == null
+                    || atual.getDataAgendamento() == null || atual.getHoraAtendimento() == null
+                    || !java.time.LocalDateTime.of(pai.getDataAgendamento(), pai.getHoraAtendimento())
+                            .isBefore(java.time.LocalDateTime.of(atual.getDataAgendamento(), atual.getHoraAtendimento()))
+                    || agendamentoRepository.existsByAgendamentoOriginal_IdAndIdNot(pai.getId(), atual.getId()))
+                throw cadeiaPendente(original);
+            atual = pai;
+        }
+        if ((reserva == com.pet.buscaativa.entities.enums.SituacaoReserva.AGENDADA
+                    && original.getAgendamentoOriginal() != null)
+                || (reserva == com.pet.buscaativa.entities.enums.SituacaoReserva.REMARCADA
+                    && original.getAgendamentoOriginal() == null))
+            throw cadeiaPendente(original);
     }
 
     private void validarPacienteElegivelParaReserva(Paciente paciente) {
@@ -696,6 +751,19 @@ public class AgendamentoServiceImpl implements AgendamentoService {
             throw new OptimisticLockException(
                     "O agendamento foi alterado por outro usuário. Atualize a agenda antes de tentar novamente.");
         }
+
+        // O endpoint legado pode atualizar frequência/cancelamento, mas não
+        // construir o vínculo e a cadeia de remarcação sem criar o sucessor.
+        // Repetições sem mudança não fabricam nova cadeia e permanecem sem escrita.
+        if ((novoStatus == SituacaoAtendimento.REMARCADO
+                || novoStatus == SituacaoAtendimento.REMARCADO_ORIGEM)
+                && agendamento.getSituacaoAtendimento() != novoStatus)
+            throw new ConflictException("Remarcação exige a criação de sucessor pelo fluxo específico.");
+        if (agendamento.getSituacaoReserva() == com.pet.buscaativa.entities.enums.SituacaoReserva.SUBSTITUIDA
+                && novoStatus != agendamento.getSituacaoAtendimento()
+                && (novoStatus == SituacaoAtendimento.AGENDADO
+                    || novoStatus == SituacaoAtendimento.CANCELADO))
+            throw new ConflictException("A reserva substituída não pode ser reaberta pelo comando de status.");
 
         SituacaoAtendimento statusAnterior = agendamento.getSituacaoAtendimento();
         var frequenciaAnterior = agendamento.getFrequenciaAssistencial();
