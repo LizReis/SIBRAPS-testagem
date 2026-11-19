@@ -25,13 +25,13 @@ class AdditionalConcurrency62Tests extends Historical61Support {
     }
 
     private int createIndividual(Paciente person, Usuario owner) throws Exception {
-        return operation(post("/api/agendamentos"),
+        return operation(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/agendamentos"),
                 new AgendamentoDTO(null,owner.getIdPublico(),null,person.getIdPublico(),null,null,
                     DAY,TurnoEnum.TARDE,TIME,SituacaoAtendimento.AGENDADO,null,null));
     }
 
     private int createGroup(Usuario coordinator, Paciente person) throws Exception {
-        return operation(post(GROUP), new CriarGrupoDTO("Grupo adicional F2",coordinator.getIdPublico(),
+        return operation(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(GROUP), new CriarGrupoDTO("Grupo adicional F2",coordinator.getIdPublico(),
                 RecorrenciaGrupo.UNICA,DAY,null,TIME,List.of(person.getIdPublico())));
     }
 
@@ -77,8 +77,8 @@ class AdditionalConcurrency62Tests extends Historical61Support {
         var b=session61(colleague,DAY,TIME,false,StatusPresencaGrupo.NAO_REGISTRADA);
         var dto=new InscricaoFuturaGrupoDTO(patient.getIdPublico());
         var result=race("F2-TWO-FUTURE-ENROLLMENTS",List.<Callable<Integer>>of(
-                ()->operation(post(GROUP+"/"+a.group()+"/inscricoes-futuras"),dto),
-                ()->operation(post(GROUP+"/"+b.group()+"/inscricoes-futuras"),dto)));
+                ()->operation(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(GROUP+"/"+a.group()+"/inscricoes-futuras"),dto),
+                ()->operation(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(GROUP+"/"+b.group()+"/inscricoes-futuras"),dto)));
         assertEquals(new RaceResult(1,1),result);
         assertEquals(1,reservationsAt(patient,DAY,TIME));
     }
@@ -89,8 +89,8 @@ class AdditionalConcurrency62Tests extends Historical61Support {
         var second=session61(professional,DAY,LATER,false,StatusPresencaGrupo.NAO_REGISTRADA,other);
         LocalDate next=DAY.plusWeeks(1);
         var result=race("F2-TWO-NEXT-SESSIONS",List.<Callable<Integer>>of(
-                ()->operation(post(GROUP+"/sessoes"),new NovaSessaoDTO(first.group(),next,TIME,List.of(patient.getIdPublico()))),
-                ()->operation(post(GROUP+"/sessoes"),new NovaSessaoDTO(second.group(),next,TIME,List.of(other.getIdPublico())))));
+                ()->operation(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(GROUP+"/sessoes"),new NovaSessaoDTO(first.group(),next,TIME,List.of(patient.getIdPublico()))),
+                ()->operation(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(GROUP+"/sessoes"),new NovaSessaoDTO(second.group(),next,TIME,List.of(other.getIdPublico())))));
         assertEquals(new RaceResult(1,1),result);
         long futureSlots=tx(()->sessions61.findByDataSessaoBetween(next,next).stream()
                 .filter(x->TIME.equals(x.getHorario())
@@ -109,7 +109,7 @@ class AdditionalConcurrency62Tests extends Historical61Support {
         AtomicInteger transferCode=new AtomicInteger(-1), enrollmentCode=new AtomicInteger(-1);
         var result=race("F2-TRANSFER-X-ENROLLMENT",List.<Callable<Integer>>of(
                 ()->{int code=operation(put(GROUP+"/"+g.group()),transfer); transferCode.set(code);return code;},
-                ()->{int code=operation(post(GROUP+"/sessoes/"+g.session()+"/participantes"),enrollment); enrollmentCode.set(code);return code;}));
+                ()->{int code=operation(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(GROUP+"/sessoes/"+g.session()+"/participantes"),enrollment); enrollmentCode.set(code);return code;}));
         assertTrue(result.confirmed()>=1 && result.confirmed()<=2,"Concurrent stale identity may safely be retried by client.");
         assertEquals(2,result.confirmed()+result.rejected());
         assertEquals(transferCode.get()==200?professional.getId():colleague.getId(),
@@ -133,7 +133,7 @@ class AdditionalConcurrency62Tests extends Historical61Support {
         var canceled=individual61(patient,professional,SituacaoAtendimento.CANCELADO,PAST,"08:00");
         var group=session61(colleague,PAST,SLOT,false,StatusPresencaGrupo.NAO_REGISTRADA,patient);
         var result=race("F2-FACTUAL-REGULARIZATION-X-CONFIRMATION",List.<Callable<Integer>>of(
-                ()->operation(post("/api/agendamentos/"+canceled.getId()+"/regularizacao-cancelamento/frequencia"),
+                ()->operation(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/agendamentos/"+canceled.getId()+"/regularizacao-cancelamento/frequencia"),
                         fact(canceled,FrequenciaAssistencial.PRESENTE)),
                 ()->businessStatus(confirm61(group,patient))));
         assertEquals(new RaceResult(1,1),result);
