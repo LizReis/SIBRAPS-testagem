@@ -56,8 +56,47 @@ class GroupResponsibilityMigrationTests {
         var cols=LegacyMigrationFixture.columns(source);cols.remove("sibraps_agenda_schema_history");var before=LegacyMigrationFixture.snapshot(source,cols);AgendaMigrationTool.migrar(source);assertEquals(before,LegacyMigrationFixture.snapshot(source,cols));
         assertNull(jdbc.queryForObject("select responsavel_atendimento_id from tb_sessao_grupo where id=1",Long.class));assertTrue(jdbc.queryForObject("select responsabilidade_pendente from tb_sessao_grupo where id=1",Boolean.class));assertEquals(3,jdbc.queryForObject("select version from tb_sessao_grupo where id=1",Integer.class));
     }
+    @Test void migratedLegacyGroupWithInconsistentClinicalAuthorRequiresReviewWithoutMutation() throws Exception {
+        var source=v4("legacy-inconsistent-clinical-author");
+        AgendaMigrationTool.migrar(source);
+        var jdbc=new JdbcTemplate(source);
+        // O fixture V4 original registra no histórico o administrador (1), não o responsável A (2).
+        // A nova proteção deve RECUSAR a correção, sem atribuir responsabilidade automaticamente.
+        assertEquals(1L,jdbc.queryForObject("select profissional_id from tb_historico_paciente where sessao_grupo_id=1",Long.class));
+        assertEquals(2L,jdbc.queryForObject("select responsavel_atendimento_id from tb_sessao_grupo where id=1",Long.class));
+        var columns=LegacyMigrationFixture.columns(source);
+        var before=LegacyMigrationFixture.snapshot(source,columns);
+        CorrectiveMigrationApplication.application(source).run(context->{
+            assertThat(context).hasNotFailed();
+            var mvc=MockMvcBuilders.webAppContextSetup((WebApplicationContext)context.getSourceApplicationContext())
+                    .addFilters(context.getBean("springSecurityFilterChain",jakarta.servlet.Filter.class)).build();
+            var users=context.getBean(UsuarioRepository.class);
+            var tokenService=context.getBean(TokenService.class);
+            var json=context.getBean(ObjectMapper.class);
+            var p=context.getBean(PacienteRepository.class).findById(1L).orElseThrow();
+            var dto=new CorrigirFrequenciasGrupoDTO(
+                    List.of(new FrequenciaParticipanteGrupoDTO(p.getIdPublico(),StatusPresencaGrupo.PRESENTE)),3,
+                    "Revisão sintética sem evidência coerente de responsabilidade.");
+            var response=mvc.perform(patch("/api/grupos/sessoes/1/frequencias")
+                    .header("Authorization","Bearer "+tokenService.gerarToken(users.findById(2L).orElseThrow()))
+                    .contentType("application/json").content(json.writeValueAsString(dto)))
+                    .andReturn().getResponse();
+            assertEquals(409,response.getStatus(),response.getContentAsString());
+            assertEquals("HISTORICO_ASSISTENCIAL_PENDENTE_RECONCILIACAO",
+                    json.readTree(response.getContentAsString()).get("codigo").asText());
+        });
+        assertEquals(before,LegacyMigrationFixture.snapshot(source,columns),
+                "Correção negada de dado legado contraditório não deve alterar histórico, auditoria ou versões.");
+    }
+
     @Test void migratedOwnershipPermissionsAuditsAndNewCorrectionSurviveRestartAndRestore() throws Exception {
-        var source=v4("restart-owner");AgendaMigrationTool.migrar(source);var jdbc=new JdbcTemplate(source);var oldAudits=jdbc.queryForList("select * from tb_auditoria_correcao_frequencia order by id");
+        var source=v4("restart-owner");
+        var jdbc=new JdbcTemplate(source);
+        // Variante SINTÉTICA consistente: histórico clínico foi registrado pelo responsável A (2).
+        // Não é migração nem regra de reparação automática; o fixture V4 original permanece intacto.
+        assertEquals(1L,jdbc.queryForObject("select profissional_id from tb_historico_paciente where sessao_grupo_id=1",Long.class));
+        assertEquals(1,jdbc.update("update tb_historico_paciente set profissional_id=2 where sessao_grupo_id=1 and profissional_id=1"));
+        AgendaMigrationTool.migrar(source);var oldAudits=jdbc.queryForList("select * from tb_auditoria_correcao_frequencia order by id");
         CorrectiveMigrationApplication.application(source).run(context->{
             assertThat(context).hasNotFailed();var mvc=MockMvcBuilders.webAppContextSetup((WebApplicationContext)context.getSourceApplicationContext()).addFilters(context.getBean("springSecurityFilterChain",jakarta.servlet.Filter.class)).build();var users=context.getBean(UsuarioRepository.class);var json=context.getBean(ObjectMapper.class);var tokenService=context.getBean(TokenService.class);var a=users.findById(2L).orElseThrow();var b=users.findById(3L).orElseThrow();var admin=users.findById(1L).orElseThrow();var p=context.getBean(PacienteRepository.class).findById(1L).orElseThrow();
             new org.springframework.transaction.support.TransactionTemplate(context.getBean(org.springframework.transaction.PlatformTransactionManager.class)).execute(tx->{
