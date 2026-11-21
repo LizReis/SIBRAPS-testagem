@@ -727,6 +727,8 @@ class IsolamentoUnidadeTests extends SecurityTestSupport {
         dados.put("nome", "Cadastro autorizado por profissional");
         dados.put("cpf", "52998224725");
         dados.put("cns", "700000000000005");
+        dados.put("sexo", "FEMININO");
+        dados.put("racacor", "PARDA");
         dados.put("countFaltas", null);
         dados.put("situacaoRua", true);
         dados.put("endereco", null);
@@ -754,6 +756,8 @@ class IsolamentoUnidadeTests extends SecurityTestSupport {
         dados.remove("idPublico");
         dados.put("cpf", "52998224725");
         dados.put("cns", "700000000000005");
+        dados.put("sexo", "FEMININO");
+        dados.put("racacor", "PARDA");
         dados.put("countFaltas", null);
         dados.put("situacaoRua", true);
         dados.put("endereco", null);
