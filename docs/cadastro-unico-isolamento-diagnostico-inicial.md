@@ -47,3 +47,17 @@
 **E — validação:** Maven verify + concorrência opt-in, build Angular, testes específicos e regressões; registrar falhas Angular antigas em separado, sem ocultá-las.
 
 **Proibições:** nenhuma mudança clínica presumida, limpeza de dados antigos, bypass de escopo, vinculação automática por CAPS de referência, merge para main ou declaração de CI verde sem evidência.
+
+## Resultado da primeira validação (21/11/2026)
+
+- GitHub Actions #44865700834: **falhou por duas fixtures incompletas dos novos testes** (campos obrigatórios sexo/raça-cor); produção não foi alterada para acomodar dados inválidos.
+- GitHub Actions #44866056347, commit `093dc1360cf49888cf02c9e5fc746dcf3b0a90cc`: **SUCCESS**: backend `verify` 1.021/1.021; concorrência adicional 12/12; Angular build aprovado; testes Angular dirigidos 4/4.
+- Primeira entrega validada: `PROFISSIONAL` cadastra (`POST /api/pacientes`), mas não recebe acesso ao `PUT`; o backend preserva o controle de escopo da USF.
+
+## Início da modelagem aditiva (não ativada nos fluxos clínicos)
+
+- Nova `VinculoAssistencial` (`tb_vinculo_assistencial`) com `paciente_id`, unidade canônica `unidade_atuacao` e `unidade_chave` (USF:<id> ou CAPS_AD/CAPS_I/CAPS_II), índices de unicidade por identidade+unidade, versão e auditoria Envers. Inclui campos clínicos futuros por unidade sem mover os caches já utilizados pelos algoritmos de cálculo.
+- `VinculoAssistencialRepository`: **uso interno**, não disponibilizar diretamente em API sem serviço autorizador.
+- `VinculoAssistencialModelTests`: testa ausência de associação automática por referência, múltiplos vínculos da mesma pessoa, unicidade e invariantes.
+- **ATENÇÃO:** a entidade recém-adicionada ainda não participa do cadastro, da consulta ou do histórico existente; não declarar isolamento concluído. Em bancos persistidos, `ddl-auto=validate` requer **migração aditiva validada antes da execução**; nenhuma migração de produção foi executada ou considerada segura nesta etapa.
+- Etapa posterior obrigatória: detalhar estratégia de migração offline, inclusive tabelas Envers, vínculo de histórico, estados ambíguos e preenchimento sem presunção, então integrar serviços e APIs sem vazamento. Não iniciar produção antes disso.
