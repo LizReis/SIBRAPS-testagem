@@ -109,3 +109,12 @@
 - `OrigemAgendamentoTests`: CAPS, duas USFs, divergência de profissional e unidade inválida. `AgendaLegacyMigrationTests`: verifica registros e revisões históricos ainda `NULL` após a V9.
 - **Limites de escopo:** isto não torna os filtros clínicos baseados em `VinculoAssistencial`; não muda grupos, históricos, regras de faltas, busca ativa, transferência ou relatórios. A coluna não autoriza acesso por si só. O corte dos endpoints e cálculos exige fase própria com migração validada e testes de segurança.
 - Não executar V9 sobre bancos persistidos reais sem backup e ensaio da ferramenta offline; `ddl-auto=validate` continua sem criação automática.
+
+## V10 — proveniência dos NOVOS grupos e sessões, sem backfill
+
+- CI #44870335553 (commit `637ca9768b6f211086a639a2a508fb9134e2f154`): **SUCCESS**; 1.045 testes Maven, 12 testes de concorrência, build Angular e 4 testes de permissões.
+- `V10__origem_grupos_sessoes_novos_registros.sql`: adiciona `unidade_origem_chave` a `tb_grupo_terapeutico`, `tb_grupo_terapeutico_aud`, `tb_sessao_grupo` e `tb_sessao_grupo_aud`. Migração offline aditiva; nenhuma linha legada é modificada e registros antigos permanecem com NULL.
+- Na criação de novo grupo, `GrupoTerapeuticoServiceImpl.criarGrupo` captura a origem do coordenador que já passou pelas validações e bloqueios atuais. Sessões novas herdam a chave imutável do grupo. Sessões novas de grupos **legados sem origem comprovada** continuam NULL, em vez de inferir pela lotação atual do coordenador.
+- A transferência posterior de coordenação não reescreve a origem. Os campos são opcionais neste estágio de transição; **não autorizar acesso clínico com base exclusivamente neles** enquanto o sistema operar com escopo legado.
+- Testes `OrigemGrupoSessaoTests` caracterizam origem, transferências e guarda de grupo legado. `AgendaLegacyMigrationTests` confere snapshots e nenhuma atribuição de origem na V10. CI da V10 ainda precisa ser verificada.
+- Próximos passos, em entregas isoladas: origem imutável dos novos históricos vinculados a agendamentos/sessões; resolver inconsistências de escopo por vínculo e migração clínica somente mediante evidência suficiente; preservar relatórios, 6.2, auditoria e isolamento.
