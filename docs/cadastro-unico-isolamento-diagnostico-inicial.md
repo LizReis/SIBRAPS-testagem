@@ -118,3 +118,11 @@
 - A transferência posterior de coordenação não reescreve a origem. Os campos são opcionais neste estágio de transição; **não autorizar acesso clínico com base exclusivamente neles** enquanto o sistema operar com escopo legado.
 - Testes `OrigemGrupoSessaoTests` caracterizam origem, transferências e guarda de grupo legado. `AgendaLegacyMigrationTests` confere snapshots e nenhuma atribuição de origem na V10. CI da V10 ainda precisa ser verificada.
 - Próximos passos, em entregas isoladas: origem imutável dos novos históricos vinculados a agendamentos/sessões; resolver inconsistências de escopo por vínculo e migração clínica somente mediante evidência suficiente; preservar relatórios, 6.2, auditoria e isolamento.
+
+## V11 — proveniência de eventos novos do histórico clínico
+
+- CI #44870735117, commit `563a3fc3f31d7825808617edda0ec1b28f575fd0`: **SUCCESS**, backend 1.050 testes, concorrência 12/12, build Angular e 4/4 permissões.
+- Nova `V11__origem_historico_novos_eventos.sql` adiciona apenas a coluna `unidade_origem_chave` a `tb_historico_paciente` e `tb_historico_paciente_aud`. Não realiza backfill; fatos e revisões antigos preservam origem nula quando desconhecida.
+- `HistoricoPaciente` ganhou captura de proveniência para eventos **novos**: agendamento/sessão usam a origem imutável do fato relacionado, nunca a lotação atual do profissional; evento manual sem fonte usa a unidade atual do executor na operação presente. Registro sem fonte comprovada mantém NULL; correções de frequência existentes não sobrescrevem a coluna.
+- `HistoricoPacienteServiceImpl` foi integrado à captura na criação de histórico individual, de grupo e manual. `OrigemHistoricoNovoTests` e novo teste da migração V11 cobrem origem, preservação e invariantes.
+- Ainda NÃO foram ativados filtros por vínculo, atribuição assistencial retroativa, acesso cruzado, migração do estado de risco/assiduidade ou mudanças de contratos de API. Esta entrega aguarda CI; sem CI verde não deve ser declarada validada.
