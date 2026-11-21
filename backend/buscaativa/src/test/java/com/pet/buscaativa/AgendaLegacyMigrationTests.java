@@ -12,6 +12,19 @@ import com.pet.buscaativa.migration.*;
 class AgendaLegacyMigrationTests {
     @TempDir Path temp;
 
+    @Test void novaTabelaDeVinculoNaoCriaAcompanhamentoPorReferenciaLegada() throws Exception {
+        var source = LegacyMigrationFixture.legacy(temp.resolve("vinculo-v8-sem-backfill"));
+        var jdbc = new JdbcTemplate(source);
+        var oldColumns = LegacyMigrationFixture.columns(source);
+        var previous = LegacyMigrationFixture.snapshot(source, oldColumns);
+        AgendaMigrationTool.migrar(source);
+
+        assertEquals(0, jdbc.queryForObject("select count(*) from tb_vinculo_assistencial", Integer.class));
+        assertEquals(0, jdbc.queryForObject("select count(*) from tb_vinculo_assistencial_aud", Integer.class));
+        assertEquals(previous, LegacyMigrationFixture.snapshot(source, oldColumns));
+        assertEquals(0, AgendaMigrationTool.migrar(source).migrationsExecuted);
+    }
+
     @Test void migratePersistedOldSchemaWithoutChangingAnyOriginalColumnOrRevision() throws Exception {
         var source = LegacyMigrationFixture.legacy(temp.resolve("legacy"));
         var jdbc = new JdbcTemplate(source);
