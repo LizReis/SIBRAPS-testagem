@@ -8,6 +8,7 @@ import org.hibernate.envers.Audited;
 
 import com.pet.buscaativa.entities.enums.RecorrenciaGrupo;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -19,6 +20,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -53,6 +55,25 @@ public class GrupoTerapeutico extends AbstractEntities implements Serializable {
     private LocalDate dataFimRecorrencia;
 
     private boolean ativo = true;
+
+    /**
+     * Unidade canônica do grupo NOVO, definida quando ele é criado.
+     * NULL em grupos legados significa origem não comprovada.
+     * Trocar o coordenador não modifica a unidade de origem.
+     */
+    @Column(name = "unidade_origem_chave", length = 80, updatable = false)
+    @Setter(AccessLevel.NONE)
+    private String unidadeOrigemChave;
+
+    public void registrarUnidadeDeOrigem(Usuario coordenadorInicial) {
+        if (id != null || unidadeOrigemChave != null)
+            throw new IllegalStateException("A origem assistencial do grupo não pode ser alterada.");
+        if (coordenador == null || coordenadorInicial == null
+                || coordenador.getId() == null
+                || !coordenador.getId().equals(coordenadorInicial.getId()))
+            throw new IllegalArgumentException("Coordenador inicial incompatível com o grupo.");
+        unidadeOrigemChave = ChaveUnidadeAssistencial.doUsuarioAtual(coordenadorInicial);
+    }
 
     @Version
     private Integer version;
