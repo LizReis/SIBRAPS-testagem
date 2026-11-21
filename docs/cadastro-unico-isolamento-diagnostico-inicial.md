@@ -69,3 +69,10 @@
 - O script cria `tb_vinculo_assistencial` e `tb_vinculo_assistencial_aud` com constraints de chave natural e integridade. **Não** executa backfill, não cria associações a partir de `capsReferencia` e não reclassifica pacientes.
 - Tests com expectativa explícita do número de migrations passam a contar V8; novo teste confirma que a tabela é vazia e os registros antigos são preservados.
 - **Aguardando GitHub Actions** do novo commit: não declarar CI aprovada até ver resultados. A estrutura é apenas aditiva, APIs clínicas legadas ainda não a utilizam.
+
+## CI V8 aprovada e preparação do vínculo explícito
+
+- Run #44867030449 no commit `11e1f88194b2203301b16d8915b86a101be2cad7`: **SUCESSO**: 1.027 testes Maven aprovados (0 falhas, 0 erros), mais 12/12 concorrência; build Angular e 4/4 permissões aprovados.
+- O `DevConfig` está sob `@Profile("dev")`, contém cenários e pacientes sintéticos para demonstração; `application-dev.properties` usa H2 em memória e `ddl-auto=create`. Preservar esse conteúdo até adaptar os cenários ao modelo novo. A autorização para apagar dados fictícios **não** autoriza excluir fixtures históricas de regressão ou dados reais/persistidos.
+- Preparação seguinte: `VinculoAssistencialService` interno tem criação explícita com lock do paciente e chave da unidade autenticada, busca idempotente por unidade e não deriva vínculo de `capsReferencia`. `VinculoAssistencialServiceTests` adiciona cenários por CAPS e USFs, sem endpoints novos. **Não** utilizar esse serviço para liberar novos acessos clínicos até a separação das consultas, grupos, cálculos e autorizações estar concluída e testada.
+- Nova CI de serviço interno **ainda não verificada**; não interpretar a aprovação da V8 como aprovação desta entrega posterior.
