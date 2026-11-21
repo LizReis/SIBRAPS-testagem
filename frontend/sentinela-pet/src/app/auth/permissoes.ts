@@ -2,6 +2,6 @@ export const TIPOS_USUARIO = ['ADMINISTRADOR', 'RECEPCAO', 'PROFISSIONAL'] as co
 export type TipoUsuario = (typeof TIPOS_USUARIO)[number];
 
 export const podeCadastrarPaciente = (tipo: string): boolean =>
-  tipo === 'ADMINISTRADOR' || tipo === 'RECEPCAO';
+  tipo === 'ADMINISTRADOR' || tipo === 'RECEPCAO' || tipo === 'PROFISSIONAL';
 export const podeEditarPaciente = (tipo: string): boolean =>
   tipo === 'ADMINISTRADOR' || tipo === 'RECEPCAO';
