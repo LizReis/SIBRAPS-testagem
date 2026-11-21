@@ -107,7 +107,7 @@ public class VinculoAssistencial extends AbstractEntities {
         vinculo.paciente = pessoa;
         vinculo.unidadeAtuacao = UnidadeAtuacao.USF;
         vinculo.usfAtuacao = usf;
-        vinculo.unidadeChave = "USF:" + usf.getId();
+        vinculo.unidadeChave = ChaveUnidadeAssistencial.daUsf(usf);
         vinculo.statusPaciente = StatusPaciente.ATIVO;
         return vinculo;
     }
@@ -119,7 +119,7 @@ public class VinculoAssistencial extends AbstractEntities {
         VinculoAssistencial vinculo = new VinculoAssistencial();
         vinculo.paciente = pessoa;
         vinculo.unidadeAtuacao = caps;
-        vinculo.unidadeChave = caps.name();
+        vinculo.unidadeChave = ChaveUnidadeAssistencial.doCaps(caps);
         vinculo.statusPaciente = StatusPaciente.ATIVO;
         return vinculo;
     }
@@ -129,16 +129,7 @@ public class VinculoAssistencial extends AbstractEntities {
     private void validarIdentidadeDoVinculo() {
         if (paciente == null || unidadeAtuacao == null || unidadeChave == null)
             throw new IllegalStateException("Vinculo assistencial sem identidade/unidade.");
-        String esperado;
-        if (unidadeAtuacao == UnidadeAtuacao.USF) {
-            if (usfAtuacao == null || usfAtuacao.getId() == null)
-                throw new IllegalStateException("Vinculo USF exige unidade especifica.");
-            esperado = "USF:" + usfAtuacao.getId();
-        } else {
-            if (usfAtuacao != null)
-                throw new IllegalStateException("Vinculo CAPS nao pode possuir USF de atuacao.");
-            esperado = unidadeAtuacao.name();
-        }
+        String esperado = ChaveUnidadeAssistencial.doVinculo(unidadeAtuacao, usfAtuacao);
         if (!esperado.equals(unidadeChave))
             throw new IllegalStateException("Unidade do vinculo incoerente.");
     }
