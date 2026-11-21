@@ -1,0 +1,93 @@
+name: SIBRAPS - Diagnostico cadastro unico e perfil profissional
+on:
+  push:
+    branches: [correcao-cadastro-unico-isolamento]
+    paths:
+      - 'backend/buscaativa/**'
+      - 'frontend/sentinela-pet/**'
+      - '.github/workflows/cadastro-unico-diagnostico.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Cadastro unico - Backend Java 21 / verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend/buscaativa
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: backend/buscaativa/pom.xml
+      - name: Backend completo - Maven verify
+        shell: bash
+        run: |
+          set -o pipefail
+          bash ./mvnw -B -ntp verify 2>&1 | tee cadastro-backend-verify.log
+      - name: Matriz de concorrencia 6.1 (opt-in)
+        shell: bash
+        run: |
+          set -o pipefail
+          bash ./mvnw -B -ntp '-Dtest=ReconciliationConcurrency61Characterization' test 2>&1 | tee cadastro-concorrencia.log
+      - name: Relatorios backend
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: cadastro-backend-diagnostico
+          path: |
+            backend/buscaativa/target/surefire-reports/
+            backend/buscaativa/cadastro-*.log
+          retention-days: 7
+          if-no-files-found: warn
+
+  frontend-build:
+    name: Cadastro unico - Build Angular
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: frontend/sentinela-pet
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/sentinela-pet/package-lock.json
+      - run: npm install --global npm@11.6.2
+      - run: npm ci
+      - name: Compilacao de producao
+        run: npm run build
+
+  frontend-permissoes:
+    name: Cadastro unico - Teste direcionado Angular de permissoes
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: frontend/sentinela-pet
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/sentinela-pet/package-lock.json
+      - run: npm install --global npm@11.6.2
+      - run: npm ci
+      - name: Teste de permissoes do cadastro
+        run: npm test -- --watch=false --include=src/app/auth/permissoes.spec.ts
