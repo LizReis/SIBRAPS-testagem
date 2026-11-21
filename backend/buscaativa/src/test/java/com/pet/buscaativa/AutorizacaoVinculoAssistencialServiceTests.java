@@ -188,6 +188,28 @@ class AutorizacaoVinculoAssistencialServiceTests {
     }
 
     @Test
+    void sessaoDaUnidadeSoEVisivelParaPacienteParticipante() {
+        Usuario coordenador = new Usuario();
+        coordenador.setId(3L);
+        coordenador.setUnidadeAtuacao(UnidadeAtuacao.CAPS_AD);
+        var grupo = new com.pet.buscaativa.entities.GrupoTerapeutico();
+        grupo.setCoordenador(coordenador);
+        grupo.registrarUnidadeDeOrigem(coordenador);
+        var sessao = new SessaoGrupo();
+        sessao.setGrupo(grupo);
+        sessao.registrarUnidadeDeOrigemDoGrupo();
+
+        assertThrows(ResourceNotFoundException.class, () -> service.validarSessaoLocal(sessao, pessoa));
+        var participante = new com.pet.buscaativa.entities.SessaoGrupoParticipante();
+        participante.setPaciente(pessoa);
+        participante.setSessaoGrupo(sessao);
+        when(participantes.findBySessaoGrupoAndPaciente(sessao, pessoa))
+                .thenReturn(Optional.of(participante));
+
+        assertDoesNotThrow(() -> service.validarSessaoLocal(sessao, pessoa));
+    }
+
+    @Test
     void sessaoDaOutraUnidadeNaoEVisivelComVinculoLocal() {
         Usuario coordenador = new Usuario();
         coordenador.setId(3L);
