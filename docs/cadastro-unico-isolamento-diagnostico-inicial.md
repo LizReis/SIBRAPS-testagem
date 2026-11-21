@@ -100,3 +100,12 @@
 - `VinculoAssistencial` e seu serviço interno passaram a usar a função canônica; contratos de API, flags, consultas e eventos clínicos permanecem intactos.
 - **Próxima etapa ainda NÃO implementada:** persistir a proveniência imutável e vínculo local em cada novo agendamento, grupo e histórico **no momento da criação**, com validações explícitas de unidade autenticada e vínculo de paciente. Antes de habilitar leitura por vínculo ou backfill, prever migração aditiva correspondente com Envers, testes de transferência, troca de lotação, histórico antigo pendente, responsabilidade de sessões e acesso cruzado.
 - CI do refactor de chave canônica aguarda execução; não tratar aprovação anterior como validação dessa nova alteração.
+
+## V9 — proveniência dos NOVOS agendamentos (aguarda validação da CI)
+
+- CI #44869942310, commit `183bb0663f4b9804b0b76c203c28d91b89cb1c18`: **SUCCESS**, 1.041 testes backend, 12 concorrência, build Angular e 4 testes de permissão.
+- Nova migração offline aditiva `V9__origem_agendamento_novos_registros.sql`: colunas `unidade_origem_chave` em `tb_agendamento` e `tb_agendamento_aud`. Nenhum backfill; `NULL` em registros legados significa proveniência ainda não comprovada.
+- `Agendamento.registrarUnidadeDeOrigem` permite gravação uma só vez antes da primeira persistência, usando a unidade vinculada ao profissional operacional já validado; `AgendamentoServiceImpl.save` registra a origem do novo atendimento. Não modificar a lotação, auditoria e o histórico dos atendimentos existentes.
+- `OrigemAgendamentoTests`: CAPS, duas USFs, divergência de profissional e unidade inválida. `AgendaLegacyMigrationTests`: verifica registros e revisões históricos ainda `NULL` após a V9.
+- **Limites de escopo:** isto não torna os filtros clínicos baseados em `VinculoAssistencial`; não muda grupos, históricos, regras de faltas, busca ativa, transferência ou relatórios. A coluna não autoriza acesso por si só. O corte dos endpoints e cálculos exige fase própria com migração validada e testes de segurança.
+- Não executar V9 sobre bancos persistidos reais sem backup e ensaio da ferramenta offline; `ddl-auto=validate` continua sem criação automática.
