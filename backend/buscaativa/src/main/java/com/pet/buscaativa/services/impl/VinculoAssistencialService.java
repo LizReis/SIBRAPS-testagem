@@ -7,6 +7,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.pet.buscaativa.entities.ChaveUnidadeAssistencial;
 import com.pet.buscaativa.entities.Paciente;
 import com.pet.buscaativa.entities.Usuario;
 import com.pet.buscaativa.entities.VinculoAssistencial;
@@ -44,7 +45,7 @@ public class VinculoAssistencialService {
     public VinculoAssistencial vincularExplicitamente(UUID idPublico) {
         Usuario ator = usuarioComPermissaoDeVincular();
         if (idPublico == null) throw new ResourceNotFoundException("Paciente não encontrado.");
-        String chave = chaveUnidade(ator);
+        String chave = ChaveUnidadeAssistencial.doUsuarioAtual(ator);
 
         // Serializar na identidade existente evita duplicacao em pedidos
         // concorrentes da mesma unidade; a constraint unica e defesa adicional.
@@ -67,7 +68,7 @@ public class VinculoAssistencialService {
         Usuario ator = usuarioComPermissaoDeVincular();
         if (idPublico == null) return Optional.empty();
         return pacientes.findByIdPublico(idPublico)
-                .flatMap(p -> vinculos.findByPacienteIdAndUnidadeChave(p.getId(), chaveUnidade(ator)));
+                .flatMap(p -> vinculos.findByPacienteIdAndUnidadeChave(p.getId(), ChaveUnidadeAssistencial.doUsuarioAtual(ator)));
     }
 
     private Usuario usuarioComPermissaoDeVincular() {
@@ -80,9 +81,4 @@ public class VinculoAssistencialService {
         return ator;
     }
 
-    private String chaveUnidade(Usuario ator) {
-        return ator.getUnidadeAtuacao() == UnidadeAtuacao.USF
-                ? "USF:" + ator.getUsfAtuacao().getId()
-                : ator.getUnidadeAtuacao().name();
-    }
 }
