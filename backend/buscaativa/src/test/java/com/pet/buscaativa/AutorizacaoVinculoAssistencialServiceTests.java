@@ -65,6 +65,61 @@ class AutorizacaoVinculoAssistencialServiceTests {
     }
 
     @Test
+    void vinculoRetornadoComPacienteDiferenteNaoAutorizaDados() {
+        Paciente outro = new Paciente();
+        outro.setId(999L);
+        when(vinculoAd.getPaciente()).thenReturn(outro);
+        assertThrows(ResourceNotFoundException.class, () -> service.exigirVinculoLocal(idPublico));
+    }
+
+    @Test
+    void agendamentoDaUnidadeLocalComVinculoExplicitoEAutorizado() {
+        Usuario profissional = new Usuario();
+        profissional.setId(7L);
+        profissional.setUnidadeAtuacao(UnidadeAtuacao.CAPS_AD);
+        Agendamento a = new Agendamento();
+        a.setPaciente(pessoa);
+        a.setUsuario(profissional);
+        a.registrarUnidadeDeOrigem(profissional);
+        assertDoesNotThrow(() -> service.validarAgendamentoLocal(a));
+    }
+
+    @Test
+    void historicoDaUnidadeLocalComPacienteDaFonteCoerenteEAutorizado() {
+        Usuario profissional = new Usuario();
+        profissional.setId(7L);
+        profissional.setUnidadeAtuacao(UnidadeAtuacao.CAPS_AD);
+        Agendamento a = new Agendamento();
+        a.setPaciente(pessoa);
+        a.setUsuario(profissional);
+        a.registrarUnidadeDeOrigem(profissional);
+        HistoricoPaciente h = new HistoricoPaciente();
+        h.setPaciente(pessoa);
+        h.setAgendamento(a);
+        h.registrarOrigemDoAgendamento(a);
+        assertDoesNotThrow(() -> service.validarHistoricoLocal(h));
+    }
+
+    @Test
+    void historicoDeAgendamentoNaoPodeApontarParaOutroPacienteMesmoComOrigemLocal() {
+        Paciente outro = new Paciente();
+        outro.setId(999L);
+        Usuario profissional = new Usuario();
+        profissional.setId(7L);
+        profissional.setUnidadeAtuacao(UnidadeAtuacao.CAPS_AD);
+        Agendamento a = new Agendamento();
+        a.setPaciente(outro);
+        a.setUsuario(profissional);
+        a.registrarUnidadeDeOrigem(profissional);
+        HistoricoPaciente h = new HistoricoPaciente();
+        h.setPaciente(pessoa);
+        h.setAgendamento(a);
+        // Uma origem local nao basta: a fonte precisa apontar para a mesma pessoa.
+        // O teste usa uma instancia de historico sem persistencia intencionalmente.
+        assertThrows(IllegalArgumentException.class, () -> h.registrarOrigemDoAgendamento(a));
+    }
+
+    @Test
     void mesmaPessoaEmCapsIIEInvisivelSemVinculoDoCapsII() {
         assertSame(vinculoAd, service.exigirVinculoLocal(idPublico));
 
