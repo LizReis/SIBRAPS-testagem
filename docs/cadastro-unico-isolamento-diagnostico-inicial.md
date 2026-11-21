@@ -143,3 +143,11 @@
 - Novos testes validam autorização positiva de um atendimento/histórico da própria unidade e recusam vínculos apontando a outra identidade. A integridade de `HistoricoPaciente.registrarOrigemDoAgendamento` já impede eventos novos para paciente divergente.
 - A nova camada permanece **interna e inativa nas rotas HTTP**, aguardando migração/integração coordenada com histórico, listas, grupos e indicadores. Não acrescenta acesso clínico cruzado.
 - **CI destas melhorias ainda não verificada**; não declarar aprovação sem consultar a execução correspondente.
+
+## Testes com JPA/H2 real de isolamento local
+
+- Execução #44954760795, commit `4d636101c2b71e2531143b839043a728a9aac01f`: **SUCCESS**; backend 1.066/1.066, concorrência 12/12, Angular build e permissões 4/4.
+- A camada interna de autorização agora exige, além de vínculo local e proveniência do grupo/sessão, participação explícita do paciente para consultar sessão e histórico de participação. Identidade global ou vínculo local da pessoa não bastam para ler sessões nas quais ela não está inscrita.
+- Teste `AutorizacaoVinculoPersistenciaTests` usa repositórios JPA reais e banco H2 de teste com paciente sintético e duas unidades CAPS: referência sem vínculo, dois vínculos sem mistura de agendas/históricos, participação efetiva e origem legada NULL. Apenas o contexto do usuário foi simulado no `EscopoUnidadeService`; **não equivale a um teste HTTP/JWT de ponta a ponta**.
+- Teste unitário adicional confirma negação da sessão sem participação e concessão com participação comprovada. Camada permanece fora dos endpoints.
+- **CI destes testes ainda pendente**. Somente avançar para mudanças no escopo HTTP após validar cobertura, planejamento da migração clínica e operações de cadastro/vinculação para todos os caminhos.
