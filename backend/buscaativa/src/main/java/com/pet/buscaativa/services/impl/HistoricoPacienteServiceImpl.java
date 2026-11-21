@@ -230,6 +230,9 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
                 ? TipoEventoHistoricoPaciente.PARTICIPACAO_GRUPO_TERAPEUTICO : TipoEventoHistoricoPaciente.FALTA;
         HistoricoPaciente h = new HistoricoPaciente();
         h.setPaciente(paciente); h.setSessaoGrupo(sessao); h.setProfissional(sessao.getResponsavelAtendimento()); h.setTipo(tipo);
+        // Proveniência do evento novo vem da sessão; a lotação atual do
+        // responsável não substitui evidência ausente em sessão legada.
+        h.registrarOrigemDaSessao(sessao);
         h.setSituacaoAtendimento(status == StatusPresencaGrupo.PRESENTE ? SituacaoAtendimento.PRESENTE : SituacaoAtendimento.FALTOU);
         h.setOcorridoEm(LocalDateTime.of(sessao.getDataSessao(), sessao.getHorario()));
         h.setDescricao("Frequência no grupo " + sessao.getGrupo().getTema() + ", sessão " + sessao.getId() + ".");
@@ -286,6 +289,11 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
         historico.setAgendamento(agendamento);
         historico.setProfissional(profissional);
         historico.setTipo(tipo);
+        // Se a origem da fonte antiga é desconhecida, manter NULL.
+        // Ações manuais novas sem fonte usam exclusivamente a unidade
+        // autenticada do executor, quando disponível.
+        if (agendamento != null) historico.registrarOrigemDoAgendamento(agendamento);
+        else if (profissional != null) historico.registrarOrigemDeAcaoLocal(profissional);
         historico.setSituacaoAtendimento(situacao);
         historico.setOcorridoEm(ocorridoEm);
         historico.setDescricao(descricao);
