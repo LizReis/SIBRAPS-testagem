@@ -61,3 +61,11 @@
 - `VinculoAssistencialModelTests`: testa ausência de associação automática por referência, múltiplos vínculos da mesma pessoa, unicidade e invariantes.
 - **ATENÇÃO:** a entidade recém-adicionada ainda não participa do cadastro, da consulta ou do histórico existente; não declarar isolamento concluído. Em bancos persistidos, `ddl-auto=validate` requer **migração aditiva validada antes da execução**; nenhuma migração de produção foi executada ou considerada segura nesta etapa.
 - Etapa posterior obrigatória: detalhar estratégia de migração offline, inclusive tabelas Envers, vínculo de histórico, estados ambíguos e preenchimento sem presunção, então integrar serviços e APIs sem vazamento. Não iniciar produção antes disso.
+
+## Revisão da CI após introduzir JPA/Envers
+
+- Run #44866728859 (modelagem antes da V8): falha em bancos H2 persistidos de fixtures. Causa confirmada em logs: `Schema validation: missing table [tb_vinculo_assistencial]`. Cinco testes novos do vínculo passaram; frontend build e permissões passaram. Resultado global **vermelho** (1.026 tests, 8 failures, 7 errors). Os erros em testes de restauração/migração são encadeamentos de boot sem a nova tabela; não foram reinterpretados como problemas clínicos.
+- A correção consiste na **V8 offline aditiva** `V8__vinculo_assistencial_sem_backfill.sql`, integrada ao `AgendaMigrationTool` pela localização Flyway já existente. Não executar em produção sem backup, teste de restauração, conferência do schema H2 usado no ambiente e revisão dos vínculos legados.
+- O script cria `tb_vinculo_assistencial` e `tb_vinculo_assistencial_aud` com constraints de chave natural e integridade. **Não** executa backfill, não cria associações a partir de `capsReferencia` e não reclassifica pacientes.
+- Tests com expectativa explícita do número de migrations passam a contar V8; novo teste confirma que a tabela é vazia e os registros antigos são preservados.
+- **Aguardando GitHub Actions** do novo commit: não declarar CI aprovada até ver resultados. A estrutura é apenas aditiva, APIs clínicas legadas ainda não a utilizam.
