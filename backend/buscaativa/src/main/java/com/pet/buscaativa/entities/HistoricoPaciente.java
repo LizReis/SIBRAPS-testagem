@@ -19,6 +19,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -64,6 +65,52 @@ public class HistoricoPaciente extends AbstractEntities {
 
     @Column(length = 2000)
     private String descricao;
+
+    /**
+     * Proveniência LOCAL capturada somente na CRIAÇÃO de um evento.
+     * Ausente em histórico antigo ou com fonte sem origem comprovada.
+     * Um fato de atendimento/sessão recebe a origem desse fato, nunca a
+     * lotação atual do profissional; alteração de frequência não regrava origem.
+     */
+    @Column(name = "unidade_origem_chave", length = 80, updatable = false)
+    @Setter(AccessLevel.NONE)
+    private String unidadeOrigemChave;
+
+    public void registrarOrigemDoAgendamento(Agendamento origem) {
+        if (origem == null || this.agendamento != origem
+                || this.sessaoGrupo != null
+                || paciente == null || origem.getPaciente() == null
+                || paciente.getId() == null
+                || !paciente.getId().equals(origem.getPaciente().getId()))
+            throw new IllegalArgumentException("Histórico não corresponde ao agendamento de origem.");
+        registrarOrigemNova(origem.getUnidadeOrigemChave());
+    }
+
+    public void registrarOrigemDaSessao(SessaoGrupo origem) {
+        if (origem == null || this.sessaoGrupo != origem || this.agendamento != null
+                || paciente == null)
+            throw new IllegalArgumentException("Histórico não corresponde à sessão de origem.");
+        registrarOrigemNova(origem.getUnidadeOrigemChave());
+    }
+
+    /** Exclusivo para fato novo SEM agendamento/sessão, com executor autenticado. */
+    public void registrarOrigemDeAcaoLocal(Usuario executor) {
+        if (agendamento != null || sessaoGrupo != null)
+            throw new IllegalArgumentException("Histórico com fato clínico deve conservar a origem do próprio fato.");
+        registrarOrigemNova(ChaveUnidadeAssistencial.doUsuarioAtual(
+                java.util.Objects.requireNonNull(executor, "Executor obrigatório.")));
+    }
+
+    private void registrarOrigemNova(String chaveDaFonte) {
+        if (id != null || unidadeOrigemChave != null)
+            throw new IllegalStateException("Unidade histórica não pode ser substituída.");
+        // NULL da fonte legada significa origem ainda não comprovada: manter NULL.
+        if (chaveDaFonte != null) {
+            if (chaveDaFonte.isBlank() || chaveDaFonte.length() > 80)
+                throw new IllegalArgumentException("Chave de origem inválida.");
+            unidadeOrigemChave = chaveDaFonte;
+        }
+    }
 
     /** Valor no instante do fato; não é recalculado com o contador atual. */
     private Integer numeroFaltaConsecutiva;
