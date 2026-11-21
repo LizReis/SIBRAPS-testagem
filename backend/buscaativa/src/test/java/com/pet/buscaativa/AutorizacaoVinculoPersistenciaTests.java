@@ -39,6 +39,7 @@ import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
 import com.pet.buscaativa.services.impl.AutorizacaoVinculoAssistencialService;
 import com.pet.buscaativa.services.impl.EscopoUnidadeService;
+import com.pet.buscaativa.services.impl.LeituraClinicaLocalService;
 import com.pet.buscaativa.services.impl.SusApiAdapter;
 
 /**
@@ -61,6 +62,7 @@ class AutorizacaoVinculoPersistenciaTests extends SecurityTestSupport {
     @Autowired SessaoGrupoRepository sessoes;
     @Autowired SessaoGrupoParticipanteRepository participantes;
     @Autowired AutorizacaoVinculoAssistencialService autorizacao;
+    @Autowired LeituraClinicaLocalService leitura;
 
     private Paciente pessoa() {
         Paciente p = new Paciente();
@@ -83,6 +85,51 @@ class AutorizacaoVinculoPersistenciaTests extends SecurityTestSupport {
 
     private void autenticar(Usuario ator) {
         when(escopo.usuarioLogado()).thenReturn(ator);
+    }
+
+    @Test
+    void consultaInternaPorVinculoRetornaSomenteFatosDaUnidadeAutenticada() {
+        Paciente pessoa = pessoa();
+        Usuario ad = profissional(UnidadeAtuacao.CAPS_AD);
+        Usuario ii = profissional(UnidadeAtuacao.CAPS_II);
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(pessoa, UnidadeAtuacao.CAPS_AD));
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(pessoa, UnidadeAtuacao.CAPS_II));
+
+        Agendamento aAd = novoAgendamento(pessoa, ad);
+        Agendamento aIi = novoAgendamento(pessoa, ii);
+        HistoricoPaciente hAd = novoHistorico(aAd);
+        HistoricoPaciente hIi = novoHistorico(aIi);
+        Agendamento legado = new Agendamento();
+        legado.setPaciente(pessoa);
+        legado.setUsuario(ad);
+        legado.setSituacaoAtendimento(SituacaoAtendimento.AGENDADO);
+        legado.setDataAgendamento(LocalDate.of(2026, 12, 21));
+        legado.setHoraAtendimento(LocalTime.of(11, 0));
+        legado = agendas.saveAndFlush(legado);
+
+        autenticar(ad);
+        var localAd = leitura.consultarIdentificadoresLocais(pessoa.getIdPublico());
+        assertEquals(java.util.List.of(aAd.getId()), localAd.agendamentos());
+        assertEquals(java.util.List.of(hAd.getId()), localAd.historicos());
+        assertFalse(localAd.agendamentos().contains(legado.getId()));
+        assertFalse(localAd.historicos().contains(hIi.getId()));
+
+        autenticar(ii);
+        var localIi = leitura.consultarIdentificadoresLocais(pessoa.getIdPublico());
+        assertEquals(java.util.List.of(aIi.getId()), localIi.agendamentos());
+        assertEquals(java.util.List.of(hIi.getId()), localIi.historicos());
+        assertFalse(localIi.agendamentos().contains(aAd.getId()));
+    }
+
+    @Test
+    void consultaInternaSemVinculoNaoRetornaIdsMesmoComReferenciaCadastral() {
+        Paciente pessoa = pessoa(); // referencia CAPS II nao constitui vinculo
+        Usuario ii = profissional(UnidadeAtuacao.CAPS_II);
+        novoAgendamento(pessoa, ii);
+        autenticar(ii);
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> leitura.consultarIdentificadoresLocais(pessoa.getIdPublico()));
     }
 
     @Test
