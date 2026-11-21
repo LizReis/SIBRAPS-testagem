@@ -159,3 +159,11 @@
 - `LeituraClinicaLocalService` exige primeiro vínculo explícito na unidade do usuário logado, usando `AutorizacaoVinculoAssistencialService.exigirVinculoLocal`; a chave NÃO é aceita de input de cliente nem derivada de referência cadastral.
 - Novos testes com persistência H2/JPA real criam identidade única, dois CAPS com vínculos e fatos distintos, registros antigos sem origem, e verificam que cada leitura só devolve identificadores da própria unidade. A consulta não é exposta em endpoint e não substitui ainda as consultas/relatórios existentes.
 - **CI desta entrega está pendente.** Antes do corte: testar JWT/HTTP 401/403/404, migração de vínculos e estados clínicos por unidade, todas as consultas e relatórios, indicadores, grupos e concorrência. Nunca liberar histórico de outra unidade pela identidade global.
+
+## Testes de identidade compartilhada sem compartilhamento clínico (USF e CAPS)
+
+- CI #44961105102, commit `fb935857d01c6ef97dd14921602b1d8849e19dcb`: **SUCCESS** — 1.073 testes Maven, 12 testes adicionais de concorrência, build Angular e 4 testes direcionados de permissões.
+- `LeituraClinicaLocalUsfCapsTests` cobre JPA/H2 real com **um cadastro** e vínculos da USF e CAPS AD, cada um com atendimentos, históricos e registros de busca ativa separados; participação em grupo apenas no CAPS. Consulta interna da USF não pode devolver fatos do CAPS e vice-versa.
+- Cenário de segunda USF: referência territorial aponta a USF B, mas existe somente vínculo explícito com a USF A. Antes do vínculo local, B recebe não encontrado; após o vínculo, lista local começa sem históricos/atendimentos da A. A identidade `Paciente` não se duplica.
+- **Esses testes não alteram o sistema de produção, nem ativam o novo escopo nos endpoints, nem substituem validações HTTP/JWT**. Indicadores e histórico legados ainda dependem de revisão coordenada.
+- Nova validação no GitHub Actions **pendente**. Em caso de falha, corrigir fixtures sem flexibilizar a regra de isolamento.
