@@ -120,6 +120,9 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         Agendamento agendamento = new Agendamento();
         agendamento.setUsuario(usuario);
         agendamento.setPaciente(paciente);
+        // Proveniencia do novo registro: deriva somente do profissional
+        // autorizado e bloqueado nesta criacao, nunca do CAPS/USF de referencia.
+        agendamento.registrarUnidadeDeOrigem(usuario);
         agendamento.setDataAgendamento(agendamentoDTO.dataAgendamento());
         agendamento.setTurnoAgendamento(agendamentoDTO.turnoAgendamento());
         agendamento.setHoraAtendimento(agendamentoDTO.horaAtendimento());
