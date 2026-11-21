@@ -12,6 +12,29 @@ import com.pet.buscaativa.migration.*;
 class AgendaLegacyMigrationTests {
     @TempDir Path temp;
 
+    @Test void v10NaoAtribuiUnidadeAosGruposESessoesLegados() throws Exception {
+        var source = LegacyMigrationFixture.legacy(temp.resolve("origem-v10-grupos"));
+        var jdbc = new JdbcTemplate(source);
+        var columns = LegacyMigrationFixture.columns(source);
+        var before = LegacyMigrationFixture.snapshot(source, columns);
+
+        assertEquals(10, AgendaMigrationTool.migrar(source).migrationsExecuted);
+        assertEquals(before, LegacyMigrationFixture.snapshot(source, columns));
+        assertEquals(0, jdbc.queryForObject(
+                "select count(*) from tb_grupo_terapeutico where unidade_origem_chave is not null",
+                Integer.class));
+        assertEquals(0, jdbc.queryForObject(
+                "select count(*) from tb_sessao_grupo where unidade_origem_chave is not null",
+                Integer.class));
+        assertEquals(0, jdbc.queryForObject(
+                "select count(*) from tb_grupo_terapeutico_aud where unidade_origem_chave is not null",
+                Integer.class));
+        assertEquals(0, jdbc.queryForObject(
+                "select count(*) from tb_sessao_grupo_aud where unidade_origem_chave is not null",
+                Integer.class));
+        assertEquals(0, AgendaMigrationTool.migrar(source).migrationsExecuted);
+    }
+
     @Test void v9PreservaOrigemDesconhecidaEmAgendamentosEAuditoriasLegados() throws Exception {
         var source = LegacyMigrationFixture.legacy(temp.resolve("origem-v9"));
         var jdbc = new JdbcTemplate(source);
