@@ -24,6 +24,7 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import jakarta.persistence.Column;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -99,6 +100,22 @@ public class SessaoGrupo extends AbstractEntities implements Serializable {
             motivoResponsabilidadePendente = "RESPONSAVEL_HISTORICO_NAO_COMPROVADO";
             origemResponsabilidade = "PENDENTE_RECONCILIACAO";
         }
+    }
+
+    /**
+     * Proveniência estável da sessão nova. Sessões antigas permanecem NULL
+     * até conferência da origem. Nunca derivar da lotação atual do coordenador.
+     */
+    @Column(name = "unidade_origem_chave", length = 80, updatable = false)
+    @Setter(AccessLevel.NONE)
+    private String unidadeOrigemChave;
+
+    public void registrarUnidadeDeOrigemDoGrupo() {
+        if (id != null || unidadeOrigemChave != null)
+            throw new IllegalStateException("Origem da sessão não pode ser sobrescrita.");
+        if (grupo == null || grupo.getUnidadeOrigemChave() == null)
+            throw new IllegalStateException("A origem da sessão exige grupo com origem comprovada.");
+        unidadeOrigemChave = grupo.getUnidadeOrigemChave();
     }
 
     @Version
