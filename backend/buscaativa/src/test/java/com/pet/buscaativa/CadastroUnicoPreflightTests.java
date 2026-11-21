@@ -32,6 +32,9 @@ class CadastroUnicoPreflightTests {
         assertEquals(0, resultado.vinculosAssistenciaisRegistrados());
         assertEquals(0, resultado.documentosCpfDuplicados());
         assertEquals(0, resultado.documentosCnsDuplicados());
+        assertEquals(2, resultado.pacientesSemCpf());
+        assertEquals(2, resultado.pacientesSemCns());
+        assertTrue(resultado.exigeRevisao());
         assertEquals(0, resultado.agendamentosComUsuarioSemUnidadeConfigurada());
         assertEquals(antes, LegacyMigrationFixture.snapshot(fonte, colunas));
         assertEquals(0, AgendaMigrationTool.migrar(fonte).migrationsExecuted);
@@ -43,9 +46,13 @@ class CadastroUnicoPreflightTests {
         AgendaMigrationTool.migrar(fonte);
 
         var jdbc = new JdbcTemplate(fonte);
-        String cpf = jdbc.queryForObject("select cpf from tb_paciente where id = 1", String.class);
-        String cns = jdbc.queryForObject("select cns from tb_paciente where id = 1", String.class);
-        jdbc.update("update tb_paciente set cpf=?, cns=? where id=2", cpf, cns);
+        // A fixture antiga guarda CPF/CNS nulos. Criar aqui somente
+        // documentos sintéticos explícitos para reproduzir a duplicação.
+        // Formatos diferentes devem representar a mesma identidade.
+        String cpf = "52998224725";
+        String cns = "700000000000005";
+        jdbc.update("update tb_paciente set cpf=?, cns=? where id=1", cpf, cns);
+        jdbc.update("update tb_paciente set cpf=?, cns=? where id=2", "529.982.247-25", " " + cns + " ");
 
         var colunas = LegacyMigrationFixture.columns(fonte);
         var antes = LegacyMigrationFixture.snapshot(fonte, colunas);
