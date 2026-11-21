@@ -25,6 +25,7 @@ import { DetalheGrupoTerapeutico } from './pages/detalhe-grupo-terapeutico/detal
 
 const TODOS = ['ADMINISTRADOR', 'RECEPCAO', 'PROFISSIONAL'];
 const ADMIN_RECEPCAO = ['ADMINISTRADOR', 'RECEPCAO'];
+const CADASTRO_PACIENTE = ['ADMINISTRADOR', 'RECEPCAO', 'PROFISSIONAL'];
 const ADMIN = ['ADMINISTRADOR'];
 
 export const routes: Routes = [
@@ -50,7 +51,7 @@ export const routes: Routes = [
       { path: 'pacientes/detalhes/:id', component: DetalhePaciente, canActivate: [roleGuard], data: { roles: TODOS } },
       { path: 'pacientes/detalhes/:id/historico', component: HistoricoPaciente, canActivate: [roleGuard], data: { roles: TODOS } },
       { path: 'pacientes/detalhes/:id/agendamentos', component: AgendamentosPaciente, canActivate: [roleGuard], data: { roles: TODOS } },
-      { path: 'pacientes/novo', component: CadastroPaciente, canActivate: [roleGuard], data: { roles: ADMIN_RECEPCAO } },
+      { path: 'pacientes/novo', component: CadastroPaciente, canActivate: [roleGuard], data: { roles: CADASTRO_PACIENTE } },
       { path: 'pacientes/editar/:id', component: CadastroPaciente, canActivate: [roleGuard], data: { roles: ADMIN_RECEPCAO } },
       { path: 'profissionais', component: Profissionais, canActivate: [roleGuard], data: { roles: ADMIN_RECEPCAO } },
       { path: 'profissionais/novo', component: CadastroProfissional, canActivate: [roleGuard], data: { roles: ADMIN } },
