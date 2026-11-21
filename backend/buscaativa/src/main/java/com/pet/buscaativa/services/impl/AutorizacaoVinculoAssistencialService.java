@@ -14,6 +14,7 @@ import com.pet.buscaativa.entities.SessaoGrupo;
 import com.pet.buscaativa.entities.Usuario;
 import com.pet.buscaativa.entities.VinculoAssistencial;
 import com.pet.buscaativa.repositories.PacienteRepository;
+import com.pet.buscaativa.repositories.SessaoGrupoParticipanteRepository;
 import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
 
@@ -35,6 +36,7 @@ public class AutorizacaoVinculoAssistencialService {
     private final EscopoUnidadeService escopo;
     private final PacienteRepository pacientes;
     private final VinculoAssistencialRepository vinculos;
+    private final SessaoGrupoParticipanteRepository participantes;
 
     /**
      * Exige vinculo explicito com a propria unidade autenticada.
@@ -76,7 +78,10 @@ public class AutorizacaoVinculoAssistencialService {
         if (sessao == null || paciente == null || sessao.getUnidadeOrigemChave() == null)
             throw new ResourceNotFoundException("Sessão não encontrada.");
         VinculoAssistencial vinculo = exigirVinculoLocal(paciente.getIdPublico());
-        if (!Objects.equals(vinculo.getUnidadeChave(), sessao.getUnidadeOrigemChave()))
+        if (!Objects.equals(vinculo.getUnidadeChave(), sessao.getUnidadeOrigemChave())
+                || sessao.getGrupo() == null
+                || !Objects.equals(vinculo.getUnidadeChave(), sessao.getGrupo().getUnidadeOrigemChave())
+                || participantes.findBySessaoGrupoAndPaciente(sessao, paciente).isEmpty())
             throw new ResourceNotFoundException("Sessão não encontrada.");
     }
 
@@ -105,7 +110,8 @@ public class AutorizacaoVinculoAssistencialService {
             var sessao = historico.getSessaoGrupo();
             if (sessao.getGrupo() == null
                     || !Objects.equals(origem, sessao.getUnidadeOrigemChave())
-                    || !Objects.equals(origem, sessao.getGrupo().getUnidadeOrigemChave()))
+                    || !Objects.equals(origem, sessao.getGrupo().getUnidadeOrigemChave())
+                    || participantes.findBySessaoGrupoAndPaciente(sessao, historico.getPaciente()).isEmpty())
                 throw new ResourceNotFoundException("Histórico não encontrado.");
         }
     }
