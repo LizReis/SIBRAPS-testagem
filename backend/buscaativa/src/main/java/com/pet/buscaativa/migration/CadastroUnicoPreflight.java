@@ -25,7 +25,7 @@ public final class CadastroUnicoPreflight {
             long historicosSemOrigemDeAtendimentoOuGrupo,
             long vinculosAssistenciaisRegistrados
     ) {
-        /** Riscos inequívocos que impedem consolidação automática de identidade ou atribuição. */
+        /** Indícios que exigem revisão; históricos manuais legítimos também podem não ter fonte vinculada. */
         public boolean exigeRevisao() {
             return documentosCpfDuplicados > 0 || documentosCnsDuplicados > 0
                     || pacientesSemCpf > 0 || pacientesSemCns > 0
@@ -57,13 +57,14 @@ public final class CadastroUnicoPreflight {
             """);
         long semCpf = contar(jdbc, "select count(*) from tb_paciente where cpf is null or trim(cpf) = ''");
         long semCns = contar(jdbc, "select count(*) from tb_paciente where cns is null or trim(cns) = ''");
+        // CapsEnum tem códigos 1..3, UnidadeAtuacao CAPS 2..4; a referência não concede vínculo.
         long referenciasSemVinculo = contar(jdbc, """
             select count(*) from tb_paciente p
             where p.caps_referencia is not null
               and not exists (
                   select 1 from tb_vinculo_assistencial v
                   where v.paciente_id = p.id
-                    and v.unidade_atuacao = p.caps_referencia
+                    and v.unidade_atuacao = p.caps_referencia + 1
               )
             """);
         long usuariosSemUnidade = contar(jdbc, """
