@@ -12,6 +12,21 @@ import com.pet.buscaativa.migration.*;
 class AgendaLegacyMigrationTests {
     @TempDir Path temp;
 
+    @Test void v11MantemHistoricosEAuditoriasLegadosSemOrigemPresumida() throws Exception {
+        var source = LegacyMigrationFixture.legacy(temp.resolve("origem-v11-historicos"));
+        var jdbc = new JdbcTemplate(source);
+        var colunasAntigas = LegacyMigrationFixture.columns(source);
+        var antes = LegacyMigrationFixture.snapshot(source, colunasAntigas);
+
+        assertEquals(11, AgendaMigrationTool.migrar(source).migrationsExecuted);
+        assertEquals(antes, LegacyMigrationFixture.snapshot(source, colunasAntigas));
+        assertEquals(6, jdbc.queryForObject(
+                "select count(*) from tb_historico_paciente where unidade_origem_chave is null", Integer.class));
+        assertEquals(6, jdbc.queryForObject(
+                "select count(*) from tb_historico_paciente_aud where unidade_origem_chave is null", Integer.class));
+        assertEquals(0, AgendaMigrationTool.migrar(source).migrationsExecuted);
+    }
+
     @Test void v10NaoAtribuiUnidadeAosGruposESessoesLegados() throws Exception {
         var source = LegacyMigrationFixture.legacy(temp.resolve("origem-v10-grupos"));
         var jdbc = new JdbcTemplate(source);
