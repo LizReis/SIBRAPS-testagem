@@ -1,0 +1,146 @@
+package com.pet.buscaativa;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+import java.util.Optional;
+import java.util.UUID;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import com.pet.buscaativa.entities.Agendamento;
+import com.pet.buscaativa.entities.HistoricoPaciente;
+import com.pet.buscaativa.entities.Paciente;
+import com.pet.buscaativa.entities.SessaoGrupo;
+import com.pet.buscaativa.entities.Usuario;
+import com.pet.buscaativa.entities.VinculoAssistencial;
+import com.pet.buscaativa.entities.enums.UnidadeAtuacao;
+import com.pet.buscaativa.repositories.PacienteRepository;
+import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
+import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
+import com.pet.buscaativa.services.impl.AutorizacaoVinculoAssistencialService;
+import com.pet.buscaativa.services.impl.EscopoUnidadeService;
+
+/**
+ * Caracterizacao do autorizador interno fail-closed.
+ * Nao substitui testes HTTP de isolamento; endpoints ainda nao usam este servico.
+ */
+class AutorizacaoVinculoAssistencialServiceTests {
+    private EscopoUnidadeService escopo;
+    private PacienteRepository pacientes;
+    private VinculoAssistencialRepository vinculos;
+    private AutorizacaoVinculoAssistencialService service;
+    private Usuario capsAd;
+    private Usuario capsII;
+    private Paciente pessoa;
+    private UUID idPublico;
+    private VinculoAssistencial vinculoAd;
+
+    @BeforeEach
+    void preparar() {
+        escopo = mock(EscopoUnidadeService.class);
+        pacientes = mock(PacienteRepository.class);
+        vinculos = mock(VinculoAssistencialRepository.class);
+        service = new AutorizacaoVinculoAssistencialService(escopo, pacientes, vinculos);
+
+        capsAd = new Usuario();
+        capsAd.setUnidadeAtuacao(UnidadeAtuacao.CAPS_AD);
+        capsII = new Usuario();
+        capsII.setUnidadeAtuacao(UnidadeAtuacao.CAPS_II);
+        when(escopo.usuarioLogado()).thenReturn(capsAd);
+
+        pessoa = new Paciente();
+        pessoa.setId(81L);
+        idPublico = UUID.randomUUID();
+        pessoa.setIdPublico(idPublico);
+        when(pacientes.findByIdPublico(idPublico)).thenReturn(Optional.of(pessoa));
+
+        vinculoAd = mock(VinculoAssistencial.class);
+        when(vinculoAd.getPaciente()).thenReturn(pessoa);
+        when(vinculoAd.getUnidadeChave()).thenReturn("CAPS_AD");
+        when(vinculoAd.getId()).thenReturn(45L);
+        when(vinculos.findByPacienteIdAndUnidadeChave(81L, "CAPS_AD"))
+                .thenReturn(Optional.of(vinculoAd));
+    }
+
+    @Test
+    void mesmaPessoaEmCapsIIEInvisivelSemVinculoDoCapsII() {
+        assertSame(vinculoAd, service.exigirVinculoLocal(idPublico));
+
+        when(escopo.usuarioLogado()).thenReturn(capsII);
+        assertThrows(ResourceNotFoundException.class, () -> service.exigirVinculoLocal(idPublico));
+        verify(vinculos).findByPacienteIdAndUnidadeChave(81L, "CAPS_II");
+    }
+
+    @Test
+    void referenciaCadastralNaoSubstituiVinculoExplicito() {
+        pessoa.setCapsReferencia(com.pet.buscaativa.entities.enums.CapsEnum.CAPS_II);
+        when(escopo.usuarioLogado()).thenReturn(capsII);
+        assertThrows(ResourceNotFoundException.class, () -> service.exigirVinculoLocal(idPublico));
+    }
+
+    @Test
+    void origemDoAgendamentoDeOutraUnidadeENegadaApesarDaIdentidadeLocal() {
+        Agendamento a = new Agendamento();
+        a.setPaciente(pessoa);
+        Usuario profissional = new Usuario();
+        profissional.setId(1L);
+        profissional.setUnidadeAtuacao(UnidadeAtuacao.CAPS_II);
+        a.setUsuario(profissional);
+        a.registrarUnidadeDeOrigem(profissional);
+
+        assertThrows(ResourceNotFoundException.class, () -> service.validarAgendamentoLocal(a));
+        when(escopo.usuarioLogado()).thenReturn(capsII);
+        assertThrows(ResourceNotFoundException.class, () -> service.validarAgendamentoLocal(a));
+    }
+
+    @Test
+    void agendamentoAntigoSemOrigemComVinculoDaPessoaERecusado() {
+        Agendamento antigo = new Agendamento();
+        antigo.setPaciente(pessoa);
+        assertThrows(ResourceNotFoundException.class, () -> service.validarAgendamentoLocal(antigo));
+        assertThrows(ResourceNotFoundException.class, () -> service.validarAgendamentoLocal(null));
+    }
+
+    @Test
+    void historicoNaoPodeTerOrigemDiferenteDoAtendimento() {
+        Usuario profissional = new Usuario();
+        profissional.setId(2L);
+        profissional.setUnidadeAtuacao(UnidadeAtuacao.CAPS_II);
+        Agendamento a = new Agendamento();
+        a.setPaciente(pessoa);
+        a.setUsuario(profissional);
+        a.registrarUnidadeDeOrigem(profissional);
+
+        HistoricoPaciente h = new HistoricoPaciente();
+        h.setPaciente(pessoa);
+        h.setAgendamento(a);
+        // O histórico novo deve herdar a origem do agendamento, não da unidade atual.
+        h.registrarOrigemDoAgendamento(a);
+        assertEquals("CAPS_II", h.getUnidadeOrigemChave());
+        assertThrows(ResourceNotFoundException.class, () -> service.validarHistoricoLocal(h));
+    }
+
+    @Test
+    void historicoSemOrigemENegadoMesmoSePessoaTiverVinculo() {
+        HistoricoPaciente historico = new HistoricoPaciente();
+        historico.setPaciente(pessoa);
+        assertThrows(ResourceNotFoundException.class, () -> service.validarHistoricoLocal(historico));
+    }
+
+    @Test
+    void sessaoDaOutraUnidadeNaoEVisivelComVinculoLocal() {
+        Usuario coordenador = new Usuario();
+        coordenador.setId(3L);
+        coordenador.setUnidadeAtuacao(UnidadeAtuacao.CAPS_II);
+        var grupo = new com.pet.buscaativa.entities.GrupoTerapeutico();
+        grupo.setCoordenador(coordenador);
+        grupo.registrarUnidadeDeOrigem(coordenador);
+        var sessao = new SessaoGrupo();
+        sessao.setGrupo(grupo);
+        sessao.registrarUnidadeDeOrigemDoGrupo();
+
+        assertThrows(ResourceNotFoundException.class, () -> service.validarSessaoLocal(sessao, pessoa));
+    }
+}
