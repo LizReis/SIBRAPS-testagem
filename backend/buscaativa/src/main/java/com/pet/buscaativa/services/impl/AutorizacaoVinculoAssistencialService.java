@@ -48,10 +48,11 @@ public class AutorizacaoVinculoAssistencialService {
 
         String unidade = ChaveUnidadeAssistencial.doUsuarioAtual(ator);
         return pacientes.findByIdPublico(pacienteIdPublico)
-                .flatMap(p -> vinculos.findByPacienteIdAndUnidadeChave(p.getId(), unidade))
-                .filter(v -> v.getPaciente() != null
-                        && v.getUnidadeChave().equals(unidade)
-                        && v.getId() != null)
+                .flatMap(p -> vinculos.findByPacienteIdAndUnidadeChave(p.getId(), unidade)
+                        .filter(v -> v.getPaciente() != null
+                                && Objects.equals(v.getPaciente().getId(), p.getId())
+                                && unidade.equals(v.getUnidadeChave())
+                                && v.getId() != null))
                 .orElseThrow(AutorizacaoVinculoAssistencialService::pacienteNaoEncontrado);
     }
 
@@ -92,12 +93,21 @@ public class AutorizacaoVinculoAssistencialService {
         String origem = historico.getUnidadeOrigemChave();
         if (!Objects.equals(vinculo.getUnidadeChave(), origem))
             throw new ResourceNotFoundException("Histórico não encontrado.");
-        if (historico.getAgendamento() != null
-                && !Objects.equals(origem, historico.getAgendamento().getUnidadeOrigemChave()))
-            throw new ResourceNotFoundException("Histórico não encontrado.");
-        if (historico.getSessaoGrupo() != null
-                && !Objects.equals(origem, historico.getSessaoGrupo().getUnidadeOrigemChave()))
-            throw new ResourceNotFoundException("Histórico não encontrado.");
+        if (historico.getAgendamento() != null) {
+            var fonte = historico.getAgendamento();
+            if (historico.getSessaoGrupo() != null
+                    || fonte.getPaciente() == null
+                    || !Objects.equals(historico.getPaciente().getId(), fonte.getPaciente().getId())
+                    || !Objects.equals(origem, fonte.getUnidadeOrigemChave()))
+                throw new ResourceNotFoundException("Histórico não encontrado.");
+        }
+        if (historico.getSessaoGrupo() != null) {
+            var sessao = historico.getSessaoGrupo();
+            if (sessao.getGrupo() == null
+                    || !Objects.equals(origem, sessao.getUnidadeOrigemChave())
+                    || !Objects.equals(origem, sessao.getGrupo().getUnidadeOrigemChave()))
+                throw new ResourceNotFoundException("Histórico não encontrado.");
+        }
     }
 
     private static ResourceNotFoundException pacienteNaoEncontrado() {
