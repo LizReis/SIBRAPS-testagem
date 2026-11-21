@@ -97,6 +97,29 @@ public class Agendamento {
     @Column(name = "remarcacao_apos_falta", nullable = false)
     private boolean remarcacaoAposFalta;
 
+    /**
+     * Unidade de origem do NOVO agendamento, gravada uma unica vez durante
+     * a criacao operacional. NULL significa proveniencia antiga nao comprovada.
+     * Nunca reconstruir este valor usando a lotacao atual do profissional.
+     */
+    @Column(name = "unidade_origem_chave", length = 80, updatable = false)
+    @Setter(AccessLevel.NONE)
+    private String unidadeOrigemChave;
+
+    /**
+     * Destinado a novos agendamentos no servico autorizado. Nao modifica os
+     * fatos historicos nem habilita por si so acesso ao paciente.
+     */
+    public void registrarUnidadeDeOrigem(Usuario profissionalDaReserva) {
+        if (this.id != null || this.unidadeOrigemChave != null)
+            throw new IllegalStateException("Origem assistencial nao pode ser sobrescrita.");
+        if (this.usuario == null || profissionalDaReserva == null
+                || this.usuario.getId() == null
+                || !this.usuario.getId().equals(profissionalDaReserva.getId()))
+            throw new IllegalArgumentException("Profissional da origem incompatível com agendamento.");
+        this.unidadeOrigemChave = ChaveUnidadeAssistencial.doUsuarioAtual(profissionalDaReserva);
+    }
+
     @Version
     private Integer version;
 
