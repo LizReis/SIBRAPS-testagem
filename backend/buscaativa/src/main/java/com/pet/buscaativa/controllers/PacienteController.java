@@ -94,7 +94,7 @@ public class PacienteController {
         return ResponseEntity.ok(pacienteService.findByNome(termo));
     }
 
-    @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'RECEPCAO')")
+    @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'RECEPCAO', 'PROFISSIONAL')")
     @PostMapping
     public ResponseEntity<PacienteDTO> insert(@Valid @RequestBody PacienteDTO pacienteDTO, 
         @RequestParam(value = "ignorarSimilaridade", defaultValue = "false") boolean ignorarSimilaridade){
