@@ -151,3 +151,11 @@
 - Teste `AutorizacaoVinculoPersistenciaTests` usa repositórios JPA reais e banco H2 de teste com paciente sintético e duas unidades CAPS: referência sem vínculo, dois vínculos sem mistura de agendas/históricos, participação efetiva e origem legada NULL. Apenas o contexto do usuário foi simulado no `EscopoUnidadeService`; **não equivale a um teste HTTP/JWT de ponta a ponta**.
 - Teste unitário adicional confirma negação da sessão sem participação e concessão com participação comprovada. Camada permanece fora dos endpoints.
 - **CI destes testes ainda pendente**. Somente avançar para mudanças no escopo HTTP após validar cobertura, planejamento da migração clínica e operações de cadastro/vinculação para todos os caminhos.
+
+## Leitura clinica local — fase interna de caracterizacao (sem HTTP)
+
+- CI #44958692062, commit `6bb874fce8b9ca9c0ae373afc20c03c8bd8f22b5`: **SUCCESS**; 1.071 testes backend, 12 concorrência, build Angular e 4 testes de permissões.
+- `ConsultaClinicaLocalRepository` implementa projeções JPA internas por paciente + origem de unidade, sem retornar dados pessoais: agendas, eventos históricos coerentes com sua origem e sessões em que a pessoa é de fato participante. Eventos sem origem e eventos de outra unidade ficam fora; a consulta de históricos valida coerência entre fato individual/sessão e paciente.
+- `LeituraClinicaLocalService` exige primeiro vínculo explícito na unidade do usuário logado, usando `AutorizacaoVinculoAssistencialService.exigirVinculoLocal`; a chave NÃO é aceita de input de cliente nem derivada de referência cadastral.
+- Novos testes com persistência H2/JPA real criam identidade única, dois CAPS com vínculos e fatos distintos, registros antigos sem origem, e verificam que cada leitura só devolve identificadores da própria unidade. A consulta não é exposta em endpoint e não substitui ainda as consultas/relatórios existentes.
+- **CI desta entrega está pendente.** Antes do corte: testar JWT/HTTP 401/403/404, migração de vínculos e estados clínicos por unidade, todas as consultas e relatórios, indicadores, grupos e concorrência. Nunca liberar histórico de outra unidade pela identidade global.
