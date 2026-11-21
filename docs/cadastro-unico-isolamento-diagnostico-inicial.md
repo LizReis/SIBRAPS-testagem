@@ -134,3 +134,12 @@
 - Paciente global e `capsReferencia` / `usfReferencia` não concedem leitura de fatos clínicos. Origem NULL de registros legados é **negada pela nova camada**, não convertida automaticamente da lotação atual.
 - `AutorizacaoVinculoAssistencialServiceTests` caracteriza isolamento entre dois CAPS, ausência de vínculo, origem de outra unidade e fatos antigos sem origem. NÃO habilitar a nova camada apenas em uma rota: será necessário migração coordenada de filtros, indicadores, estado local, agendamento, grupos e relatórios para não ocultar fatos legítimos nem ampliar acesso.
 - Testes desta nova camada **aguardam resultado GitHub Actions**; nenhum teste foi declarado aprovado antecipadamente.
+
+## Fortalecimento do autorizador interno: vínculo, identidade e proveniência
+
+- CI #44953493990 (commit `b9712a221edd3c1080bea627efc572ef5b3734c1`): **SUCCESS**; 1.062 testes de backend, 12 de concorrência, build Angular e 4 de permissão.
+- Revisão posterior detectou que a primeira versão do autorizador interno verificava a chave da unidade, mas não conferia explicitamente se a entidade de vínculo retornada apontava para o ID do paciente pesquisado. A verificação foi adicionada como defesa em profundidade.
+- `validarHistoricoLocal` agora confere que um histórico ligado a um agendamento aponta ao mesmo paciente da fonte; histórico associado a sessão valida também a origem do grupo da sessão. Exige coerência das fontes e evita dupla associação fato individual/grupo.
+- Novos testes validam autorização positiva de um atendimento/histórico da própria unidade e recusam vínculos apontando a outra identidade. A integridade de `HistoricoPaciente.registrarOrigemDoAgendamento` já impede eventos novos para paciente divergente.
+- A nova camada permanece **interna e inativa nas rotas HTTP**, aguardando migração/integração coordenada com histórico, listas, grupos e indicadores. Não acrescenta acesso clínico cruzado.
+- **CI destas melhorias ainda não verificada**; não declarar aprovação sem consultar a execução correspondente.
