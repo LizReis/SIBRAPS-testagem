@@ -718,4 +718,50 @@ class IsolamentoUnidadeTests extends SecurityTestSupport {
             SecurityContextHolder.clearContext();
         }
     }
+
+    @Test
+    void profissionalPodeCadastrarPacienteMasNaoEditarCadastroExistente() throws Exception {
+        // Documentos sintéticos matematicamente válidos, sem dados de pacientes reais.
+        var dados = json.convertValue(new PacienteDTO(pAd), java.util.Map.class);
+        dados.remove("idPublico");
+        dados.put("nome", "Cadastro autorizado por profissional");
+        dados.put("cpf", "52998224725");
+        dados.put("cns", "700000000000005");
+        dados.put("countFaltas", null);
+        dados.put("situacaoRua", true);
+        dados.put("endereco", null);
+        dados.put("profissionalReferenciaId", null);
+
+        var resposta = postAs(profissionalAd, "/api/pacientes", json.writeValueAsString(dados));
+        assertEquals(201, resposta.getStatus(), resposta.getContentAsString());
+        var criado = json.readTree(resposta.getContentAsString());
+        UUID id = UUID.fromString(criado.get("idPublico").asString());
+        assertTrue(pacientes.findByIdPublico(id).isPresent());
+        assertEquals("Cadastro autorizado por profissional", ok(profissionalAd,
+                "/api/pacientes/" + id).get("nome").asString());
+
+        var edicao = mvc.perform(put("/api/pacientes/" + id)
+                .header("Authorization", "Bearer " + tokens.gerarToken(profissionalAd))
+                .contentType("application/json").content(json.writeValueAsString(dados)))
+                .andReturn().getResponse();
+        assertEquals(403, edicao.getStatus(), edicao.getContentAsString());
+    }
+
+    @Test
+    void profissionalDeOutraUnidadeNaoPodeCadastrarPacienteComoSeFosseDaUsfAlheia() throws Exception {
+        Usuario profissionalUsfB = usuario(UnidadeAtuacao.USF, usfB.getUsfAtuacao(), TipoUsuario.PROFISSIONAL);
+        var dados = json.convertValue(new PacienteDTO(pAd), java.util.Map.class);
+        dados.remove("idPublico");
+        dados.put("cpf", "52998224725");
+        dados.put("cns", "700000000000005");
+        dados.put("countFaltas", null);
+        dados.put("situacaoRua", true);
+        dados.put("endereco", null);
+        dados.put("profissionalReferenciaId", null);
+
+        var resposta = postAs(profissionalUsfB, "/api/pacientes", json.writeValueAsString(dados));
+        assertEquals(404, resposta.getStatus(), resposta.getContentAsString());
+        assertTrue(pacientes.findByCpf("52998224725").isEmpty());
+    }
+
 }
