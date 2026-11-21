@@ -17,6 +17,7 @@ import com.pet.buscaativa.entities.Usuario;
 import com.pet.buscaativa.entities.VinculoAssistencial;
 import com.pet.buscaativa.entities.enums.UnidadeAtuacao;
 import com.pet.buscaativa.repositories.PacienteRepository;
+import com.pet.buscaativa.repositories.SessaoGrupoParticipanteRepository;
 import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
 import com.pet.buscaativa.services.impl.AutorizacaoVinculoAssistencialService;
@@ -30,6 +31,7 @@ class AutorizacaoVinculoAssistencialServiceTests {
     private EscopoUnidadeService escopo;
     private PacienteRepository pacientes;
     private VinculoAssistencialRepository vinculos;
+    private SessaoGrupoParticipanteRepository participantes;
     private AutorizacaoVinculoAssistencialService service;
     private Usuario capsAd;
     private Usuario capsII;
@@ -42,7 +44,8 @@ class AutorizacaoVinculoAssistencialServiceTests {
         escopo = mock(EscopoUnidadeService.class);
         pacientes = mock(PacienteRepository.class);
         vinculos = mock(VinculoAssistencialRepository.class);
-        service = new AutorizacaoVinculoAssistencialService(escopo, pacientes, vinculos);
+        participantes = mock(SessaoGrupoParticipanteRepository.class);
+        service = new AutorizacaoVinculoAssistencialService(escopo, pacientes, vinculos, participantes);
 
         capsAd = new Usuario();
         capsAd.setUnidadeAtuacao(UnidadeAtuacao.CAPS_AD);
