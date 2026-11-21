@@ -92,3 +92,11 @@
 - Esse pré-diagnóstico não reatribui nenhum registro histórico, não altera `tb_paciente`/agendamentos/grupos/auditorias, não preenche `tb_vinculo_assistencial` nem concede acesso cruzado. Casos com múltiplas fontes, evidência ausente, ausência de responsabilidade e unidade histórica incerta são pendências de revisão.
 - Testes `OrigemClinicaPreflightTests` cobrem snapshot inalterado, inconsistência de paciente histórico-agendamento, falta de unidade no usuário e histórico sem fonte. **Ainda dependem de validação CI**.
 - **Etapa futura, somente após definição de evidência por registro:** estabelecer proveniência imutável da unidade nos novos eventos; elaborar migração aditiva de FKs locais e Envers, com registros inconclusivos preservados, antes de substituir filtros e cálculos clínicos.
+
+## Identidade de unidade canônica — preparação para proveniência imutável
+
+- CI #44869336924 (commit `b1a0b1c9751dba067237aa8893fad32c3779bac5`): **SUCCESS**; 1.038 testes backend, 12 concorrência, build Angular e 4 permissões.
+- `ChaveUnidadeAssistencial` centraliza somente a **chave canônica do vínculo NOVO**: `USF:<id persistido>` ou `CAPS_AD`/`CAPS_I`/`CAPS_II`; é distinta dos rótulos de painel/auditoria já persistidos (`USF:<CNES>` e `CAPS:CAPS_*`). Não reescrever fatos antigos nem tentar converter automaticamente esses rótulos.
+- `VinculoAssistencial` e seu serviço interno passaram a usar a função canônica; contratos de API, flags, consultas e eventos clínicos permanecem intactos.
+- **Próxima etapa ainda NÃO implementada:** persistir a proveniência imutável e vínculo local em cada novo agendamento, grupo e histórico **no momento da criação**, com validações explícitas de unidade autenticada e vínculo de paciente. Antes de habilitar leitura por vínculo ou backfill, prever migração aditiva correspondente com Envers, testes de transferência, troca de lotação, histórico antigo pendente, responsabilidade de sessões e acesso cruzado.
+- CI do refactor de chave canônica aguarda execução; não tratar aprovação anterior como validação dessa nova alteração.
