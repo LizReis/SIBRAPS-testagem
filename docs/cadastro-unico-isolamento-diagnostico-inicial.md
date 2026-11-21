@@ -126,3 +126,11 @@
 - `HistoricoPaciente` ganhou captura de proveniência para eventos **novos**: agendamento/sessão usam a origem imutável do fato relacionado, nunca a lotação atual do profissional; evento manual sem fonte usa a unidade atual do executor na operação presente. Registro sem fonte comprovada mantém NULL; correções de frequência existentes não sobrescrevem a coluna.
 - `HistoricoPacienteServiceImpl` foi integrado à captura na criação de histórico individual, de grupo e manual. `OrigemHistoricoNovoTests` e novo teste da migração V11 cobrem origem, preservação e invariantes.
 - Ainda NÃO foram ativados filtros por vínculo, atribuição assistencial retroativa, acesso cruzado, migração do estado de risco/assiduidade ou mudanças de contratos de API. Esta entrega aguarda CI; sem CI verde não deve ser declarada validada.
+
+## Autorizador interno por vínculo local — implantação bloqueada até corte coordenado
+
+- Execução #44871116028 (commit `dca4ffbb5ffd9ff4c7636ef2392d993211777da3`): **SUCCESS**; Maven `verify` 1.055/1.055; concorrência 12/12; Angular build e 4/4 permissões.
+- `AutorizacaoVinculoAssistencialService` é uma camada **interna**, exclusivamente consultiva, sem novo endpoint. Exige identidade ligada explicitamente à unidade atual para localizar um vínculo clínico. A origem imutável do agendamento, sessão e histórico deve coincidir com a chave desse vínculo, sob pena de não encontrado.
+- Paciente global e `capsReferencia` / `usfReferencia` não concedem leitura de fatos clínicos. Origem NULL de registros legados é **negada pela nova camada**, não convertida automaticamente da lotação atual.
+- `AutorizacaoVinculoAssistencialServiceTests` caracteriza isolamento entre dois CAPS, ausência de vínculo, origem de outra unidade e fatos antigos sem origem. NÃO habilitar a nova camada apenas em uma rota: será necessário migração coordenada de filtros, indicadores, estado local, agendamento, grupos e relatórios para não ocultar fatos legítimos nem ampliar acesso.
+- Testes desta nova camada **aguardam resultado GitHub Actions**; nenhum teste foi declarado aprovado antecipadamente.
