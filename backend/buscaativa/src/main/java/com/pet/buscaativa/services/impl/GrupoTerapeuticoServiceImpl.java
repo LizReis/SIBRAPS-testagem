@@ -75,6 +75,8 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         GrupoTerapeutico grupo = new GrupoTerapeutico();
         grupo.setTema(dto.tema());
         grupo.setCoordenador(coordenador);
+        // Registro novo: proveniência da unidade do coordenador validado e bloqueado.
+        grupo.registrarUnidadeDeOrigem(coordenador);
         grupo.setRecorrencia(dto.recorrencia());
         grupo.setHorarioPadrao(dto.horario());
         grupo.setDataFimRecorrencia(dto.dataFimRecorrencia());
@@ -738,6 +740,8 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     private SessaoGrupo novaSessao(GrupoTerapeutico grupo, LocalDate data, LocalTime horario) {
         SessaoGrupo s = new SessaoGrupo();
         s.setGrupo(grupo);
+        // Grupo legado sem origem permanece pendente, sem atribuição retroativa.
+        if (grupo.getUnidadeOrigemChave() != null) s.registrarUnidadeDeOrigemDoGrupo();
         s.setDataSessao(data);
         s.setHorario(horario);
         s.setStatus(StatusSessaoGrupo.AGENDADA);
