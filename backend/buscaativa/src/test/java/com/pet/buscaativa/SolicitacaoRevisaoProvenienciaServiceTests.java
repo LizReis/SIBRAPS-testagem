@@ -19,7 +19,7 @@ import com.pet.buscaativa.entities.PendenciaRevisaoProveniencia.TipoRegistro;
 import com.pet.buscaativa.entities.Usuario;
 import com.pet.buscaativa.entities.VinculoAssistencial;
 import com.pet.buscaativa.entities.enums.TipoUsuario;
-import com.pet.buscaativa.repositories.PendenciaRevisaoProvenienciaRepository;
+import com.pet.buscaativa.repositories.PendenciaRevisaoProvenienciaComandoRepository;
 import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
 import com.pet.buscaativa.services.PoliticaJustificativaCorrecao;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
@@ -41,7 +41,7 @@ class SolicitacaoRevisaoProvenienciaServiceTests {
     private VerificacaoFatoRevisaoProvenienciaService verificador;
     private PoliticaJustificativaCorrecao politica;
     private VinculoAssistencialRepository vinculos;
-    private PendenciaRevisaoProvenienciaRepository pendencias;
+    private PendenciaRevisaoProvenienciaComandoRepository pendencias;
     private SolicitacaoRevisaoProvenienciaService service;
     private Usuario ator;
     private VinculoAssistencial vinculo;
@@ -53,7 +53,7 @@ class SolicitacaoRevisaoProvenienciaServiceTests {
         verificador = mock(VerificacaoFatoRevisaoProvenienciaService.class);
         politica = mock(PoliticaJustificativaCorrecao.class);
         vinculos = mock(VinculoAssistencialRepository.class);
-        pendencias = mock(PendenciaRevisaoProvenienciaRepository.class);
+        pendencias = mock(PendenciaRevisaoProvenienciaComandoRepository.class);
         var clock = Clock.fixed(Instant.parse("2026-11-22T12:00:00Z"), ZoneOffset.UTC);
         service = new SolicitacaoRevisaoProvenienciaService(
                 escopo, autorizacao, verificador, politica, vinculos, pendencias, clock);
