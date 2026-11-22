@@ -45,10 +45,8 @@ public class ConsultaClinicaLocalRepository {
                 where h.paciente.idPublico = :pacienteId
                   and h.unidadeOrigemChave = :unidade
                   and (
-                      -- Registro manual local: sem fato fonte e com origem própria.
                       (h.agendamento is null and h.sessaoGrupo is null)
                       or
-                      -- Atendimento: origem e paciente do fato precisam coincidir.
                       (h.sessaoGrupo is null and exists (
                           select a.id from Agendamento a
                           where a = h.agendamento
@@ -56,7 +54,6 @@ public class ConsultaClinicaLocalRepository {
                             and a.unidadeOrigemChave = :unidade
                       ))
                       or
-                      -- Grupo: origem da sessão e do grupo e participação local.
                       (h.agendamento is null and exists (
                           select s.id from SessaoGrupo s
                           join s.grupo g
