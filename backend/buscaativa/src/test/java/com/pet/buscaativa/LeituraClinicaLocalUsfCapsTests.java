@@ -41,6 +41,7 @@ import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
 import com.pet.buscaativa.services.impl.EscopoUnidadeService;
 import com.pet.buscaativa.services.impl.LeituraClinicaLocalService;
+import com.pet.buscaativa.services.impl.InventarioFrequenciasVinculoService;
 import com.pet.buscaativa.services.impl.SusApiAdapter;
 
 /**
@@ -66,6 +67,7 @@ class LeituraClinicaLocalUsfCapsTests extends SecurityTestSupport {
     @Autowired SessaoGrupoRepository sessoes;
     @Autowired SessaoGrupoParticipanteRepository participantes;
     @Autowired LeituraClinicaLocalService leitura;
+    @Autowired InventarioFrequenciasVinculoService inventario;
 
     private Paciente pessoa() {
         Paciente p = new Paciente();
@@ -151,6 +153,52 @@ class LeituraClinicaLocalUsfCapsTests extends SecurityTestSupport {
         participacao.setSessaoGrupo(s);
         participantes.saveAndFlush(participacao);
         return s;
+    }
+
+    @Test
+    void frequenciasComprovadasSaoInventariadasSeparadamenteSemMudarRiscoGlobal() {
+        Paciente p = pessoa();
+        UsfReferencia usfA = usf("USF inventario A");
+        Usuario ua = profissional(UnidadeAtuacao.USF, usfA);
+        Usuario caps = profissional(UnidadeAtuacao.CAPS_AD, null);
+        vinculos.saveAndFlush(VinculoAssistencial.paraUsf(p, usfA));
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+
+        Agendamento presenteUsf = agenda(p, ua, 20, 9);
+        presenteUsf.setSituacaoAtendimento(SituacaoAtendimento.PRESENTE);
+        agendamentos.saveAndFlush(presenteUsf);
+        Agendamento faltaCaps = agenda(p, caps, 21, 10);
+        faltaCaps.setSituacaoAtendimento(SituacaoAtendimento.FALTOU);
+        agendamentos.saveAndFlush(faltaCaps);
+
+        int faltasGlobaisAntes = p.getCountFaltas();
+        var riscoAntes = p.getClassificacaoRisco();
+        atuarComo(ua);
+        var a = inventario.inventariar(p.getIdPublico());
+        assertEquals(1, a.presencasIndividuais());
+        assertEquals(0, a.faltasIndividuais());
+        assertEquals(0, a.presencasEmGrupo());
+        assertEquals(0, a.faltasEmGrupo());
+        assertEquals(0, a.agendamentosLocaisPendentesDeEvidencia());
+
+        atuarComo(caps);
+        var b = inventario.inventariar(p.getIdPublico());
+        assertEquals(0, b.presencasIndividuais());
+        assertEquals(1, b.faltasIndividuais());
+        assertEquals(0, b.agendamentosLocaisPendentesDeEvidencia());
+
+        assertEquals(faltasGlobaisAntes, p.getCountFaltas());
+        assertEquals(riscoAntes, p.getClassificacaoRisco());
+        assertEquals(1, pacientes.count());
+    }
+
+    @Test
+    void inventarioRecusaUnidadeSemVinculoMesmoComReferenciaInformada() {
+        Paciente p = pessoa();
+        Usuario caps = profissional(UnidadeAtuacao.CAPS_AD, null);
+        agenda(p, caps, 20, 9);
+        atuarComo(caps);
+        assertThrows(ResourceNotFoundException.class, () -> inventario.inventariar(p.getIdPublico()));
     }
 
     @Test
