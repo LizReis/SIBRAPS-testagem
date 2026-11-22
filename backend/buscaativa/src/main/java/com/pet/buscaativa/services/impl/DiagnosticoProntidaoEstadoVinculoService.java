@@ -45,7 +45,7 @@ public class DiagnosticoProntidaoEstadoVinculoService {
     ) {
         /** Nunca usar como indicador de elegibilidade para migracao automatica. */
         public boolean requerRevisao() {
-            return situacao != Situacao.COHERENTE_APENAS_PARA_TESTES;
+            return situacao != Situacao.COERENTE_APENAS_PARA_TESTES;
         }
     }
 
@@ -77,7 +77,7 @@ public class DiagnosticoProntidaoEstadoVinculoService {
                 : (tipoAusente || statusAusente || pendenciaAusente)
                     ? Situacao.RECONCILIAR_ESTADO_LOCAL
                 : divergencia ? Situacao.REVISAR_DIVERGENCIA_DE_FALTAS
-                : Situacao.COHERENTE_APENAS_PARA_TESTES;
+                : Situacao.COERENTE_APENAS_PARA_TESTES;
 
         return new Relatorio(
                 situacao, origemIncerta, tipoAusente, statusAusente,
