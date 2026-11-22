@@ -38,6 +38,7 @@ public class DiagnosticoProntidaoEstadoVinculoService {
             boolean faltaTipoAcompanhamentoLocal,
             boolean faltaStatusLocal,
             boolean faltaIndicadorDePendenciaLocal,
+            boolean faltaContagemLocal,
             boolean contagemLocalDivergenteDaSequencia,
             int eventosLocaisComprovados,
             long agendamentosHistoricosSemOrigem,
@@ -70,18 +71,19 @@ public class DiagnosticoProntidaoEstadoVinculoService {
         boolean tipoAusente = vinculo.getTipoAcompanhamento() == null;
         boolean statusAusente = vinculo.getStatusPaciente() == null;
         boolean pendenciaAusente = vinculo.getIndicadoresPendentes() == null;
+        boolean contadorAusente = vinculo.getCountFaltas() == null;
         boolean divergencia = !origemIncerta && vinculo.getCountFaltas() != null
                 && vinculo.getCountFaltas() != diagnostico.faltasConsecutivasAnalisaveis().getAsInt();
 
         Situacao situacao = origemIncerta ? Situacao.REVISAR_PROVENIENCIA_HISTORICA
-                : (tipoAusente || statusAusente || pendenciaAusente)
+                : (tipoAusente || statusAusente || pendenciaAusente || contadorAusente)
                     ? Situacao.RECONCILIAR_ESTADO_LOCAL
                 : divergencia ? Situacao.REVISAR_DIVERGENCIA_DE_FALTAS
                 : Situacao.COERENTE_APENAS_PARA_TESTES;
 
         return new Relatorio(
                 situacao, origemIncerta, tipoAusente, statusAusente,
-                pendenciaAusente, divergencia, diagnostico.eventosLocaisComprovados(),
+                pendenciaAusente, contadorAusente, divergencia, diagnostico.eventosLocaisComprovados(),
                 diagnostico.agendamentosSemOrigemComFrequencia(),
                 diagnostico.presencasGrupoSemOrigem());
     }
