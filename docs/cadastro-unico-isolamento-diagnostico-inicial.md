@@ -199,3 +199,11 @@
 - Se o diagnóstico informa fatos de frequência sem origem assistencial comprovada, o resultado de **faltas conclusivas fica vazio** e a necessidade de revisão é expressa. Não interpretar sequência local parcial como definitiva nem mover registros com base no profissional atual ou em `capsReferencia`.
 - `DiagnosticoFaltasConsecutivasVinculoTests` caracteriza sequência de três faltas, correção retroativa, mistura de modalidades, pendência histórica e estado sem registros. CI **ainda pendente** desta implementação.
 - **Antes de ativar os indicadores clínicos oficiais**, realizar confronto com `PacienteServiceImpl`, regras de risco (incluindo dias ausentes), visitas, reserva cancelada, pendências, responsabilidade, autorização HTTP e estados por vínculo. Não substituir a política clínica com esta caracterização isolada.
+
+## Comparação de risco por vínculo — somente caracterização
+
+- Execução #45045192407 (commit `ce13b2cc465c2dd24612cb85c6b5f9fb41dd5c33`): **SUCCESS**, 1.084 testes backend + 12 concorrência, Angular build e 4 permissões.
+- `ComparadorPoliticaRiscoVinculo`: função pura, sem persistência, sem alertas e sem endpoints, que reproduz os limiares já existentes: 2/3 faltas consecutivas (amarelo/vermelho), 15/30 dias sem presença em grupo, 60/120 dias para individual, somente `>` para os limiares de dias. `AMBOS` conserva regra de grupo. `INATIVO` permanece verde para diagnósticos conclusivos.
+- Exige diagnóstico local comprovado, status e tipo de acompanhamento **do vínculo**, indicador de pendência conhecido e data de referência; com informação ausente ou origem histórica inconclusiva, devolve resultado não conclusivo. Não preenche defaults clínicos, não replica risco do cadastro global e não gera histórico ou busca ativa.
+- Testes `ComparadorPoliticaRiscoVinculoTests` cobrem faixas de faltas e dias, empate na fronteira temporal, correção retroativa e bloqueio por pendência. **CI desta comparação ainda não verificada**.
+- Antes de ativar: definir migração confiável dos campos de estado local, tratamento do tipo de acompanhamento, elegibilidade do vínculo e dos fatos migrados, políticas de visita e busca ativa, testes HTTP/JWT e concorrência transacional de cada unidade.
