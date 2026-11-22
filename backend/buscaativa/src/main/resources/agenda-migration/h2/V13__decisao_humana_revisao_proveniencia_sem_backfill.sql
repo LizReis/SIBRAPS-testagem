@@ -30,6 +30,13 @@ CREATE TABLE tb_decisao_revisao_proveniencia (
         LENGTH(TRIM(unidade_chave)) > 0
         AND decisao IN ('APROVAR', 'REJEITAR')
         AND LENGTH(TRIM(justificativa)) BETWEEN 10 AND 2000
+        -- Defesa em profundidade contra justificativas genericas, inclusive
+        -- por SQL direto. A politica Java continua responsavel por normalizar
+        -- espacos, Unicode e caracteres de controle antes da gravacao.
+        AND LOWER(TRIM(justificativa)) NOT IN (
+            'sem motivo', 'nao informado', 'não informado',
+            'correcao', 'correção', 'alteracao', 'alteração'
+        )
         AND perfil_revisor = 'ADMINISTRADOR'
     )
 );

@@ -89,6 +89,12 @@ class DecisaoRevisaoProvenienciaMigrationTests {
                 UUID.randomUUID(), ticket, 1L, "CAPS_AD", "REJEITAR",
                 "sem motivo", 1L, "ADMINISTRADOR"));
         assertThrows(DataAccessException.class, () -> jdbc.update(inserir,
+                UUID.randomUUID(), ticket, 1L, "CAPS_AD", "REJEITAR",
+                "NAO INFORMADO", 1L, "ADMINISTRADOR"));
+        assertThrows(DataAccessException.class, () -> jdbc.update(inserir,
+                UUID.randomUUID(), ticket, 1L, "CAPS_AD", "APROVAR",
+                "Não informado", 1L, "ADMINISTRADOR"));
+        assertThrows(DataAccessException.class, () -> jdbc.update(inserir,
                 UUID.randomUUID(), UUID.randomUUID(), 1L, "CAPS_AD", "APROVAR",
                 justificativa, 1L, "ADMINISTRADOR"));
 
