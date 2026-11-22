@@ -42,22 +42,33 @@ public class ConsultaClinicaLocalRepository {
     public List<Long> historicos(UUID pacienteId, String unidade) {
         return em.createQuery("""
                 select h.id from HistoricoPaciente h
-                left join h.agendamento a
-                left join h.sessaoGrupo s
-                left join s.grupo g
                 where h.paciente.idPublico = :pacienteId
                   and h.unidadeOrigemChave = :unidade
-                  and (a.id is null or
-                       (a.unidadeOrigemChave = :unidade
-                        and a.paciente.idPublico = :pacienteId))
-                  and (s.id is null or
-                       (s.unidadeOrigemChave = :unidade
-                        and g.unidadeOrigemChave = :unidade
-                        and exists (
-                            select sp.id from SessaoGrupoParticipante sp
-                            where sp.sessaoGrupo = s and sp.paciente = h.paciente
-                        )))
-                  and (a.id is null or s.id is null)
+                  and (
+                      -- Registro manual local: sem fato fonte e com origem própria.
+                      (h.agendamento is null and h.sessaoGrupo is null)
+                      or
+                      -- Atendimento: origem e paciente do fato precisam coincidir.
+                      (h.sessaoGrupo is null and exists (
+                          select a.id from Agendamento a
+                          where a = h.agendamento
+                            and a.paciente = h.paciente
+                            and a.unidadeOrigemChave = :unidade
+                      ))
+                      or
+                      -- Grupo: origem da sessão e do grupo e participação local.
+                      (h.agendamento is null and exists (
+                          select s.id from SessaoGrupo s
+                          join s.grupo g
+                          where s = h.sessaoGrupo
+                            and s.unidadeOrigemChave = :unidade
+                            and g.unidadeOrigemChave = :unidade
+                            and exists (
+                                select sp.id from SessaoGrupoParticipante sp
+                                where sp.sessaoGrupo = s and sp.paciente = h.paciente
+                            )
+                      ))
+                  )
                 order by h.ocorridoEm desc, h.id desc
                 """, Long.class)
                 .setParameter("pacienteId", pacienteId)
