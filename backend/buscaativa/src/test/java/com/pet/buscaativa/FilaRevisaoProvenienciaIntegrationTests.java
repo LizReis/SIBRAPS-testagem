@@ -11,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
+import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -97,12 +98,20 @@ class FilaRevisaoProvenienciaIntegrationTests extends SecurityTestSupport {
         var filaAd = fila.listarPendentes(PageRequest.of(0, 10));
         assertEquals(1, filaAd.getTotalElements());
         assertEquals(adId, filaAd.getContent().get(0).id());
+        var detalheAd = fila.detalharPendente(adId);
+        assertEquals(adId, detalheAd.id());
+        assertEquals(101L, detalheAd.registroId());
+        assertEquals("Solicitacao sintetica para verificacao da unidade", detalheAd.justificativa());
+        assertThrows(ResourceNotFoundException.class, () -> fila.detalharPendente(iiId));
 
         when(escopo.usuarioLogado()).thenReturn(ii);
         var filaIi = fila.listarPendentes(PageRequest.of(0, 10));
         assertEquals(1, filaIi.getTotalElements());
         assertEquals(iiId, filaIi.getContent().get(0).id());
         assertEquals(p.getId(), filaIi.getContent().get(0).pacienteId());
+        assertThrows(ResourceNotFoundException.class, () -> fila.detalharPendente(adId));
+        assertEquals(iiId, fila.detalharPendente(iiId).id());
+        assertThrows(ResourceNotFoundException.class, () -> fila.detalharPendente(null));
     }
 
     @Test
@@ -130,9 +139,13 @@ class FilaRevisaoProvenienciaIntegrationTests extends SecurityTestSupport {
         when(escopo.usuarioLogado()).thenReturn(adminA);
         assertEquals(idA, fila.listarPendentes(PageRequest.of(0, 10))
                 .getContent().get(0).id());
+        assertEquals(idA, fila.detalharPendente(idA).id());
+        assertThrows(ResourceNotFoundException.class, () -> fila.detalharPendente(idB));
         when(escopo.usuarioLogado()).thenReturn(adminB);
         assertEquals(idB, fila.listarPendentes(PageRequest.of(0, 10))
                 .getContent().get(0).id());
+        assertThrows(ResourceNotFoundException.class, () -> fila.detalharPendente(idA));
+        assertEquals(idB, fila.detalharPendente(idB).id());
     }
 
     @Test
@@ -143,6 +156,8 @@ class FilaRevisaoProvenienciaIntegrationTests extends SecurityTestSupport {
         when(escopo.usuarioLogado()).thenReturn(profissional);
         assertThrows(AccessDeniedException.class,
                 () -> fila.listarPendentes(PageRequest.of(0, 10)));
+        assertThrows(AccessDeniedException.class,
+                () -> fila.detalharPendente(UUID.randomUUID()));
 
         Usuario recepcao = new Usuario();
         recepcao.setTipoUsuario(TipoUsuario.RECEPCAO);
@@ -150,6 +165,8 @@ class FilaRevisaoProvenienciaIntegrationTests extends SecurityTestSupport {
         when(escopo.usuarioLogado()).thenReturn(recepcao);
         assertThrows(AccessDeniedException.class,
                 () -> fila.listarPendentes(PageRequest.of(0, 10)));
+        assertThrows(AccessDeniedException.class,
+                () -> fila.detalharPendente(UUID.randomUUID()));
 
         Usuario administrador = new Usuario();
         administrador.setTipoUsuario(TipoUsuario.ADMINISTRADOR);

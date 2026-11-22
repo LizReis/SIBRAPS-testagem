@@ -16,6 +16,7 @@ import com.pet.buscaativa.entities.PendenciaRevisaoProveniencia.TipoRegistro;
 import com.pet.buscaativa.entities.enums.TipoUsuario;
 import com.pet.buscaativa.migration.ClassificadorEvidenciaClinicaLocal.Situacao;
 import com.pet.buscaativa.repositories.FilaPendenciasRevisaoProvenienciaRepository;
+import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
 
 import lombok.RequiredArgsConstructor;
 
@@ -44,19 +45,53 @@ public class FilaRevisaoProvenienciaService {
             Instant solicitadoEm,
             Estado estado) {}
 
+    /** Detalhes exclusivos da solicitacao; nao expor prontuario ou autor. */
+    public record Detalhe(
+            UUID id,
+            Long pacienteId,
+            TipoRegistro tipoRegistro,
+            Long registroId,
+            Situacao situacaoEvidencia,
+            String justificativa,
+            Instant solicitadoEm,
+            Estado estado) {}
+
     public Page<Item> listarPendentes(Pageable pagina) {
-        var usuario = escopo.usuarioLogado();
-        if (usuario == null || usuario.getTipoUsuario() != TipoUsuario.ADMINISTRADOR)
-            throw new AccessDeniedException("Perfil sem permissao para a fila de revisao.");
+        String unidade = unidadeDoAdministrador();
         if (pagina == null || !pagina.isPaged()
                 || pagina.getPageSize() < 1 || pagina.getPageSize() > 100)
             throw new IllegalArgumentException("Paginacao limitada a 1..100 registros.");
-
-        escopo.validarUnidadeConfigurada();
-        String unidade = ChaveUnidadeAssistencial.doUsuarioAtual(usuario);
         return fila.findByUnidadeChaveAndEstadoOrderBySolicitadoEmDesc(
                 unidade, Estado.PENDENTE, pagina)
                 .map(FilaRevisaoProvenienciaService::resumir);
+    }
+
+    /**
+     * Confere autorizacao ANTES de consultar um ticket por UUID.
+     * Mesmo o UUID de outra unidade devolve not found, sem metadados.
+     * Nao carrega nem autoriza o fato clinico a que o ticket se refere.
+     */
+    public Detalhe detalharPendente(UUID id) {
+        String unidade = unidadeDoAdministrador();
+        if (id == null)
+            throw new ResourceNotFoundException("Pendencia nao encontrada.");
+        return fila.findByIdAndUnidadeChaveAndEstado(id, unidade, Estado.PENDENTE)
+                .map(FilaRevisaoProvenienciaService::detalhar)
+                .orElseThrow(() -> new ResourceNotFoundException("Pendencia nao encontrada."));
+    }
+
+    private String unidadeDoAdministrador() {
+        var usuario = escopo.usuarioLogado();
+        if (usuario == null || usuario.getTipoUsuario() != TipoUsuario.ADMINISTRADOR)
+            throw new AccessDeniedException("Perfil sem permissao para a fila de revisao.");
+        escopo.validarUnidadeConfigurada();
+        return ChaveUnidadeAssistencial.doUsuarioAtual(usuario);
+    }
+
+    private static Detalhe detalhar(PendenciaRevisaoProveniencia p) {
+        return new Detalhe(p.getId(), p.getPacienteId(), p.getTipoRegistro(),
+                p.getRegistroId(), p.getSituacaoEvidencia(), p.getJustificativa(),
+                p.getSolicitadoEm(), p.getEstado());
     }
 
     private static Item resumir(PendenciaRevisaoProveniencia pendencia) {
