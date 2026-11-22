@@ -5,6 +5,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import jakarta.persistence.LockModeType;
 import org.springframework.stereotype.Repository;
 
 import com.pet.buscaativa.entities.VinculoAssistencial;
@@ -19,4 +24,12 @@ public interface VinculoAssistencialRepository extends JpaRepository<VinculoAssi
     Optional<VinculoAssistencial> findByIdPublico(UUID idPublico);
     List<VinculoAssistencial> findByPacienteId(Long pacienteId);
     boolean existsByPacienteIdAndUnidadeChave(Long pacienteId, String unidadeChave);
+    /**
+     * Serializa apenas solicitacoes da mesma identidade e unidade.
+     * Nao modifica dados clinicos e deve ser chamado dentro de transacao.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select v from VinculoAssistencial v where v.id = :id")
+    Optional<VinculoAssistencial> findByIdForPendenciaUpdate(@Param("id") Long id);
+
 }
