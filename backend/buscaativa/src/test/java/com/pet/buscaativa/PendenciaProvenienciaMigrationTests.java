@@ -26,7 +26,7 @@ class PendenciaProvenienciaMigrationTests {
         var before = LegacyMigrationFixture.snapshot(source, beforeColumns);
         var jdbc = new JdbcTemplate(source);
 
-        assertEquals(12, AgendaMigrationTool.migrar(source).migrationsExecuted);
+        assertEquals(13, AgendaMigrationTool.migrar(source).migrationsExecuted);
         assertEquals(before, LegacyMigrationFixture.snapshot(source, beforeColumns));
         assertEquals(0, jdbc.queryForObject(
                 "select count(*) from tb_pendencia_revisao_proveniencia", Integer.class));
