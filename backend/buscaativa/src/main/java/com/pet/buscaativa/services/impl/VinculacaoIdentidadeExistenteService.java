@@ -94,7 +94,7 @@ public class VinculacaoIdentidadeExistenteService {
             throw conflito();
     }
 
-    private static String normalizarCpf(String informado) {
+    static String normalizarCpf(String informado) {
         if (informado == null || informado.isBlank()) return null;
         // Aceitar somente a pontuacao prevista para CPF, sem descartar
         // letras ou outros caracteres arbitrarios e tornar a busca ambigua.
@@ -107,7 +107,7 @@ public class VinculacaoIdentidadeExistenteService {
         return normalizado;
     }
 
-    private static String normalizarCns(String informado) {
+    static String normalizarCns(String informado) {
         if (informado == null || informado.isBlank()) return null;
         boolean caracteresPermitidos = informado.codePoints()
                 .allMatch(c -> (c >= '0' && c <= '9') || Character.isWhitespace(c));
