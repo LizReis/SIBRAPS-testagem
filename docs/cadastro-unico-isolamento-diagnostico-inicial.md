@@ -167,3 +167,10 @@
 - Cenário de segunda USF: referência territorial aponta a USF B, mas existe somente vínculo explícito com a USF A. Antes do vínculo local, B recebe não encontrado; após o vínculo, lista local começa sem históricos/atendimentos da A. A identidade `Paciente` não se duplica.
 - **Esses testes não alteram o sistema de produção, nem ativam o novo escopo nos endpoints, nem substituem validações HTTP/JWT**. Indicadores e histórico legados ainda dependem de revisão coordenada.
 - Nova validação no GitHub Actions **pendente**. Em caso de falha, corrigir fixtures sem flexibilizar a regra de isolamento.
+
+## Ajuste da consulta de históricos manuais — regressão USF/CAPS
+
+- CI #44962156503 (commit `0b1f91b8ed71f78ac2969c7f3cd583d0a007643c`): **FAILURE** apenas no novo cenário `LeituraClinicaLocalUsfCapsTests.usfECapsCompartilhamSomenteIdentidadeNaoAtendimentosNemHistoricos`, linha 175. Dos 1.075 testes backend, 1.074 passaram e 1 falhou; Angular build e permissões passaram; concorrência não executada.
+- Sintoma: consulta de histórico da USF não incluía os dois eventos locais esperados (consulta e busca ativa manual). Hipótese técnica: navegação implícita `a.paciente.idPublico` sobre alias de `LEFT JOIN` transforma associação opcional em junção restritiva, ocultando eventos sem agendamento.
+- `ConsultaClinicaLocalRepository.historicos` foi reescrito com três ramos explícitos mutuamente exclusivos: evento manual sem fonte, evento individual com paciente/origem coerentes, evento de sessão com grupo e participante corretos. Usam `exists` correlacionado para fatos com fonte, evitando junções opcionais convertidas em obrigatórias.
+- Não flexibilizar filtro de unidade, integridade do paciente nem exigência de vínculo explícito. **Nova CI ainda não validada**; falha anterior permanece documentada para rastreabilidade.
