@@ -1,6 +1,7 @@
 package com.pet.buscaativa.entities;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 
 import org.hibernate.annotations.Immutable;
@@ -79,6 +80,44 @@ public class DecisaoRevisaoProveniencia {
     @Column(name = "decidida_em", nullable = false, updatable = false)
     private Instant decididaEm;
 
-    // Nao expor fabrica publica enquanto nao existir servico que verifique
-    // evidencia, escopo local, perfil, justificativa e decisao anterior.
+    /**
+     * A criacao so pode ocorrer por comando interno apos escopo local,
+     * verificacao do fato original e justificativa conferidos no servidor.
+     * APROVAR aqui registra somente a decisao administrativa, jamais
+     * reescreve a unidade historica, presenca ou outros dados clinicos.
+     */
+    public static DecisaoRevisaoProveniencia registrarRevisaoHumana(
+            PendenciaRevisaoProveniencia pendencia,
+            Decisao decisao,
+            String justificativaNormalizada,
+            Usuario revisor,
+            Instant instante) {
+        Objects.requireNonNull(pendencia, "Pendencia obrigatoria.");
+        Objects.requireNonNull(decisao, "Decisao obrigatoria.");
+        Objects.requireNonNull(revisor, "Revisor obrigatorio.");
+        Objects.requireNonNull(instante, "Data de decisao obrigatoria.");
+        if (pendencia.getId() == null || pendencia.getPacienteId() == null
+                || pendencia.getUnidadeChave() == null
+                || pendencia.getUnidadeChave().isBlank()
+                || pendencia.getEstado() != PendenciaRevisaoProveniencia.Estado.PENDENTE)
+            throw new IllegalArgumentException("Pendencia sem identidade e escopo validos.");
+        if (revisor.getId() == null || revisor.getTipoUsuario() != TipoUsuario.ADMINISTRADOR)
+            throw new IllegalArgumentException("Revisor administrativo persistido obrigatorio.");
+        if (justificativaNormalizada == null || justificativaNormalizada.isBlank()
+                || justificativaNormalizada.length() < 10
+                || justificativaNormalizada.length() > 2000)
+            throw new IllegalArgumentException("Justificativa invalida.");
+
+        DecisaoRevisaoProveniencia evento = new DecisaoRevisaoProveniencia();
+        evento.id = UUID.randomUUID();
+        evento.pendencia = pendencia;
+        evento.pacienteId = pendencia.getPacienteId();
+        evento.unidadeChave = pendencia.getUnidadeChave();
+        evento.decisao = decisao;
+        evento.justificativa = justificativaNormalizada;
+        evento.revisor = revisor;
+        evento.perfilRevisor = revisor.getTipoUsuario();
+        evento.decididaEm = instante;
+        return evento;
+    }
 }
