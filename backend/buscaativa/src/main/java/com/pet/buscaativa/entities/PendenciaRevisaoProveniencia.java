@@ -1,6 +1,7 @@
 package com.pet.buscaativa.entities;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 
 import org.hibernate.annotations.Check;
@@ -101,6 +102,54 @@ public class PendenciaRevisaoProveniencia {
     @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "estado", length = 20, nullable = false, updatable = false)
     private Estado estado = Estado.PENDENTE;
+
+    /**
+     * Construido somente pelo servico interno de solicitacao, apos verificar
+     * o fato real e o vinculo do usuario autenticado. Nao e prova retroativa
+     * de proveniencia. Evidencia inconclusiva NAO pode usar este caminho.
+     */
+    public static PendenciaRevisaoProveniencia paraFatoLocalComprovado(
+            VinculoAssistencial vinculo,
+            TipoRegistro tipoRegistro,
+            Long registroId,
+            String justificativaNormalizada,
+            Usuario solicitante,
+            Instant solicitadoEm) {
+        Objects.requireNonNull(vinculo, "Vinculo obrigatorio.");
+        Objects.requireNonNull(tipoRegistro, "Tipo obrigatorio.");
+        Objects.requireNonNull(solicitante, "Solicitante obrigatorio.");
+        Objects.requireNonNull(solicitadoEm, "Data obrigatoria.");
+        if (vinculo.getId() == null || vinculo.getPaciente() == null
+                || vinculo.getPaciente().getId() == null
+                || vinculo.getUnidadeChave() == null
+                || vinculo.getUnidadeChave().isBlank()
+                || registroId == null || registroId <= 0)
+            throw new IllegalArgumentException("Vinculo ou registro sem identidade persistida.");
+        if (solicitante.getId() == null || (solicitante.getTipoUsuario() != TipoUsuario.ADMINISTRADOR
+                && solicitante.getTipoUsuario() != TipoUsuario.PROFISSIONAL))
+            throw new IllegalArgumentException("Solicitante sem perfil assistencial permitido.");
+        if (justificativaNormalizada == null || justificativaNormalizada.length() < 10
+                || justificativaNormalizada.length() > 2000
+                || justificativaNormalizada.isBlank())
+            throw new IllegalArgumentException("Justificativa invalida.");
+
+        PendenciaRevisaoProveniencia p = new PendenciaRevisaoProveniencia();
+        p.id = UUID.randomUUID();
+        p.vinculo = vinculo;
+        p.pacienteId = vinculo.getPaciente().getId();
+        p.unidadeChave = vinculo.getUnidadeChave();
+        p.tipoRegistro = tipoRegistro;
+        p.registroId = registroId;
+        // Apenas fatos com origem LOCAL COMPROVADA por servico independente.
+        // NAO aceitar Situacao a partir de parametro de cliente.
+        p.situacaoEvidencia = Situacao.COMPATIVEL_SOMENTE_PARA_CONFERENCIA;
+        p.justificativa = justificativaNormalizada;
+        p.solicitante = solicitante;
+        p.perfilSolicitante = solicitante.getTipoUsuario();
+        p.solicitadoEm = solicitadoEm;
+        p.estado = Estado.PENDENTE;
+        return p;
+    }
 
     // Sem construtor publico ou setters: criar uma pendencia clinica futura
     // exigira operacao autorizada, evidencia conferida e justificativa.
