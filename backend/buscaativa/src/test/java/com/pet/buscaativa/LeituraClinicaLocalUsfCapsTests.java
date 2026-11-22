@@ -42,6 +42,7 @@ import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
 import com.pet.buscaativa.services.impl.EscopoUnidadeService;
 import com.pet.buscaativa.services.impl.LeituraClinicaLocalService;
 import com.pet.buscaativa.services.impl.InventarioFrequenciasVinculoService;
+import com.pet.buscaativa.services.impl.LinhaDoTempoFrequenciasVinculoService;
 import com.pet.buscaativa.services.impl.SusApiAdapter;
 
 /**
@@ -68,6 +69,7 @@ class LeituraClinicaLocalUsfCapsTests extends SecurityTestSupport {
     @Autowired SessaoGrupoParticipanteRepository participantes;
     @Autowired LeituraClinicaLocalService leitura;
     @Autowired InventarioFrequenciasVinculoService inventario;
+    @Autowired LinhaDoTempoFrequenciasVinculoService linhaDoTempo;
 
     private Paciente pessoa() {
         Paciente p = new Paciente();
@@ -153,6 +155,84 @@ class LeituraClinicaLocalUsfCapsTests extends SecurityTestSupport {
         participacao.setSessaoGrupo(s);
         participantes.saveAndFlush(participacao);
         return s;
+    }
+
+    @Test
+    void linhaDoTempoMantemCronologiaPorUnidadeEDetectaFatoAntigoSemOrigem() {
+        Paciente pessoa = pessoa();
+        UsfReferencia usf = usf("USF cronologia");
+        Usuario uUsf = profissional(UnidadeAtuacao.USF, usf);
+        Usuario uCaps = profissional(UnidadeAtuacao.CAPS_AD, null);
+        vinculos.saveAndFlush(VinculoAssistencial.paraUsf(pessoa, usf));
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(pessoa, UnidadeAtuacao.CAPS_AD));
+
+        Agendamento faltaUsf = agenda(pessoa, uUsf, 17, 8);
+        faltaUsf.setSituacaoAtendimento(SituacaoAtendimento.FALTOU);
+        agendamentos.saveAndFlush(faltaUsf);
+        Agendamento presencaUsf = agenda(pessoa, uUsf, 19, 8);
+        presencaUsf.setSituacaoAtendimento(SituacaoAtendimento.PRESENTE);
+        agendamentos.saveAndFlush(presencaUsf);
+        Agendamento faltaCaps = agenda(pessoa, uCaps, 18, 8);
+        faltaCaps.setSituacaoAtendimento(SituacaoAtendimento.FALTOU);
+        agendamentos.saveAndFlush(faltaCaps);
+
+        Agendamento legado = new Agendamento();
+        legado.setPaciente(pessoa);
+        legado.setUsuario(uUsf);
+        legado.setDataAgendamento(LocalDate.of(2026, 12, 16));
+        legado.setHoraAtendimento(LocalTime.of(9, 0));
+        legado.setSituacaoAtendimento(SituacaoAtendimento.FALTOU);
+        agendamentos.saveAndFlush(legado);
+
+        atuarComo(uUsf);
+        var usfLinha = linhaDoTempo.analisar(pessoa.getIdPublico());
+        assertEquals(2, usfLinha.eventosComOrigemLocal().size());
+        assertEquals(faltaUsf.getId(), usfLinha.eventosComOrigemLocal().get(0).registroId());
+        assertFalse(usfLinha.eventosComOrigemLocal().get(0).presente());
+        assertEquals(presencaUsf.getId(), usfLinha.eventosComOrigemLocal().get(1).registroId());
+        assertTrue(usfLinha.eventosComOrigemLocal().get(1).presente());
+        assertEquals(1, usfLinha.agendamentosSemOrigemComFrequencia());
+        assertTrue(usfLinha.haEvidenciaHistoricaSemUnidadeComprovada());
+
+        atuarComo(uCaps);
+        var capsLinha = linhaDoTempo.analisar(pessoa.getIdPublico());
+        assertEquals(1, capsLinha.eventosComOrigemLocal().size());
+        assertEquals(faltaCaps.getId(), capsLinha.eventosComOrigemLocal().getFirst().registroId());
+        assertEquals(1, capsLinha.agendamentosSemOrigemComFrequencia());
+    }
+
+    @Test
+    void linhaDoTempoIncluiFrequenciaGrupoDaMesmaUnidadeSemConfundirCaps() {
+        Paciente pessoa = pessoa();
+        UsfReferencia usf = usf("USF grupos cronologicos");
+        Usuario uUsf = profissional(UnidadeAtuacao.USF, usf);
+        Usuario uCaps = profissional(UnidadeAtuacao.CAPS_AD, null);
+        vinculos.saveAndFlush(VinculoAssistencial.paraUsf(pessoa, usf));
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(pessoa, UnidadeAtuacao.CAPS_AD));
+
+        Agendamento faltaUsf = agenda(pessoa, uUsf, 20, 10);
+        faltaUsf.setSituacaoAtendimento(SituacaoAtendimento.FALTOU);
+        agendamentos.saveAndFlush(faltaUsf);
+
+        SessaoGrupo sessao = sessaoComParticipacao(pessoa, uUsf);
+        sessao.confirmarRealizacao(uUsf);
+        sessoes.saveAndFlush(sessao);
+        var participacao = participantes.findBySessaoGrupoAndPaciente(sessao, pessoa).orElseThrow();
+        participacao.setStatusPresenca(com.pet.buscaativa.entities.enums.StatusPresencaGrupo.PRESENTE);
+        participantes.saveAndFlush(participacao);
+
+        atuarComo(uUsf);
+        var linha = linhaDoTempo.analisar(pessoa.getIdPublico());
+        assertEquals(2, linha.eventosComOrigemLocal().size());
+        assertEquals(LinhaDoTempoFrequenciasVinculoService.Fonte.ATENDIMENTO_INDIVIDUAL,
+                linha.eventosComOrigemLocal().get(0).fonte());
+        assertEquals(LinhaDoTempoFrequenciasVinculoService.Fonte.SESSAO_GRUPO,
+                linha.eventosComOrigemLocal().get(1).fonte());
+        assertTrue(linha.eventosComOrigemLocal().get(1).presente());
+        assertFalse(linha.haEvidenciaHistoricaSemUnidadeComprovada());
+
+        atuarComo(uCaps);
+        assertTrue(linhaDoTempo.analisar(pessoa.getIdPublico()).eventosComOrigemLocal().isEmpty());
     }
 
     @Test
