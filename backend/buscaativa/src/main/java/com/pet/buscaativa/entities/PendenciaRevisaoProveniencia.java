@@ -16,7 +16,6 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.JoinColumns;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
@@ -58,13 +57,17 @@ public class PendenciaRevisaoProveniencia {
     @Column(nullable = false)
     private UUID id;
 
+    // Mapeamento Java usa a PK do vínculo; a FK COMPOSTA no banco (V12)
+    // garante também paciente_id e unidade_chave, inclusive para SQL direto.
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumns({
-        @JoinColumn(name = "vinculo_id", referencedColumnName = "id", nullable = false, updatable = false),
-        @JoinColumn(name = "paciente_id", referencedColumnName = "paciente_id", nullable = false, updatable = false),
-        @JoinColumn(name = "unidade_chave", referencedColumnName = "unidade_chave", nullable = false, updatable = false)
-    })
+    @JoinColumn(name = "vinculo_id", nullable = false, updatable = false)
     private VinculoAssistencial vinculo;
+
+    @Column(name = "paciente_id", nullable = false, updatable = false)
+    private Long pacienteId;
+
+    @Column(name = "unidade_chave", length = 80, nullable = false, updatable = false)
+    private String unidadeChave;
 
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.VARCHAR)
