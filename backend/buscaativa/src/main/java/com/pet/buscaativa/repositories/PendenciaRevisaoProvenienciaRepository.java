@@ -14,8 +14,8 @@ import com.pet.buscaativa.entities.PendenciaRevisaoProveniencia.Estado;
 /**
  * Acesso INTERNO e estritamente delimitado as pendencias de proveniencia.
  *
- * Esta primeira integracao da V12 e somente de leitura. Nao ha operacoes
- * save/delete, listagem global ou busca sem paciente E unidade; nenhuma
+ * As leituras exigem paciente E unidade. A gravacao abaixo e reservada ao
+ * servico transacional com verificacao do fato e autorizacao local. Nenhuma
  * rota HTTP, painel ou processo de conciliacao e ativado aqui.
  *
  * Os filtros sao defesa em profundidade, NAO substituem a autorizacao do
@@ -25,6 +25,15 @@ import com.pet.buscaativa.entities.PendenciaRevisaoProveniencia.Estado;
 @Transactional(readOnly = true)
 public interface PendenciaRevisaoProvenienciaRepository
         extends Repository<PendenciaRevisaoProveniencia, UUID> {
+
+    /** Escrita somente pelo servico interno com transacao e validacoes. */
+    @Transactional
+    <S extends PendenciaRevisaoProveniencia> S save(S pendencia);
+
+    /** Idempotencia por fato clinico, paciente e unidade local. */
+    boolean existsByPacienteIdAndUnidadeChaveAndTipoRegistroAndRegistroId(
+            Long pacienteId, String unidadeChave,
+            PendenciaRevisaoProveniencia.TipoRegistro tipoRegistro, Long registroId);
 
     /** Busca uma unica pendencia somente dentro do paciente e da unidade autorizados. */
     Optional<PendenciaRevisaoProveniencia> findByIdAndPacienteIdAndUnidadeChave(
