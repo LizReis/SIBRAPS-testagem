@@ -13,7 +13,7 @@ import com.pet.buscaativa.entities.PendenciaRevisaoProveniencia;
 import com.pet.buscaativa.entities.PendenciaRevisaoProveniencia.TipoRegistro;
 import com.pet.buscaativa.entities.VinculoAssistencial;
 import com.pet.buscaativa.entities.enums.TipoUsuario;
-import com.pet.buscaativa.repositories.PendenciaRevisaoProvenienciaRepository;
+import com.pet.buscaativa.repositories.PendenciaRevisaoProvenienciaComandoRepository;
 import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
 import com.pet.buscaativa.services.PoliticaJustificativaCorrecao;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
@@ -39,7 +39,7 @@ public class SolicitacaoRevisaoProvenienciaService {
     private final VerificacaoFatoRevisaoProvenienciaService verificador;
     private final PoliticaJustificativaCorrecao politicaJustificativa;
     private final VinculoAssistencialRepository vinculos;
-    private final PendenciaRevisaoProvenienciaRepository pendencias;
+    private final PendenciaRevisaoProvenienciaComandoRepository pendencias;
     private final Clock clock;
 
     @Transactional
