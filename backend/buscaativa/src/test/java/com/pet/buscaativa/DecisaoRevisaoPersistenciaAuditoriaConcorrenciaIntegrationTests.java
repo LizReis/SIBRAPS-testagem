@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import com.pet.buscaativa.entities.Agendamento;
@@ -28,12 +29,14 @@ import com.pet.buscaativa.entities.enums.TipoUsuario;
 import com.pet.buscaativa.entities.enums.UnidadeAtuacao;
 import com.pet.buscaativa.repositories.AgendamentoRepository;
 import com.pet.buscaativa.repositories.PacienteRepository;
+import com.pet.buscaativa.repositories.PendenciaRevisaoProvenienciaRepository;
 import com.pet.buscaativa.repositories.UsuarioRepository;
 import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
 import com.pet.buscaativa.services.exceptions.ValidationException;
 import com.pet.buscaativa.services.impl.EscopoUnidadeService;
 import com.pet.buscaativa.services.impl.RegistroDecisaoRevisaoProvenienciaService;
+import com.pet.buscaativa.services.impl.FilaRevisaoProvenienciaService;
 import com.pet.buscaativa.services.impl.SolicitacaoRevisaoProvenienciaService;
 import com.pet.buscaativa.services.impl.SusApiAdapter;
 
@@ -67,6 +70,8 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
     @Autowired AgendamentoRepository agendamentos;
     @Autowired SolicitacaoRevisaoProvenienciaService solicitacoes;
     @Autowired RegistroDecisaoRevisaoProvenienciaService decisoes;
+    @Autowired FilaRevisaoProvenienciaService fila;
+    @Autowired PendenciaRevisaoProvenienciaRepository pendenciasAbertas;
     @Autowired JdbcTemplate jdbc;
 
     private record Cenario(UUID pacientePublico, Long pacienteId,
@@ -136,11 +141,64 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
         assertEquals(SituacaoAtendimento.AGENDADO, agendamentos.findById(c.agendamentoId())
                 .orElseThrow().getSituacaoAtendimento());
 
+        // Fluxo REAL da decisao APROVAR: a pendencia V12 continua auditavel,
+        // mas deixa de aparecer nas duas consultas de tickets abertos.
+        assertThrows(ResourceNotFoundException.class,
+                () -> fila.detalharPendente(c.pendenciaId()));
+        assertTrue(fila.listarPendentes(PageRequest.of(0, 100)).getContent().stream()
+                .noneMatch(p -> p.id().equals(c.pendenciaId())));
+        assertTrue(pendenciasAbertas.findByIdAndPacienteIdAndUnidadeChave(
+                c.pendenciaId(), c.pacienteId(), "CAPS_AD").isEmpty());
+        assertEquals(0, pendenciasAbertas
+                .findByPacienteIdAndUnidadeChaveAndEstadoOrderBySolicitadoEmDesc(
+                        c.pacienteId(), "CAPS_AD",
+                        com.pet.buscaativa.entities.PendenciaRevisaoProveniencia.Estado.PENDENTE,
+                        PageRequest.of(0, 10)).getTotalElements());
+
         assertThrows(ValidationException.class, () -> decisoes.registrar(
                 c.pacientePublico(), c.pendenciaId(), Decisao.REJEITAR, MOTIVO_DECISAO));
         assertEquals(1, jdbc.queryForObject(
                 "select count(*) from tb_decisao_revisao_proveniencia where pendencia_id=?",
                 Integer.class, c.pendenciaId()));
+    }
+
+    @Test
+    void rejeicaoRealRetiraPendenciaDaFilaAbertaSemApagarTrilhaOuFatoClinico() {
+        Cenario c = criarCenario();
+        assertEquals(c.pendenciaId(), fila.detalharPendente(c.pendenciaId()).id());
+        assertEquals(1, pendenciasAbertas
+                .findByPacienteIdAndUnidadeChaveAndEstadoOrderBySolicitadoEmDesc(
+                        c.pacienteId(), "CAPS_AD",
+                        com.pet.buscaativa.entities.PendenciaRevisaoProveniencia.Estado.PENDENTE,
+                        PageRequest.of(0, 10)).getTotalElements());
+
+        UUID id = decisoes.registrar(
+                c.pacientePublico(), c.pendenciaId(), Decisao.REJEITAR, MOTIVO_DECISAO);
+
+        assertNotNull(id);
+        assertThrows(ResourceNotFoundException.class,
+                () -> fila.detalharPendente(c.pendenciaId()));
+        assertTrue(fila.listarPendentes(PageRequest.of(0, 100)).getContent().stream()
+                .noneMatch(p -> p.id().equals(c.pendenciaId())));
+        assertTrue(pendenciasAbertas.findByIdAndPacienteIdAndUnidadeChave(
+                c.pendenciaId(), c.pacienteId(), "CAPS_AD").isEmpty());
+        assertEquals(0, pendenciasAbertas
+                .findByPacienteIdAndUnidadeChaveAndEstadoOrderBySolicitadoEmDesc(
+                        c.pacienteId(), "CAPS_AD",
+                        com.pet.buscaativa.entities.PendenciaRevisaoProveniencia.Estado.PENDENTE,
+                        PageRequest.of(0, 10)).getTotalElements());
+
+        assertEquals("PENDENTE", jdbc.queryForObject(
+                "select estado from tb_pendencia_revisao_proveniencia where id=?",
+                String.class, c.pendenciaId()));
+        assertEquals(1, jdbc.queryForObject("""
+                select count(*) from tb_decisao_revisao_proveniencia_aud
+                where id=? and pendencia_id=? and decisao='REJEITAR' and revtype=0
+                """, Integer.class, id, c.pendenciaId()));
+        assertEquals("CAPS_AD", agendamentos.findById(c.agendamentoId())
+                .orElseThrow().getUnidadeOrigemChave());
+        assertEquals(SituacaoAtendimento.AGENDADO, agendamentos.findById(c.agendamentoId())
+                .orElseThrow().getSituacaoAtendimento());
     }
 
     @Test
@@ -201,5 +259,9 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
         assertEquals("PENDENTE", jdbc.queryForObject(
                 "select estado from tb_pendencia_revisao_proveniencia where id=?",
                 String.class, c.pendenciaId()));
+        // Uma decisao vencedora em corrida nao deixa um ticket novamente
+        // disponivel para outra deliberacao na fila aberta.
+        assertThrows(ResourceNotFoundException.class,
+                () -> fila.detalharPendente(c.pendenciaId()));
     }
 }
