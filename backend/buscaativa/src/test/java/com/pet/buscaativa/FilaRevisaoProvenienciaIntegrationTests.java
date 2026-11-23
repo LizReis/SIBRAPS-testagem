@@ -30,6 +30,7 @@ import com.pet.buscaativa.repositories.UsfReferenciaRepository;
 import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
 import com.pet.buscaativa.services.impl.EscopoUnidadeService;
 import com.pet.buscaativa.services.impl.FilaRevisaoProvenienciaService;
+import com.pet.buscaativa.services.impl.ResumoRevisaoProvenienciaService;
 import com.pet.buscaativa.services.impl.ConsultaPendenciasRevisaoProvenienciaService;
 import com.pet.buscaativa.services.impl.SusApiAdapter;
 
@@ -48,6 +49,7 @@ class FilaRevisaoProvenienciaIntegrationTests extends SecurityTestSupport {
     @Autowired UsfReferenciaRepository usfs;
     @Autowired VinculoAssistencialRepository vinculos;
     @Autowired FilaRevisaoProvenienciaService fila;
+    @Autowired ResumoRevisaoProvenienciaService resumo;
     @Autowired ConsultaPendenciasRevisaoProvenienciaService consultaPorPaciente;
     @Autowired JdbcTemplate jdbc;
     @Autowired PendenciaRevisaoProvenienciaRepository consultasPaciente;
@@ -317,6 +319,65 @@ class FilaRevisaoProvenienciaIntegrationTests extends SecurityTestSupport {
         assertEquals(1, jdbc.queryForObject(
                 "select count(*) from tb_decisao_revisao_proveniencia where pendencia_id=?",
                 Integer.class, decididaAd));
+    }
+
+    @Test
+    void resumoSomenteLeituraSeparaAbertasEDecididasSemMisturarUnidades() {
+        Paciente p = pessoa();
+        Usuario ad = administrador(UnidadeAtuacao.CAPS_AD, null);
+        Usuario ii = administrador(UnidadeAtuacao.CAPS_II, null);
+        Usuario iSemVinculo = administrador(UnidadeAtuacao.CAPS_I, null);
+        var vinculoAd = vinculos.saveAndFlush(
+                VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+        var vinculoIi = vinculos.saveAndFlush(
+                VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_II));
+        UUID abertaAd = UUID.randomUUID();
+        UUID decididaAd = UUID.randomUUID();
+        UUID abertaIi1 = UUID.randomUUID();
+        UUID abertaIi2 = UUID.randomUUID();
+        pendencia(abertaAd, vinculoAd, ad, 801L);
+        pendencia(decididaAd, vinculoAd, ad, 802L);
+        pendencia(abertaIi1, vinculoIi, ii, 803L);
+        pendencia(abertaIi2, vinculoIi, ii, 804L);
+
+        jdbc.update("""
+                insert into tb_decisao_revisao_proveniencia(
+                    id, pendencia_id, paciente_id, unidade_chave, decisao,
+                    justificativa, revisor_id, perfil_revisor, decidida_em)
+                values (?, ?, ?, 'CAPS_AD', 'REJEITAR',
+                    'Conferencia documental sintetica do administrador local',
+                    ?, 'ADMINISTRADOR', CURRENT_TIMESTAMP)
+                """, UUID.randomUUID(), decididaAd, p.getId(), ad.getId());
+
+        when(escopo.usuarioLogado()).thenReturn(ad);
+        var totalAd = resumo.consultar(p.getIdPublico());
+        assertEquals(1, totalAd.pendenciasAbertas());
+        assertEquals(1, totalAd.decisoesRegistradas());
+
+        when(escopo.usuarioLogado()).thenReturn(ii);
+        var totalIi = resumo.consultar(p.getIdPublico());
+        assertEquals(2, totalIi.pendenciasAbertas());
+        assertEquals(0, totalIi.decisoesRegistradas());
+
+        when(escopo.usuarioLogado()).thenReturn(iSemVinculo);
+        assertThrows(ResourceNotFoundException.class,
+                () -> resumo.consultar(p.getIdPublico()));
+
+        Usuario profissional = new Usuario();
+        profissional.setTipoUsuario(TipoUsuario.PROFISSIONAL);
+        profissional.setUnidadeAtuacao(UnidadeAtuacao.CAPS_AD);
+        when(escopo.usuarioLogado()).thenReturn(profissional);
+        assertThrows(AccessDeniedException.class,
+                () -> resumo.consultar(p.getIdPublico()));
+
+        // Agregacao nao modifica os estados originais nem reabre o ticket.
+        assertEquals("PENDENTE", jdbc.queryForObject(
+                "select estado from tb_pendencia_revisao_proveniencia where id=?",
+                String.class, decididaAd));
+        assertEquals(1, jdbc.queryForObject(
+                "select count(*) from tb_decisao_revisao_proveniencia where pendencia_id=?",
+                Integer.class, decididaAd));
+        assertEquals(1, pacientes.count());
     }
 
     @Test

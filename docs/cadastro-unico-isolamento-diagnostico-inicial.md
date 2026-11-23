@@ -348,3 +348,10 @@
 - A consulta de tickets abertos `ConsultaPendenciasRevisaoProvenienciaService` ja tem testes unitarios de perfil e escopo. Esta entrega amplia a cobertura com um teste integrado Spring/H2 **do autorizador de vinculo real**, simulando apenas o contexto de usuario autenticado.
 - Uma identidade global acompanhada em CAPS AD e CAPS II possui pendencias locais distintas; a decisao V13 de um ticket AD deve exclui-lo apenas da lista de abertas, inclusive por paciente e ID; um terceiro CAPS sem vinculo nao pode consultar tickets apesar de conhecer o UUID global.
 - Confirmar paginacao, ausência de acesso cruzado, preservacao de V12 `PENDENTE` e permanencia do evento V13. Nenhum codigo de producao, dado real, migracao, indicador ou painel foi alterado. **CI desta entrega pendente.**
+
+## Resumo interno de pendencias e decisoes para futura aba de Relatorios — 23/11/2026
+
+- CI #45249614650 do commit `7206e0bc1654dcdb90be30240331ddb3a23c5aac`: **SUCCESS**. Maven verify 1.243 testes, concorrencia 12/12, 28 testes direcionados Angular e build Angular aprovados.
+- Adicionado `ResumoRevisaoProvenienciaService` **interno e read-only**, que reaproveita as consultas ja autorizadas de pendencias abertas V12 e decisoes registradas V13 para devolver apenas dois totais do paciente na unidade logada. A consulta de decisoes e executada primeiro e exige ADMINISTRADOR com vinculo local, sem inferir escopo por referencia territorial. Consultas de contagem usam paginacao minima, sem carregar listas inteiras.
+- Novo teste integrado H2 verifica: identidade global acompanhada no CAPS AD e CAPS II; AD com uma aberta e uma decidida, II com duas abertas e nenhuma decidida; CAPS I sem vinculo recebe negativa e PROFISSIONAL nao acessa o resumo. Os registros V12/V13 permanecem inalterados.
+- **CI deste novo commit pendente.** Nao foi ativada rota, painel, modificacao de dados clinicos, indicador assistencial nem migration. A integracao visual da area Relatorios e os historicos legados ainda exigem corte coordenado da Etapa 6.3.
