@@ -166,6 +166,8 @@ class HistoricoClinicoLocalHttpTests extends SecurityTestSupport {
                 "Nao divulgar remarcacao com origem desconhecida");
 
         Agendamento raizLocal = agendamento(p, ad, LocalDate.of(2026, 12, 9), true);
+        raizLocal.setSituacaoAtendimento(SituacaoAtendimento.REMARCADO_ORIGEM);
+        agendamentos.saveAndFlush(raizLocal);
         Agendamento remarcacaoLocal = agendamento(p, ad, LocalDate.of(2026, 12, 10), true);
         remarcacaoLocal.setAgendamentoOriginal(raizLocal);
         agendamentos.saveAndFlush(remarcacaoLocal);

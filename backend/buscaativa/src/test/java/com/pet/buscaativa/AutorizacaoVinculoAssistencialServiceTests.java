@@ -3,6 +3,8 @@ package com.pet.buscaativa;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -17,6 +19,7 @@ import com.pet.buscaativa.entities.Usuario;
 import com.pet.buscaativa.entities.VinculoAssistencial;
 import com.pet.buscaativa.entities.enums.UnidadeAtuacao;
 import com.pet.buscaativa.entities.enums.SituacaoAtendimento;
+import com.pet.buscaativa.repositories.AgendamentoRepository;
 import com.pet.buscaativa.repositories.PacienteRepository;
 import com.pet.buscaativa.repositories.SessaoGrupoParticipanteRepository;
 import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
@@ -31,6 +34,7 @@ import com.pet.buscaativa.services.impl.EscopoUnidadeService;
 class AutorizacaoVinculoAssistencialServiceTests {
     private EscopoUnidadeService escopo;
     private PacienteRepository pacientes;
+    private AgendamentoRepository agendamentos;
     private VinculoAssistencialRepository vinculos;
     private SessaoGrupoParticipanteRepository participantes;
     private AutorizacaoVinculoAssistencialService service;
@@ -44,9 +48,11 @@ class AutorizacaoVinculoAssistencialServiceTests {
     void preparar() {
         escopo = mock(EscopoUnidadeService.class);
         pacientes = mock(PacienteRepository.class);
+        agendamentos = mock(AgendamentoRepository.class);
         vinculos = mock(VinculoAssistencialRepository.class);
         participantes = mock(SessaoGrupoParticipanteRepository.class);
-        service = new AutorizacaoVinculoAssistencialService(escopo, pacientes, vinculos, participantes);
+        service = new AutorizacaoVinculoAssistencialService(
+                escopo, pacientes, agendamentos, vinculos, participantes);
 
         capsAd = new Usuario();
         capsAd.setUnidadeAtuacao(UnidadeAtuacao.CAPS_AD);
@@ -113,12 +119,18 @@ class AutorizacaoVinculoAssistencialServiceTests {
         profissional.setUnidadeAtuacao(UnidadeAtuacao.CAPS_AD);
 
         Agendamento origem = new Agendamento();
+        origem.setId(10L);
+        origem.setDataAgendamento(LocalDate.of(2026, 11, 10));
+        origem.setHoraAtendimento(LocalTime.of(9, 0));
         origem.setPaciente(pessoa);
         origem.setUsuario(profissional);
         origem.registrarUnidadeDeOrigem(profissional);
         // A origem assistencial existe, mas o estado canonico da raiz e incerto.
 
         Agendamento remarcado = new Agendamento();
+        remarcado.setId(11L);
+        remarcado.setDataAgendamento(LocalDate.of(2026, 11, 11));
+        remarcado.setHoraAtendimento(LocalTime.of(9, 0));
         remarcado.setPaciente(pessoa);
         remarcado.setUsuario(profissional);
         remarcado.registrarUnidadeDeOrigem(profissional);
@@ -135,10 +147,15 @@ class AutorizacaoVinculoAssistencialServiceTests {
         assertThrows(ResourceNotFoundException.class,
                 () -> service.validarHistoricoLocal(historico));
 
-        // Cadeia local valida segue acessivel apos os estados serem conhecidos.
-        origem.setSituacaoAtendimento(SituacaoAtendimento.AGENDADO);
+        origem.setSituacaoAtendimento(SituacaoAtendimento.REMARCADO_ORIGEM);
         assertDoesNotThrow(() -> service.validarAgendamentoLocal(remarcado));
         assertDoesNotThrow(() -> service.validarHistoricoLocal(historico));
+
+        when(agendamentos.existsByAgendamentoOriginal_IdAndIdNot(10L, 11L)).thenReturn(true);
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.validarAgendamentoLocal(remarcado));
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.validarHistoricoLocal(historico));
     }
 
     @Test

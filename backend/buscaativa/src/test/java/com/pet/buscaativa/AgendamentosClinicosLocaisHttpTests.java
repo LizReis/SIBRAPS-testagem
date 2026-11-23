@@ -230,6 +230,8 @@ class AgendamentosClinicosLocaisHttpTests extends SecurityTestSupport {
         vinculos.saveAndFlush(VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
 
         var original = agendamento(p, ad, LocalDate.of(2026, 12, 9), true);
+        original.setSituacaoAtendimento(SituacaoAtendimento.REMARCADO_ORIGEM);
+        agendamentos.saveAndFlush(original);
         var remarcado = agendamento(p, ad, LocalDate.of(2026, 12, 10), true);
         remarcado.setAgendamentoOriginal(original);
         agendamentos.saveAndFlush(remarcado);
