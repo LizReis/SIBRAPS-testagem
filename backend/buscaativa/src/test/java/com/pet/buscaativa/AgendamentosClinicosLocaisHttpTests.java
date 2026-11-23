@@ -2,6 +2,7 @@ package com.pet.buscaativa;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -202,6 +203,96 @@ class AgendamentosClinicosLocaisHttpTests extends SecurityTestSupport {
         var ids = new java.util.HashSet<Long>();
         payload.get("agendamentos").forEach(item -> ids.add(item.get("id").asLong()));
         assertEquals(java.util.Set.of(original.getId(), remarcado.getId()), ids);
+    }
+
+    /**
+     * A autorizacao de ESCRITA legada nao pode usar a nova lotacao atual de
+     * um profissional para acessar um agendamento que nasceu em outro CAPS.
+     */
+    @Test
+    void lotacaoAtualDoProfissionalNaoPermiteLerOuAlterarFatoDeOutroCaps()
+            throws Exception {
+        Paciente p = pessoa();
+        Usuario origemIi = usuario(UnidadeAtuacao.CAPS_II, TipoUsuario.PROFISSIONAL);
+        Usuario administradorAd = usuario(UnidadeAtuacao.CAPS_AD, TipoUsuario.ADMINISTRADOR);
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+        var fatoIi = agendamento(p, origemIi, LocalDate.of(2026, 12, 10), true);
+
+        // Mudanca posterior da unidade do profissional NAO reatribui fatos.
+        origemIi.setUnidadeAtuacao(UnidadeAtuacao.CAPS_AD);
+        usuarios.saveAndFlush(origemIi);
+
+        assertEquals(404, consultarAgendamentoLegado(fatoIi, administradorAd).getStatus());
+        assertEquals(404, alterarStatusLegado(fatoIi, administradorAd).getStatus());
+        assertEquals(SituacaoAtendimento.AGENDADO, agendamentos.findById(fatoIi.getId())
+                .orElseThrow().getSituacaoAtendimento());
+        assertEquals("CAPS_II", agendamentos.findById(fatoIi.getId())
+                .orElseThrow().getUnidadeOrigemChave());
+    }
+
+    @Test
+    void fatoSemOrigemNaoPodeSerAlteradoPeloVinculoNovo()
+            throws Exception {
+        Paciente p = pessoa();
+        Usuario administradorAd = usuario(UnidadeAtuacao.CAPS_AD, TipoUsuario.ADMINISTRADOR);
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+        var fatoAntigo = agendamento(p, administradorAd, LocalDate.of(2026, 12, 11), false);
+
+        assertEquals(404, consultarAgendamentoLegado(fatoAntigo, administradorAd).getStatus());
+        assertEquals(404, alterarStatusLegado(fatoAntigo, administradorAd).getStatus());
+        assertNull(agendamentos.findById(fatoAntigo.getId())
+                .orElseThrow().getUnidadeOrigemChave());
+        assertEquals(SituacaoAtendimento.AGENDADO, agendamentos.findById(fatoAntigo.getId())
+                .orElseThrow().getSituacaoAtendimento());
+    }
+
+    @Test
+    void remarcacaoLocalNaoPermiteEscritaSeCadeiaComecouEmOutroCaps()
+            throws Exception {
+        Paciente p = pessoa();
+        Usuario ad = usuario(UnidadeAtuacao.CAPS_AD, TipoUsuario.ADMINISTRADOR);
+        Usuario ii = usuario(UnidadeAtuacao.CAPS_II, TipoUsuario.PROFISSIONAL);
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+
+        var originalIi = agendamento(p, ii, LocalDate.of(2026, 12, 9), true);
+        var local = agendamento(p, ad, LocalDate.of(2026, 12, 10), true);
+        local.setAgendamentoOriginal(originalIi);
+        agendamentos.saveAndFlush(local);
+
+        assertEquals(404, consultarAgendamentoLegado(local, ad).getStatus());
+        assertEquals(404, alterarStatusLegado(local, ad).getStatus());
+        assertEquals("CAPS_AD", agendamentos.findById(local.getId())
+                .orElseThrow().getUnidadeOrigemChave());
+        assertEquals("CAPS_II", agendamentos.findById(originalIi.getId())
+                .orElseThrow().getUnidadeOrigemChave());
+    }
+
+    @Test
+    void fatoInteiramenteLocalPreservaAcessoLegadoDaUnidade() throws Exception {
+        Paciente p = pessoa();
+        Usuario ad = usuario(UnidadeAtuacao.CAPS_AD, TipoUsuario.ADMINISTRADOR);
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+        var fatoLocal = agendamento(p, ad, LocalDate.of(2026, 12, 11), true);
+
+        assertEquals(200, consultarAgendamentoLegado(fatoLocal, ad).getStatus());
+        assertEquals("CAPS_AD", agendamentos.findById(fatoLocal.getId())
+                .orElseThrow().getUnidadeOrigemChave());
+    }
+
+    private org.springframework.mock.web.MockHttpServletResponse consultarAgendamentoLegado(
+            Agendamento fato, Usuario ator) throws Exception {
+        return mvc.perform(get("/api/agendamentos/" + fato.getId())
+                .header("Authorization", "Bearer " + tokens.gerarToken(ator)))
+                .andReturn().getResponse();
+    }
+
+    private org.springframework.mock.web.MockHttpServletResponse alterarStatusLegado(
+            Agendamento fato, Usuario ator) throws Exception {
+        return mvc.perform(patch("/api/agendamentos/" + fato.getId() + "/status")
+                .param("novoStatus", "CANCELADO")
+                .param("version", String.valueOf(fato.getVersion()))
+                .header("Authorization", "Bearer " + tokens.gerarToken(ator)))
+                .andReturn().getResponse();
     }
 
     @Test

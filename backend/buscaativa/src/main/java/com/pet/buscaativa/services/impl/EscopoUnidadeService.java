@@ -184,8 +184,40 @@ public class EscopoUnidadeService {
         if (!usuarioPertenceAoEscopo(usuario)) throw new ResourceNotFoundException("Usuário não encontrado.");
     }
 
+    /**
+     * Barreira de escrita/leitura para agendamentos nas rotas LEGADAS.
+     *
+     * Se existe vinculo explicito, a identidade global e a lotacao atual
+     * do profissional nao autorizam alterar um fato de origem externa ou
+     * desconhecida. Exigir proveniencia local em TODA a cadeia original,
+     * inclusive para GET por ID, alteracao de status e correcao de frequencia.
+     *
+     * Pacientes ainda sem vinculos permanecem na regra de escopo antiga
+     * ate a migracao/revisao humana de seus registros. Nenhuma origem
+     * historica e reconstruida ou modificada neste verificador.
+     */
     public boolean agendamentoPertenceAoEscopo(Agendamento agendamento) {
-        return pacientePertenceAoEscopo(agendamento.getPaciente()) && usuarioPertenceAoEscopo(agendamento.getUsuario());
+        if (agendamento == null || agendamento.getPaciente() == null
+                || agendamento.getUsuario() == null
+                || !pacientePertenceAoEscopo(agendamento.getPaciente())
+                || !usuarioPertenceAoEscopo(agendamento.getUsuario())) return false;
+
+        Long pacienteId = agendamento.getPaciente().getId();
+        if (pacienteId == null) return false;
+        if (!vinculos.existsByPacienteId(pacienteId)) return true;
+
+        String unidade = ChaveUnidadeAssistencial.doUsuarioAtual(usuarioComUnidade());
+        var visitados = new java.util.HashSet<Long>();
+        Agendamento elo = agendamento;
+        while (elo != null) {
+            if (elo.getId() == null || !visitados.add(elo.getId())
+                    || elo.getPaciente() == null
+                    || !Objects.equals(elo.getPaciente().getId(), pacienteId)
+                    || !Objects.equals(elo.getUnidadeOrigemChave(), unidade))
+                return false;
+            elo = elo.getAgendamentoOriginal();
+        }
+        return true;
     }
 
     public void validarAgendamento(Agendamento agendamento) {
