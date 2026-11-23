@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
@@ -97,6 +97,7 @@ export class CadastroPaciente implements OnInit {
     this.vinculoExistenteConfirmado = true;
     this.erroGeral = null;
     this.errosPorCampo = {};
+    this.cdr.markForCheck();
   }
 
   pacienteForm = new FormGroup({
@@ -148,6 +149,7 @@ export class CadastroPaciente implements OnInit {
     private unidadeSaudeService: UnidadeSaudeService,
     private pacienteService: PacienteService,
     private profissionalService: ProfissionalService,
+    private readonly cdr: ChangeDetectorRef,
   ) {}
 
   ngOnInit(): void {

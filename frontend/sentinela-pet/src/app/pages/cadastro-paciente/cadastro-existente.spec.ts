@@ -102,6 +102,23 @@ describe('CadastroExistente', () => {
     expect(vinculacao).not.toHaveBeenCalled();
   });
 
+  it('renderiza resultado de resposta HTTP assincrona no Angular zoneless', async () => {
+    const resposta = new Subject<typeof dados>();
+    conferencia.mockReturnValueOnce(resposta.asObservable());
+    component.documentosForm.controls.cpf.setValue('12312312312');
+    component.conferir();
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.textContent).not.toContain(dados.nome);
+    resposta.next(dados);
+    resposta.complete();
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.textContent).toContain(dados.nome);
+    expect(component.identidade).toEqual(dados);
+    expect(vinculacao).not.toHaveBeenCalled();
+  });
+
   it('resultado atrasado nao autoriza confirmar documentos que mudaram', () => {
     const atraso = new Subject<typeof dados>();
     conferencia.mockReturnValueOnce(atraso.asObservable());

@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, EventEmitter, OnDestroy, Output } from '@angular/core';
+import { ChangeDetectorRef, Component, EventEmitter, OnDestroy, Output } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { merge, Subscription } from 'rxjs';
 
@@ -42,7 +42,10 @@ export class CadastroExistente implements OnDestroy {
   private vinculoAtual?: Subscription;
   private readonly alteracoes: Subscription;
 
-  constructor(private readonly cadastro: CadastroUnicoService) {
+  constructor(
+    private readonly cadastro: CadastroUnicoService,
+    private readonly cdr: ChangeDetectorRef,
+  ) {
     // Dados alterados invalidam a conferencia anterior. Um resultado antigo
     // jamais pode ser confirmado com documentos novos.
     this.alteracoes = merge(
@@ -55,6 +58,7 @@ export class CadastroExistente implements OnDestroy {
       this.documentosConsultados = null;
       this.confirmouIdentidade = false;
       this.erro = null;
+      this.cdr.markForCheck();
     });
   }
 
@@ -73,6 +77,7 @@ export class CadastroExistente implements OnDestroy {
     this.identidade = null;
     this.confirmouIdentidade = false;
     this.documentosConsultados = null;
+    this.cdr.markForCheck();
 
     if ((!cpf && !cns) || (cpf && cpf.length !== 11) || (cns && cns.length !== 15)) {
       this.erro = 'Informe um CPF de 11 dígitos ou CNS de 15 dígitos para conferir.';
@@ -89,10 +94,14 @@ export class CadastroExistente implements OnDestroy {
         this.buscando = false;
         if (!dados.nome || !dados.nomeMae || !dados.dataNascimento) {
           this.erro = 'Cadastro com dados incompletos. Solicite revisão cadastral.';
+          this.cdr.markForCheck();
           return;
         }
         this.identidade = dados;
         this.documentosConsultados = documentos;
+        // HttpClient em Angular zoneless nao notifica a deteccao de mudancas
+        // apenas porque uma subscription alterou propriedades do componente.
+        this.cdr.markForCheck();
       },
       error: (erro: HttpErrorResponse) => {
         this.buscando = false;
@@ -101,6 +110,7 @@ export class CadastroExistente implements OnDestroy {
           : erro.status === 422
             ? 'Os documentos não puderam ser conferidos. Revise os dados ou solicite correção cadastral.'
             : 'Não foi possível conferir o cadastro. Tente novamente.';
+        this.cdr.markForCheck();
       },
     });
   }
@@ -118,12 +128,14 @@ export class CadastroExistente implements OnDestroy {
       this.documentosConsultados = null;
       this.confirmouIdentidade = false;
       this.erro = 'Os documentos foram alterados. Faça uma nova conferência.';
+      this.cdr.markForCheck();
       return;
     }
 
     this.vinculando = true;
     this.erro = null;
     this.documentosForm.disable({ emitEvent: false });
+    this.cdr.markForCheck();
     this.vinculoAtual = this.cadastro.confirmarVinculo({
       ...this.documentosConsultados,
       nome: this.identidade.nome,
@@ -133,6 +145,7 @@ export class CadastroExistente implements OnDestroy {
       next: () => {
         this.vinculando = false;
         this.concluido = true;
+        this.cdr.markForCheck();
         this.vinculoConfirmado.emit();
       },
       error: (erro: HttpErrorResponse) => {
@@ -146,6 +159,7 @@ export class CadastroExistente implements OnDestroy {
         this.erro = erro.status === 422 || erro.status === 409 || erro.status === 404
           ? 'Vínculo não realizado. Confirme novamente os dados com a equipe.'
           : 'Não foi possível vincular à unidade. Confira sua conexão e tente a conferência novamente.';
+        this.cdr.markForCheck();
       },
     });
   }
