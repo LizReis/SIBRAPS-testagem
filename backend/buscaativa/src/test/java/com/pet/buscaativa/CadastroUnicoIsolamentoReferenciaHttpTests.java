@@ -114,6 +114,32 @@ class CadastroUnicoIsolamentoReferenciaHttpTests extends SecurityTestSupport {
     }
 
     @Test
+    void doisVinculosNaoLiberamCacheClinicoGlobalNasRotasAntigas() throws Exception {
+        UsfReferencia a = usf();
+        Paciente p = paciente(a, CapsEnum.CAPS_AD);
+        // No modelo antigo, as referencias territoriais bastariam para os
+        // dois atores lerem countFaltas/indicadores globais desta identidade.
+        vinculos.saveAndFlush(VinculoAssistencial.paraUsf(p, a));
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+        Usuario usfA = ator(UnidadeAtuacao.USF, a);
+        Usuario capsAd = ator(UnidadeAtuacao.CAPS_AD, null);
+
+        for (Usuario usuario : java.util.List.of(usfA, capsAd)) {
+            var detalhe = consultar(usuario, "/api/pacientes/" + p.getIdPublico());
+            assertEquals(404, detalhe.getStatus(),
+                    "Historico e indicadores globais nao sao clinica local comprobada.");
+            assertFalse(detalhe.getContentAsString().contains(p.getNome()));
+
+            var lista = consultar(usuario,
+                    "/api/pacientes/pesquisa?q=Identidade%20sintetica%20isolada");
+            assertEquals(200, lista.getStatus());
+            assertFalse(lista.getContentAsString().contains(p.getNome()));
+        }
+        assertEquals(7, pacientes.findById(p.getId()).orElseThrow().getCountFaltas(),
+                "A restricao de leitura nao pode recalcular nem sobrescrever dados legados.");
+    }
+
+    @Test
     void referenciaUsfNaoAutorizaLeituraDoPacienteVinculadoSomenteACaps()
             throws Exception {
         UsfReferencia a = usf();

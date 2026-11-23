@@ -10,18 +10,22 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import com.pet.buscaativa.entities.Agendamento;
+import com.pet.buscaativa.entities.ChaveUnidadeAssistencial;
 import com.pet.buscaativa.entities.GrupoTerapeutico;
 import com.pet.buscaativa.entities.Paciente;
 import com.pet.buscaativa.entities.SessaoGrupo;
 import com.pet.buscaativa.entities.Usuario;
+import com.pet.buscaativa.entities.VinculoAssistencial;
 import com.pet.buscaativa.entities.dto.PainelBuscaAtivaDTO.UnidadePainelDTO;
 import com.pet.buscaativa.entities.enums.CapsEnum;
 import com.pet.buscaativa.entities.enums.UnidadeAtuacao;
 import com.pet.buscaativa.repositories.UsuarioRepository;
+import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
 import com.pet.buscaativa.services.exceptions.ValidationException;
 
 import jakarta.persistence.criteria.Path;
+import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
 
 /** Escopo de dados independente das permissões funcionais de cada role. */
@@ -29,6 +33,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class EscopoUnidadeService {
     private final UsuarioRepository usuarioRepository;
+    private final VinculoAssistencialRepository vinculos;
 
     public Usuario usuarioLogado() {
         var auth = SecurityContextHolder.getContext().getAuthentication();
@@ -57,14 +62,52 @@ public class EscopoUnidadeService {
         usuarioComUnidade();
     }
 
+    /**
+     * Barreira conservadora de transicao para rotas clinicas LEGADAS.
+     *
+     * Pacientes ainda sem qualquer vinculo permanecem no filtro historico
+     * temporario. Quando ao menos um vinculo explicito existe, a referencia
+     * territorial deixa de ser suficiente: exigir vinculo da propria unidade
+     * e NEGAR se houver mais de uma unidade vinculada. Mesmo nesse caso
+     * mantemos o filtro territorial anterior como limite adicional, pois o
+     * prontuario global ainda nao foi dividido por unidade.
+     *
+     * Isso nao equivale ao corte final: pacientes legados sem vinculo e
+     * auditorias/relatorios especiais continuam exigindo migracao completa.
+     */
     public <T> Specification<T> specificationPaciente(String... caminho) {
         Usuario usuario = usuarioComUnidade();
+        String chaveLocal = ChaveUnidadeAssistencial.doUsuarioAtual(usuario);
         return (root, query, cb) -> {
             Path<?> paciente = root;
             for (String parte : caminho) paciente = paciente.get(parte);
-            return usuario.getUnidadeAtuacao() == UnidadeAtuacao.USF
+
+            var referenciaAnterior = usuario.getUnidadeAtuacao() == UnidadeAtuacao.USF
                     ? cb.equal(paciente.get("usfReferencia").get("id"), usuario.getUsfAtuacao().getId())
                     : cb.equal(paciente.get("capsReferencia"), CapsEnum.valueOf(usuario.getUnidadeAtuacao().name()));
+
+            var qualquer = query.subquery(Long.class);
+            Root<VinculoAssistencial> v1 = qualquer.from(VinculoAssistencial.class);
+            qualquer.select(v1.get("id")).where(cb.equal(v1.get("paciente").get("id"), paciente.get("id")));
+
+            var local = query.subquery(Long.class);
+            Root<VinculoAssistencial> v2 = local.from(VinculoAssistencial.class);
+            local.select(v2.get("id")).where(
+                    cb.equal(v2.get("paciente").get("id"), paciente.get("id")),
+                    cb.equal(v2.get("unidadeChave"), chaveLocal));
+
+            var outro = query.subquery(Long.class);
+            Root<VinculoAssistencial> v3 = outro.from(VinculoAssistencial.class);
+            outro.select(v3.get("id")).where(
+                    cb.equal(v3.get("paciente").get("id"), paciente.get("id")),
+                    cb.notEqual(v3.get("unidadeChave"), chaveLocal));
+
+            // Sem vinculos: manter legado, nao fazer backfill por referencia.
+            // Com vinculos: somente unidade local UNICA e ainda limitada
+            // pelo alcance clinico anterior; multiplas unidades falham fechadas.
+            var transicao = cb.or(cb.not(cb.exists(qualquer)),
+                    cb.and(cb.exists(local), cb.not(cb.exists(outro))));
+            return cb.and(referenciaAnterior, transicao);
         };
     }
 
@@ -90,10 +133,18 @@ public class EscopoUnidadeService {
     public boolean pacientePertenceAoEscopo(Paciente paciente) {
         Usuario usuario = usuarioComUnidade();
         if (paciente == null) return false;
-        return usuario.getUnidadeAtuacao() == UnidadeAtuacao.USF
+        boolean referenciaAnterior = usuario.getUnidadeAtuacao() == UnidadeAtuacao.USF
                 ? paciente.getUsfReferencia() != null
                     && Objects.equals(paciente.getUsfReferencia().getId(), usuario.getUsfAtuacao().getId())
                 : paciente.getCapsReferencia() == CapsEnum.valueOf(usuario.getUnidadeAtuacao().name());
+        if (!referenciaAnterior || paciente.getId() == null) return false;
+
+        // Mesma politica da Specification para evitar bypass por UUID ou
+        // acesso indireto a historico/agendamentos nos servicos legados.
+        if (!vinculos.existsByPacienteId(paciente.getId())) return true;
+        String chaveLocal = ChaveUnidadeAssistencial.doUsuarioAtual(usuario);
+        return vinculos.existsByPacienteIdAndUnidadeChave(paciente.getId(), chaveLocal)
+                && !vinculos.existsByPacienteIdAndUnidadeChaveNot(paciente.getId(), chaveLocal);
     }
 
     public boolean usuarioPertenceAoEscopo(Usuario alvo) {

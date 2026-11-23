@@ -24,6 +24,8 @@ public interface VinculoAssistencialRepository extends JpaRepository<VinculoAssi
     Optional<VinculoAssistencial> findByIdPublico(UUID idPublico);
     List<VinculoAssistencial> findByPacienteId(Long pacienteId);
     boolean existsByPacienteIdAndUnidadeChave(Long pacienteId, String unidadeChave);
+    boolean existsByPacienteId(Long pacienteId);
+    boolean existsByPacienteIdAndUnidadeChaveNot(Long pacienteId, String unidadeChave);
     /**
      * Serializa apenas solicitacoes da mesma identidade e unidade.
      * Nao modifica dados clinicos e deve ser chamado dentro de transacao.
