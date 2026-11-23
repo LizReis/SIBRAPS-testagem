@@ -130,6 +130,10 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
         assertEquals(c.pendenciaId(), leitura.pendenciaId());
         assertEquals(Decisao.APROVAR, leitura.decisao());
         assertEquals(MOTIVO_DECISAO, leitura.justificativa());
+        var historico = consultaDecisoes.listar(c.pacientePublico(), PageRequest.of(0, 10));
+        assertEquals(1, historico.getTotalElements());
+        assertEquals(id, historico.getContent().get(0).id());
+        assertEquals(Decisao.APROVAR, historico.getContent().get(0).decisao());
         assertNotNull(leitura.decididaEm());
         assertEquals(5, ConsultaDecisaoRevisaoProvenienciaService.Detalhe.class
                 .getRecordComponents().length);
@@ -190,6 +194,9 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
         var leitura = consultaDecisoes.detalhar(c.pacientePublico(), c.pendenciaId());
         assertEquals(Decisao.REJEITAR, leitura.decisao());
         assertEquals(MOTIVO_DECISAO, leitura.justificativa());
+        var historico = consultaDecisoes.listar(c.pacientePublico(), PageRequest.of(0, 10));
+        assertEquals(1, historico.getTotalElements());
+        assertEquals(id, historico.getContent().get(0).id());
         assertThrows(ResourceNotFoundException.class,
                 () -> fila.detalharPendente(c.pendenciaId()));
         assertTrue(fila.listarPendentes(PageRequest.of(0, 100)).getContent().stream()
@@ -227,6 +234,8 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
                 c.pacientePublico(), c.pendenciaId(), Decisao.REJEITAR, MOTIVO_DECISAO));
         assertThrows(ResourceNotFoundException.class,
                 () -> consultaDecisoes.detalhar(c.pacientePublico(), c.pendenciaId()));
+        assertEquals(0, consultaDecisoes.listar(c.pacientePublico(),
+                PageRequest.of(0, 10)).getTotalElements());
         assertEquals(0, jdbc.queryForObject(
                 "select count(*) from tb_decisao_revisao_proveniencia where pendencia_id=?",
                 Integer.class, c.pendenciaId()));
@@ -249,6 +258,8 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
         when(escopo.usuarioLogado()).thenReturn(profissional);
         assertThrows(AccessDeniedException.class,
                 () -> consultaDecisoes.detalhar(c.pacientePublico(), c.pendenciaId()));
+        assertThrows(AccessDeniedException.class,
+                () -> consultaDecisoes.listar(c.pacientePublico(), PageRequest.of(0, 10)));
 
         when(escopo.usuarioLogado()).thenReturn(c.administrador());
         assertThrows(ResourceNotFoundException.class,
@@ -257,6 +268,13 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
                 () -> consultaDecisoes.detalhar(null, c.pendenciaId()));
         assertThrows(ResourceNotFoundException.class,
                 () -> consultaDecisoes.detalhar(c.pacientePublico(), null));
+        assertThrows(IllegalArgumentException.class,
+                () -> consultaDecisoes.listar(c.pacientePublico(), PageRequest.of(0, 101)));
+        assertThrows(IllegalArgumentException.class,
+                () -> consultaDecisoes.listar(c.pacientePublico(),
+                        PageRequest.of(0, 10, org.springframework.data.domain.Sort.by("unidadeChave"))));
+        assertThrows(ResourceNotFoundException.class,
+                () -> consultaDecisoes.listar(null, PageRequest.of(0, 10)));
 
         assertEquals("PENDENTE", jdbc.queryForObject(
                 "select estado from tb_pendencia_revisao_proveniencia where id=?",

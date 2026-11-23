@@ -297,3 +297,11 @@
 - Esta entrega adiciona `ConsultaDecisaoRevisaoProvenienciaService`, via **interna e read-only**, separada da fila aberta. A consulta recebe paciente publico e ticket, exige perfil ADMINISTRADOR da unidade autenticada, vinculo assistencial explicito e correspondencia do paciente/unidade do evento persistido antes de devolver um DTO minimo com decisao, justificativa e data.
 - Testes integrados com H2 verificam aprovacao, rejeicao, acesso negado a outra unidade, recusa de perfil profissional, ticket inexistente e preservacao de dados originais. Nao expor detalhes de revisor nem entidades JPA na resposta.
 - **CI deste commit ainda nao validada**. Nenhuma nova rota HTTP, painel de Relatorios, migration, reatribuicao automatica ou atualizacao de indicadores foi ativada. A etapa 6.3 continua em preparacao para posterior corte coordenado.
+ 
+## Historico paginado das decisoes V13 — 23/11/2026
+
+- GitHub Actions #45235446569, commit `72014ffe5e2d114753233a1899b9e6e0a3f9f005`: **SUCCESS**, 1.238 testes Maven, 12 de concorrencia, 28 Angular direcionados e build Angular aprovados.
+- A leitura individual das decisoes esta validada, restrita ao administrador da unidade e ao paciente com vinculo assistencial local explicito.
+- Esta entrega acrescenta leitura paginada somente de eventos V13, com consulta JPA por `pacienteId` E `unidadeChave`, ordenacao cronologica com desempate por UUID, pagina de ate 100 resultados e DTO minimo (sem expor entidades ou identidade do revisor).
+- A lista esta separada da fila de pendencias abertas. Decisoes de outra unidade sobre a mesma identidade global permanecem invisiveis. A ausencia de vinculo/role administrativo nao deve consultar registros de outras unidades. Nao ha novas rotas HTTP, tela, migration nem qualquer alteracao de indicadores ou de fatos clinicos.
+- Testes JPA e H2 comparam CAPS AD, CAPS II, CAPS I, outro paciente, aprovacao, rejeicao, permissao profissional e limites de paginacao. **CI deste novo commit ainda pendente.** A Etapa 6.3 ainda precisa de reconciliacao humana dos registros antigos e integracao coordenada do modelo clinico por vinculo.

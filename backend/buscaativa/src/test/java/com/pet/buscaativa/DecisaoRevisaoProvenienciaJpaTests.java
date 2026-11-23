@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 import org.hibernate.annotations.Immutable;
 import org.hibernate.envers.Audited;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -73,6 +74,18 @@ class DecisaoRevisaoProvenienciaJpaTests extends SecurityTestSupport {
 
         var localAd = decisoes.findByPendenciaIdAndPacienteIdAndUnidadeChave(
                 ticketAd, p.getId(), "CAPS_AD").orElseThrow();
+        var historicoAd = decisoes.listarPorPacienteEUnidade(
+                p.getId(), "CAPS_AD", PageRequest.of(0, 10));
+        var historicoIi = decisoes.listarPorPacienteEUnidade(
+                p.getId(), "CAPS_II", PageRequest.of(0, 10));
+        assertEquals(1, historicoAd.getTotalElements());
+        assertEquals(idAd, historicoAd.getContent().get(0).getId());
+        assertEquals(1, historicoIi.getTotalElements());
+        assertEquals(idIi, historicoIi.getContent().get(0).getId());
+        assertEquals(0, decisoes.listarPorPacienteEUnidade(
+                p.getId(), "CAPS_I", PageRequest.of(0, 10)).getTotalElements());
+        assertEquals(0, decisoes.listarPorPacienteEUnidade(
+                p.getId() + 999L, "CAPS_AD", PageRequest.of(0, 10)).getTotalElements());
         assertEquals(idAd, localAd.getId());
         assertEquals(DecisaoRevisaoProveniencia.Decisao.REJEITAR, localAd.getDecisao());
         assertEquals("CAPS_AD", localAd.getUnidadeChave());
@@ -117,7 +130,8 @@ class DecisaoRevisaoProvenienciaJpaTests extends SecurityTestSupport {
         var metodos = Arrays.stream(DecisaoRevisaoProvenienciaRepository.class.getDeclaredMethods())
                 .map(m -> m.getName()).collect(Collectors.toSet());
         assertEquals(Set.of("findByIdAndPacienteIdAndUnidadeChave",
-                "findByPendenciaIdAndPacienteIdAndUnidadeChave"), metodos);
+                "findByPendenciaIdAndPacienteIdAndUnidadeChave",
+                "listarPorPacienteEUnidade"), metodos);
         assertTrue(DecisaoRevisaoProveniencia.class.isAnnotationPresent(Immutable.class));
         assertTrue(DecisaoRevisaoProveniencia.class.isAnnotationPresent(Audited.class));
         assertEquals(0, Arrays.stream(DecisaoRevisaoProveniencia.class.getDeclaredMethods())
