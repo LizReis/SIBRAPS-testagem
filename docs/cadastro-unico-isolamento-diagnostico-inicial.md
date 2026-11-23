@@ -334,3 +334,10 @@
 - Os contratos internos da fila aberta geral (`FilaRevisaoProvenienciaService`) e da consulta de pendencias abertas por paciente (`ConsultaPendenciasRevisaoProvenienciaService`) ja restringiam o tamanho da pagina, mas ainda recebiam ordenacao arbitraria via `Pageable`.
 - Esta entrega impede `Sort` externo nas duas consultas, mantendo a ordem do banco: solicitacao mais recente primeiro com desempate por identificador. Testes confirmam falha antes da consulta JPA para pagina de tamanho excessivo e para pagina com sort externo (incluindo atributo de escopo).
 - A listagem de decisoes V13 ja possuia esta mesma restricao. Nao ha nova rota HTTP, interface, migration, alteracao clinica ou inferencia de proveniencia. **CI desta entrega pendente.**
+
+## Regressao da paginacao da fila aberta com decisao concluida — 23/11/2026
+
+- CI #45245510661 / commit `e1b16fff7f501b58fec8b7e0fea421b94149a60e`: **SUCCESS**. Maven 1.241/1.241; concorrencia 12/12, testes Angular direcionados 28/28 e build de producao aprovados.
+- O teste integrado acrescentado cria cinco tickets abertos para um paciente do CAPS AD, um ticket ja decidido na mesma unidade e um ticket aberto no CAPS II. A fila administrativa deve devolver paginas 2+2+1, sem duplicatas, sem exibir a decisao V13 ou a outra unidade; paginas repetidas devem permanecer ordenadas com desempate por UUID.
+- A consulta por paciente deve reportar contagem somente dos cinco tickets ainda abertos e a decisao V13 precisa preservar a solicitacao V12 `PENDENTE`, sem reabrir a fila.
+- **CI deste teste ainda pendente.** Somente classe de teste e diario tecnico foram alterados; nenhum endpoint, tela, migration, origem assistencial, indicador ou regra clinica foi modificado.

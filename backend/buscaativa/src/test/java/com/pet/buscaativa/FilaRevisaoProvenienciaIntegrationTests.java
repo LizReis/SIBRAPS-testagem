@@ -180,6 +180,78 @@ class FilaRevisaoProvenienciaIntegrationTests extends SecurityTestSupport {
     }
 
     @Test
+    void paginacaoDaFilaAbertaMantemContagemEIsolamentoAposDecisaoV13() {
+        Paciente p = pessoa();
+        Usuario ad = administrador(UnidadeAtuacao.CAPS_AD, null);
+        Usuario ii = administrador(UnidadeAtuacao.CAPS_II, null);
+        var vinculoAd = vinculos.saveAndFlush(
+                VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+        var vinculoIi = vinculos.saveAndFlush(
+                VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_II));
+
+        java.util.Set<UUID> abertas = new java.util.HashSet<>();
+        for (int i = 0; i < 5; i++) {
+            UUID ticket = UUID.randomUUID();
+            abertas.add(ticket);
+            pendencia(ticket, vinculoAd, ad, 610L + i);
+        }
+        UUID decididaAd = UUID.randomUUID();
+        UUID abertaIi = UUID.randomUUID();
+        pendencia(decididaAd, vinculoAd, ad, 620L);
+        pendencia(abertaIi, vinculoIi, ii, 621L);
+
+        jdbc.update("""
+                insert into tb_decisao_revisao_proveniencia(
+                    id, pendencia_id, paciente_id, unidade_chave, decisao,
+                    justificativa, revisor_id, perfil_revisor, decidida_em)
+                values (?, ?, ?, 'CAPS_AD', 'REJEITAR',
+                    'Revisao sintetica concluida e registrada na trilha auditavel',
+                    ?, 'ADMINISTRADOR', CURRENT_TIMESTAMP)
+                """, UUID.randomUUID(), decididaAd, p.getId(), ad.getId());
+
+        when(escopo.usuarioLogado()).thenReturn(ad);
+        java.util.List<UUID> leitura = new java.util.ArrayList<>();
+        for (int indice = 0; indice < 3; indice++) {
+            var pagina = fila.listarPendentes(PageRequest.of(indice, 2));
+            assertEquals(5, pagina.getTotalElements());
+            assertEquals(3, pagina.getTotalPages());
+            assertEquals(indice == 2 ? 1 : 2, pagina.getNumberOfElements());
+            leitura.addAll(pagina.getContent().stream().map(x -> x.id()).toList());
+        }
+        assertEquals(5, leitura.size());
+        assertEquals(abertas, new java.util.HashSet<>(leitura));
+        assertFalse(leitura.contains(decididaAd));
+        assertFalse(leitura.contains(abertaIi));
+        assertTrue(fila.listarPendentes(PageRequest.of(3, 2)).isEmpty());
+        assertThrows(ResourceNotFoundException.class, () -> fila.detalharPendente(decididaAd));
+
+        java.util.List<UUID> repetida = new java.util.ArrayList<>();
+        for (int indice = 0; indice < 3; indice++)
+            repetida.addAll(fila.listarPendentes(PageRequest.of(indice, 2))
+                    .getContent().stream().map(x -> x.id()).toList());
+        assertEquals(leitura, repetida);
+
+        var porPaciente = consultasPaciente
+                .findByPacienteIdAndUnidadeChaveAndEstadoOrderBySolicitadoEmDesc(
+                        p.getId(), "CAPS_AD", Estado.PENDENTE, PageRequest.of(0, 2));
+        assertEquals(5, porPaciente.getTotalElements());
+        assertEquals(3, porPaciente.getTotalPages());
+
+        when(escopo.usuarioLogado()).thenReturn(ii);
+        var filaIi = fila.listarPendentes(PageRequest.of(0, 2));
+        assertEquals(1, filaIi.getTotalElements());
+        assertEquals(abertaIi, filaIi.getContent().get(0).id());
+        assertThrows(ResourceNotFoundException.class, () -> fila.detalharPendente(decididaAd));
+
+        assertEquals("PENDENTE", jdbc.queryForObject(
+                "select estado from tb_pendencia_revisao_proveniencia where id=?",
+                String.class, decididaAd));
+        assertEquals(1, jdbc.queryForObject(
+                "select count(*) from tb_decisao_revisao_proveniencia where pendencia_id=?",
+                Integer.class, decididaAd));
+    }
+
+    @Test
     void duasUsfsDistintasNaoCompartilhamFilaMesmoComMesmaIdentidade() {
         Paciente p = pessoa();
         UsfReferencia usfA = new UsfReferencia();
