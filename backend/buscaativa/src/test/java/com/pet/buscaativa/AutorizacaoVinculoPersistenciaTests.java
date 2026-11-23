@@ -122,6 +122,49 @@ class AutorizacaoVinculoPersistenciaTests extends SecurityTestSupport {
     }
 
     @Test
+    void leituraInternaNaoDevolveIdsDeRemarcacoesComRaizExternaOuIncerta() {
+        Paciente pessoa = pessoa();
+        Usuario ad = profissional(UnidadeAtuacao.CAPS_AD);
+        Usuario ii = profissional(UnidadeAtuacao.CAPS_II);
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(pessoa, UnidadeAtuacao.CAPS_AD));
+
+        Agendamento raizExterna = novoAgendamento(pessoa, ii);
+        Agendamento remarcacaoMista = novoAgendamento(pessoa, ad);
+        remarcacaoMista.setAgendamentoOriginal(raizExterna);
+        agendas.saveAndFlush(remarcacaoMista);
+        HistoricoPaciente historicoMisto = novoHistorico(remarcacaoMista);
+
+        Agendamento semOrigem = new Agendamento();
+        semOrigem.setPaciente(pessoa);
+        semOrigem.setUsuario(ad);
+        semOrigem.setSituacaoAtendimento(SituacaoAtendimento.AGENDADO);
+        semOrigem.setDataAgendamento(LocalDate.of(2026, 12, 22));
+        semOrigem.setHoraAtendimento(LocalTime.of(9, 30));
+        semOrigem = agendas.saveAndFlush(semOrigem);
+        Agendamento filhoComRaizIncerta = novoAgendamento(pessoa, ad);
+        filhoComRaizIncerta.setAgendamentoOriginal(semOrigem);
+        agendas.saveAndFlush(filhoComRaizIncerta);
+        HistoricoPaciente historicoIncerto = novoHistorico(filhoComRaizIncerta);
+
+        Agendamento fatoLocal = novoAgendamento(pessoa, ad);
+        HistoricoPaciente historicoLocal = novoHistorico(fatoLocal);
+
+        autenticar(ad);
+        var ids = leitura.consultarIdentificadoresLocais(pessoa.getIdPublico());
+        assertEquals(java.util.List.of(fatoLocal.getId()), ids.agendamentos());
+        assertEquals(java.util.List.of(historicoLocal.getId()), ids.historicos());
+        assertFalse(ids.agendamentos().contains(remarcacaoMista.getId()));
+        assertFalse(ids.agendamentos().contains(filhoComRaizIncerta.getId()));
+        assertFalse(ids.historicos().contains(historicoMisto.getId()));
+        assertFalse(ids.historicos().contains(historicoIncerto.getId()));
+        assertNull(agendas.findById(semOrigem.getId())
+                .orElseThrow().getUnidadeOrigemChave());
+        assertEquals("CAPS_II", agendas.findById(raizExterna.getId())
+                .orElseThrow().getUnidadeOrigemChave());
+        assertEquals(1L, pacientes.count());
+    }
+
+    @Test
     void consultaInternaSemVinculoNaoRetornaIdsMesmoComReferenciaCadastral() {
         Paciente pessoa = pessoa(); // referencia CAPS II nao constitui vinculo
         Usuario ii = profissional(UnidadeAtuacao.CAPS_II);
