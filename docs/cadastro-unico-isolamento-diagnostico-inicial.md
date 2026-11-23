@@ -312,3 +312,10 @@
 - Esta entrega e apenas uma ampliacao de testes JPA com H2 sintetico: um paciente com cinco decisoes CAPS AD e outra CAPS II, alem de outro paciente no CAPS AD. A consulta do mesmo paciente e unidade em paginas de tamanho dois deve apresentar 2+2+1 registros, sem duplicatas, vazamentos, trocas de ordem entre leituras ou contaminacao das contagens de cada unidade/paciente.
 - A consulta V13 ja ordena por instante da decisao e UUID para desempate estavel. Nenhuma logica clinica, migration, permissao, contrato HTTP, tela ou dado real foi modificado.
 - **CI da nova cobertura ainda pendente**. O modelo definitivo de indicadores por vinculo e a reconciliacao clinica de fatos historicos antigos continuam etapas separadas e nao podem ser ativados sem validacao e autorizacao.
+
+## Validacao cruzada do historico auditavel em USFs — 23/11/2026
+
+- GitHub Actions #45240996399 (commit `067a8a85204624b7eab40e96346dec02258f9152`): **SUCCESS**; 1.239 testes Maven, 12 testes de concorrencia, 28 testes Angular direcionados e build Angular de producao aprovados.
+- Esta entrega amplia a cobertura JPA e de autorizacao interna: **a mesma identidade de paciente** tem vinculos em duas USFs diferentes (`USF:<id>`), com duas decisoes V13 na unidade A e uma na unidade B. Cada administrador deve consultar somente seus eventos, inclusive ao paginar por paciente e buscar por ticket; um administrador de terceira USF sem vinculo nao pode consultar nenhuma decisao.
+- Testes usam H2 sintetico, a `ConsultaDecisaoRevisaoProvenienciaService` real e os repositorios reais; apenas a identidade do usuario autenticado e simulada. Eventos V12/V13 devem permanecer intactos em todas as consultas.
+- **CI desta entrega ainda nao validada.** Nao ha alteracao de codigo de producao, migrations, regras clinicas, endpoints HTTP ou interface de Relatorios. Historicos clinicos e indicadores antigos continuam fora do corte definitivo da etapa 6.3.

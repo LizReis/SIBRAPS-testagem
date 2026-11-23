@@ -18,17 +18,24 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.pet.buscaativa.entities.ChaveUnidadeAssistencial;
 import com.pet.buscaativa.entities.DecisaoRevisaoProveniencia;
 import com.pet.buscaativa.entities.Paciente;
 import com.pet.buscaativa.entities.Usuario;
+import com.pet.buscaativa.entities.UsfReferencia;
 import com.pet.buscaativa.entities.VinculoAssistencial;
 import com.pet.buscaativa.entities.enums.TipoUsuario;
 import com.pet.buscaativa.entities.enums.UnidadeAtuacao;
 import com.pet.buscaativa.repositories.DecisaoRevisaoProvenienciaRepository;
 import com.pet.buscaativa.repositories.PacienteRepository;
 import com.pet.buscaativa.repositories.UsuarioRepository;
+import com.pet.buscaativa.repositories.UsfReferenciaRepository;
 import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
 import com.pet.buscaativa.services.impl.SusApiAdapter;
+import com.pet.buscaativa.services.impl.EscopoUnidadeService;
+import com.pet.buscaativa.services.impl.ConsultaDecisaoRevisaoProvenienciaService;
+import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
+import static org.mockito.Mockito.when;
 
 /**
  * Mapeamento JPA e consultas V13 em H2 de TESTE e apenas com fixtures
@@ -39,9 +46,12 @@ import com.pet.buscaativa.services.impl.SusApiAdapter;
 @Transactional
 class DecisaoRevisaoProvenienciaJpaTests extends SecurityTestSupport {
     @MockitoBean SusApiAdapter susApi;
+    @MockitoBean EscopoUnidadeService escopo;
 
     @Autowired PacienteRepository pacientes;
     @Autowired UsuarioRepository usuarios;
+    @Autowired UsfReferenciaRepository usfs;
+    @Autowired ConsultaDecisaoRevisaoProvenienciaService consultaDecisoes;
     @Autowired VinculoAssistencialRepository vinculos;
     @Autowired DecisaoRevisaoProvenienciaRepository decisoes;
     @Autowired JdbcTemplate jdbc;
@@ -200,6 +210,106 @@ class DecisaoRevisaoProvenienciaJpaTests extends SecurityTestSupport {
                 outro.getId(), "CAPS_AD", PageRequest.of(0, 2));
         assertEquals(1, outroPaciente.getTotalElements());
         assertEquals(idOutro, outroPaciente.getContent().get(0).getId());
+    }
+
+    @Test
+    void decisoesEmDuasUsfsNaoVazamMesmoComIdentidadeGlobalCompartilhada() {
+        Paciente p = new Paciente();
+        p.setNome("Paciente sintetico com duas USFs");
+        p.setCpf(UUID.randomUUID().toString());
+        p.setCns(UUID.randomUUID().toString());
+        p = pacientes.saveAndFlush(p);
+
+        UsfReferencia usfA = new UsfReferencia();
+        usfA.setNomeUsf("USF A sintetica");
+        usfA.setCnes(UUID.randomUUID().toString());
+        usfA = usfs.saveAndFlush(usfA);
+        UsfReferencia usfB = new UsfReferencia();
+        usfB.setNomeUsf("USF B sintetica");
+        usfB.setCnes(UUID.randomUUID().toString());
+        usfB = usfs.saveAndFlush(usfB);
+        UsfReferencia usfSemVinculo = new UsfReferencia();
+        usfSemVinculo.setNomeUsf("USF sem vinculo sintetica");
+        usfSemVinculo.setCnes(UUID.randomUUID().toString());
+        usfSemVinculo = usfs.saveAndFlush(usfSemVinculo);
+
+        Usuario adminA = new Usuario();
+        adminA.setNome("Admin USF A sintetico");
+        adminA.setEmail(UUID.randomUUID() + "@test.local");
+        adminA.setSenha("somente-teste");
+        adminA.setTipoUsuario(TipoUsuario.ADMINISTRADOR);
+        adminA.setUnidadeAtuacao(UnidadeAtuacao.USF);
+        adminA.setUsfAtuacao(usfA);
+        adminA = usuarios.saveAndFlush(adminA);
+
+        Usuario adminB = new Usuario();
+        adminB.setNome("Admin USF B sintetico");
+        adminB.setEmail(UUID.randomUUID() + "@test.local");
+        adminB.setSenha("somente-teste");
+        adminB.setTipoUsuario(TipoUsuario.ADMINISTRADOR);
+        adminB.setUnidadeAtuacao(UnidadeAtuacao.USF);
+        adminB.setUsfAtuacao(usfB);
+        adminB = usuarios.saveAndFlush(adminB);
+
+        Usuario adminSemVinculo = new Usuario();
+        adminSemVinculo.setNome("Admin USF sem vinculo sintetico");
+        adminSemVinculo.setEmail(UUID.randomUUID() + "@test.local");
+        adminSemVinculo.setSenha("somente-teste");
+        adminSemVinculo.setTipoUsuario(TipoUsuario.ADMINISTRADOR);
+        adminSemVinculo.setUnidadeAtuacao(UnidadeAtuacao.USF);
+        adminSemVinculo.setUsfAtuacao(usfSemVinculo);
+        adminSemVinculo = usuarios.saveAndFlush(adminSemVinculo);
+
+        var vinculoA = vinculos.saveAndFlush(VinculoAssistencial.paraUsf(p, usfA));
+        var vinculoB = vinculos.saveAndFlush(VinculoAssistencial.paraUsf(p, usfB));
+        assertNotEquals(vinculoA.getUnidadeChave(), vinculoB.getUnidadeChave());
+        assertEquals(ChaveUnidadeAssistencial.daUsf(usfA), vinculoA.getUnidadeChave());
+        assertEquals(ChaveUnidadeAssistencial.daUsf(usfB), vinculoB.getUnidadeChave());
+
+        UUID ticketA1 = UUID.randomUUID();
+        UUID ticketA2 = UUID.randomUUID();
+        UUID ticketB = UUID.randomUUID();
+        UUID idA1 = UUID.randomUUID();
+        UUID idA2 = UUID.randomUUID();
+        UUID idB = UUID.randomUUID();
+        fixture(ticketA1, idA1, vinculoA, adminA, 601L, "APROVAR");
+        fixture(ticketA2, idA2, vinculoA, adminA, 602L, "REJEITAR");
+        fixture(ticketB, idB, vinculoB, adminB, 603L, "REJEITAR");
+
+        when(escopo.usuarioLogado()).thenReturn(adminA);
+        var paginaA0 = consultaDecisoes.listar(p.getIdPublico(), PageRequest.of(0, 1));
+        var paginaA1 = consultaDecisoes.listar(p.getIdPublico(), PageRequest.of(1, 1));
+        assertEquals(2, paginaA0.getTotalElements());
+        assertEquals(2, paginaA0.getTotalPages());
+        assertEquals(2, paginaA1.getTotalElements());
+        Set<UUID> idsA = Set.of(paginaA0.getContent().get(0).id(),
+                paginaA1.getContent().get(0).id());
+        assertEquals(Set.of(idA1, idA2), idsA);
+        assertEquals(idA1, consultaDecisoes.detalhar(p.getIdPublico(), ticketA1).id());
+        assertThrows(ResourceNotFoundException.class,
+                () -> consultaDecisoes.detalhar(p.getIdPublico(), ticketB));
+
+        when(escopo.usuarioLogado()).thenReturn(adminB);
+        var paginaB = consultaDecisoes.listar(p.getIdPublico(), PageRequest.of(0, 10));
+        assertEquals(1, paginaB.getTotalElements());
+        assertEquals(idB, paginaB.getContent().get(0).id());
+        assertEquals(idB, consultaDecisoes.detalhar(p.getIdPublico(), ticketB).id());
+        assertThrows(ResourceNotFoundException.class,
+                () -> consultaDecisoes.detalhar(p.getIdPublico(), ticketA2));
+
+        when(escopo.usuarioLogado()).thenReturn(adminSemVinculo);
+        assertThrows(ResourceNotFoundException.class,
+                () -> consultaDecisoes.listar(p.getIdPublico(), PageRequest.of(0, 10)));
+        assertThrows(ResourceNotFoundException.class,
+                () -> consultaDecisoes.detalhar(p.getIdPublico(), ticketB));
+
+        // Nem a leitura do historico nem a paginacao modificam registros V13.
+        assertEquals(3, jdbc.queryForObject(
+                "select count(*) from tb_decisao_revisao_proveniencia where paciente_id=?",
+                Integer.class, p.getId()));
+        assertEquals(3, jdbc.queryForObject(
+                "select count(*) from tb_pendencia_revisao_proveniencia where paciente_id=? and estado='PENDENTE'",
+                Integer.class, p.getId()));
     }
 
     @Test
