@@ -39,6 +39,7 @@ import com.pet.buscaativa.services.impl.EscopoUnidadeService;
 import com.pet.buscaativa.services.impl.RegistroDecisaoRevisaoProvenienciaService;
 import com.pet.buscaativa.services.impl.ConsultaDecisaoRevisaoProvenienciaService;
 import com.pet.buscaativa.services.impl.FilaRevisaoProvenienciaService;
+import com.pet.buscaativa.services.impl.ResumoUnidadeRevisaoProvenienciaService;
 import com.pet.buscaativa.services.impl.PreparacaoDecisaoRevisaoProvenienciaService;
 import com.pet.buscaativa.services.impl.SolicitacaoRevisaoProvenienciaService;
 import com.pet.buscaativa.services.impl.SusApiAdapter;
@@ -75,6 +76,7 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
     @Autowired RegistroDecisaoRevisaoProvenienciaService decisoes;
     @Autowired ConsultaDecisaoRevisaoProvenienciaService consultaDecisoes;
     @Autowired FilaRevisaoProvenienciaService fila;
+    @Autowired ResumoUnidadeRevisaoProvenienciaService resumoUnidade;
     @Autowired PreparacaoDecisaoRevisaoProvenienciaService preparacao;
     @Autowired PendenciaRevisaoProvenienciaRepository pendenciasAbertas;
     @Autowired JdbcTemplate jdbc;
@@ -236,6 +238,48 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
                 """, Integer.class, id, c.pendenciaId()));
         assertEquals("CAPS_AD", agendamentos.findById(c.agendamentoId())
                 .orElseThrow().getUnidadeOrigemChave());
+        assertEquals(SituacaoAtendimento.AGENDADO, agendamentos.findById(c.agendamentoId())
+                .orElseThrow().getSituacaoAtendimento());
+    }
+
+    @Test
+    void resumoDaUnidadeRefleteDecisaoRealSemRecontarOuAlterarOutraUnidade() {
+        Cenario c = criarCenario();
+        var antes = resumoUnidade.consultar();
+        assertTrue(antes.pendenciasAbertas() >= 1);
+
+        Usuario administradorIi = administrador(UnidadeAtuacao.CAPS_II);
+        when(escopo.usuarioLogado()).thenReturn(administradorIi);
+        var antesIi = resumoUnidade.consultar();
+
+        when(escopo.usuarioLogado()).thenReturn(c.administrador());
+        UUID decisaoId = decisoes.registrar(
+                c.pacientePublico(), c.pendenciaId(), Decisao.REJEITAR, MOTIVO_DECISAO);
+        var depois = resumoUnidade.consultar();
+
+        // Usar deltas porque outros cenarios H2 desta classe podem
+        // persistir eventos antes deste teste, em qualquer ordem.
+        assertEquals(antes.pendenciasAbertas() - 1, depois.pendenciasAbertas());
+        assertEquals(antes.decisoesRegistradas() + 1, depois.decisoesRegistradas());
+        assertThrows(ResourceNotFoundException.class,
+                () -> fila.detalharPendente(c.pendenciaId()));
+
+        assertThrows(ValidationException.class,
+                () -> decisoes.registrar(c.pacientePublico(), c.pendenciaId(),
+                        Decisao.APROVAR, MOTIVO_DECISAO));
+        var aposTentativaDuplicada = resumoUnidade.consultar();
+        assertEquals(depois, aposTentativaDuplicada);
+
+        when(escopo.usuarioLogado()).thenReturn(administradorIi);
+        assertEquals(antesIi, resumoUnidade.consultar());
+
+        assertEquals(1, jdbc.queryForObject("""
+                select count(*) from tb_decisao_revisao_proveniencia_aud
+                where id=? and pendencia_id=? and decisao='REJEITAR' and revtype=0
+                """, Integer.class, decisaoId, c.pendenciaId()));
+        assertEquals("PENDENTE", jdbc.queryForObject(
+                "select estado from tb_pendencia_revisao_proveniencia where id=?",
+                String.class, c.pendenciaId()));
         assertEquals(SituacaoAtendimento.AGENDADO, agendamentos.findById(c.agendamentoId())
                 .orElseThrow().getSituacaoAtendimento());
     }

@@ -384,3 +384,10 @@
 - A nova contagem administrativa por unidade passou nos cenarios reais H2 para CAPS e USFs. Esta entrega acrescenta testes unitarios isolados de `ResumoUnidadeRevisaoProvenienciaService` para conferir que o papel de ADMINISTRADOR e a unidade configurada sao verificados antes de qualquer consulta ao repositorio.
 - Os cenarios cobrem administrador CAPS, administrador de USF com ID persistido, PROFISSIONAL, RECEPCAO, usuario ausente, unidade nao configurada, USF sem identificador e contrato `@Transactional(readOnly=true)`.
 - Nenhum endpoint, tela, dado clinico, algoritmo, migration ou componente de producao foi alterado. **CI da nova cobertura pendente.** Esta protecao nao substitui o corte coordenado do cadastro unico nem a reconciliacao humana de historicos antigos.
+
+## Teste de ponta a ponta interno: contadores e decisao humana V13 — 23/11/2026
+
+- GitHub Actions #45258666810, commit `a1b7782acf05f35469643ccc77862ad9413f0f37`: **SUCCESS**. Maven 1.252 testes, concorrencia 12/12, 28 testes Angular direcionados e build de producao aprovados.
+- Nova regressao de integracao H2 em `DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests` conecta os servicos **reais** de solicitacao, decisao e contadores por unidade. A decisao REJEITAR deve reduzir em um a contagem de tickets abertos no CAPS AD e aumentar em um as decisoes auditadas, sem tocar a contagem de CAPS II.
+- A tentativa de deliberar novamente sobre o mesmo ticket deve falhar sem modificar qualquer contador. Confirmar ainda uma unica revisao Envers, solicitacao V12 imutavel `PENDENTE` e atendimento original sem alteracao clinica. Os testes comparam deltas para nao depender da ordem de execucao entre classes H2.
+- **CI desta entrega ainda pendente**. Nenhum codigo de producao, endpoint, interface, migration, atribuicao retroativa de unidade ou algoritmo clinico foi modificado. A etapa 6.3 segue aguardando reconciliacao humana do legado e migracao auditada dos indicadores por vinculo antes de qualquer corte de telas e APIs.
