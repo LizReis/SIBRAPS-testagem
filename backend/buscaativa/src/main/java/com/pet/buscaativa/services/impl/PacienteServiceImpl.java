@@ -60,6 +60,7 @@ public class PacienteServiceImpl implements PacienteService{
 
     private final UsuarioRepository usuarioRepository;
     private final EscopoUnidadeService escopoUnidadeService;
+    private final VinculoAssistencialService vinculoAssistencialService;
     private final com.pet.buscaativa.services.AuditoriaBuscaAtivaService auditoriaBuscaAtiva;
 
 
@@ -104,6 +105,17 @@ public class PacienteServiceImpl implements PacienteService{
 
         pacienteSalvar = pacienteRepository.save(pacienteSalvar);
 
+        if (pacienteDTO.idPublico() == null) {
+            // O cadastro de uma NOVA identidade solicita explicitamente
+            // acompanhamento na unidade do usuario autenticado. Criar apenas
+            // esse vinculo, na mesma transacao: nunca associar uma unidade a
+            // partir de usfReferencia/capsReferencia (referencias territoriais).
+            // Caso a vinculacao falhe, o cadastro tambem deve ser revertido.
+            vinculoAssistencialService.vincularExplicitamente(pacienteSalvar.getIdPublico());
+        }
+        // Atualizar identidade existente nao altera/cria vinculos assistenciais.
+        // Consultas clinicas legadas permanecem isoladas pelo modelo atual
+        // ate a migracao coordenada de todos os filtros e indicadores.
         return pacienteMapper.toPacienteDTO(pacienteSalvar);
 
     }
