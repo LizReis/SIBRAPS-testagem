@@ -27,7 +27,7 @@ import com.pet.buscaativa.services.impl.PreparacaoDecisaoRevisaoProvenienciaServ
 
 /**
  * Propostas de decisao sem persistencia: autorizacao pelo contexto real
- * do ator e consulta por ID+unidade+PENDENTE (nenhuma rota clinica e ativada).
+ * do ator e consulta por ID+unidade+PENDENTE sem decisao V13 (nenhuma rota clinica e ativada).
  */
 class PreparacaoDecisaoRevisaoProvenienciaServiceTests {
     private final UUID id = UUID.randomUUID();
@@ -57,7 +57,7 @@ class PreparacaoDecisaoRevisaoProvenienciaServiceTests {
         when(ticket.getId()).thenReturn(id);
         when(ticket.getUnidadeChave()).thenReturn(unidade);
         when(ticket.getEstado()).thenReturn(Estado.PENDENTE);
-        when(fila.findByIdAndUnidadeChaveAndEstado(id, unidade, Estado.PENDENTE))
+        when(fila.findAbertaByIdAndUnidadeChaveAndEstado(id, unidade, Estado.PENDENTE))
                 .thenReturn(Optional.of(ticket));
     }
 
@@ -74,7 +74,7 @@ class PreparacaoDecisaoRevisaoProvenienciaServiceTests {
         assertEquals(id, rascunho.pendenciaId());
         assertEquals("CAPS_AD", rascunho.unidadeChave());
         assertEquals(Decisao.APROVAR, rascunho.decisaoProposta());
-        verify(fila).findByIdAndUnidadeChaveAndEstado(id, "CAPS_AD", Estado.PENDENTE);
+        verify(fila).findAbertaByIdAndUnidadeChaveAndEstado(id, "CAPS_AD", Estado.PENDENTE);
         verifyNoMoreInteractions(fila);
     }
 
@@ -84,7 +84,7 @@ class PreparacaoDecisaoRevisaoProvenienciaServiceTests {
         assertThrows(ResourceNotFoundException.class,
                 () -> service.preparar(id, Decisao.REJEITAR,
                         "Registro deve retornar para nova conferencia documental."));
-        verify(fila).findByIdAndUnidadeChaveAndEstado(id, "CAPS_II", Estado.PENDENTE);
+        verify(fila).findAbertaByIdAndUnidadeChaveAndEstado(id, "CAPS_II", Estado.PENDENTE);
         verifyNoInteractions(politica);
     }
 
@@ -137,10 +137,25 @@ class PreparacaoDecisaoRevisaoProvenienciaServiceTests {
         PendenciaRevisaoProveniencia forjado = mock(PendenciaRevisaoProveniencia.class);
         when(forjado.getId()).thenReturn(id);
         when(forjado.getUnidadeChave()).thenReturn("CAPS_II");
-        when(fila.findByIdAndUnidadeChaveAndEstado(id, "CAPS_AD", Estado.PENDENTE))
+        when(fila.findAbertaByIdAndUnidadeChaveAndEstado(id, "CAPS_AD", Estado.PENDENTE))
                 .thenReturn(Optional.of(forjado));
         assertThrows(ResourceNotFoundException.class,
                 () -> service.preparar(id, Decisao.REJEITAR, "Justificativa registrada."));
+        verifyNoInteractions(politica);
+    }
+
+    @Test
+    void ticketJaDecididoNaoProduzRascunhoNemValidaJustificativa() {
+        administrador(UnidadeAtuacao.CAPS_AD);
+        // Repo de tickets ABERTOS retorna vazio se existe decisao V13;
+        // estado PENDENTE na solicitacao V12 nao reabre a revisao.
+        when(fila.findAbertaByIdAndUnidadeChaveAndEstado(
+                id, "CAPS_AD", Estado.PENDENTE)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.preparar(id, Decisao.APROVAR,
+                        "Documentacao previamente analisada pela unidade."));
+        verify(fila).findAbertaByIdAndUnidadeChaveAndEstado(
+                id, "CAPS_AD", Estado.PENDENTE);
         verifyNoInteractions(politica);
     }
 
@@ -151,7 +166,7 @@ class PreparacaoDecisaoRevisaoProvenienciaServiceTests {
         when(invalida.getId()).thenReturn(id);
         when(invalida.getUnidadeChave()).thenReturn("CAPS_AD");
         // A consulta obrigatoriamente solicita PENDENTE; estado nulo ou incoerente falha fechado.
-        when(fila.findByIdAndUnidadeChaveAndEstado(id, "CAPS_AD", Estado.PENDENTE))
+        when(fila.findAbertaByIdAndUnidadeChaveAndEstado(id, "CAPS_AD", Estado.PENDENTE))
                 .thenReturn(Optional.of(invalida));
         assertThrows(ResourceNotFoundException.class,
                 () -> service.preparar(id, Decisao.APROVAR, "Conferir estado."));

@@ -58,9 +58,12 @@ public class PreparacaoDecisaoRevisaoProvenienciaService {
         if (decisao == null)
             throw new IllegalArgumentException("Decisao proposta obrigatoria.");
 
-        // A busca e sempre pelo ID + unidade do servidor + estado pendente.
+        // Uma solicitacao V12 e imutavel e permanece PENDENTE mesmo
+        // depois da decisao V13. Preparar SOMENTE tickets sem decisao;
+        // a consulta bruta e reservada ao comando que verifica duplicatas.
         PendenciaRevisaoProveniencia pendencia =
-                fila.findByIdAndUnidadeChaveAndEstado(pendenciaId, unidade, Estado.PENDENTE)
+                fila.findAbertaByIdAndUnidadeChaveAndEstado(
+                        pendenciaId, unidade, Estado.PENDENTE)
                     .orElseThrow(PreparacaoDecisaoRevisaoProvenienciaService::naoEncontrada);
         if (!Objects.equals(pendenciaId, pendencia.getId())
                 || !Objects.equals(unidade, pendencia.getUnidadeChave())

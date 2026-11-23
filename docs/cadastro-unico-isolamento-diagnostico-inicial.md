@@ -319,3 +319,11 @@
 - Esta entrega amplia a cobertura JPA e de autorizacao interna: **a mesma identidade de paciente** tem vinculos em duas USFs diferentes (`USF:<id>`), com duas decisoes V13 na unidade A e uma na unidade B. Cada administrador deve consultar somente seus eventos, inclusive ao paginar por paciente e buscar por ticket; um administrador de terceira USF sem vinculo nao pode consultar nenhuma decisao.
 - Testes usam H2 sintetico, a `ConsultaDecisaoRevisaoProvenienciaService` real e os repositorios reais; apenas a identidade do usuario autenticado e simulada. Eventos V12/V13 devem permanecer intactos em todas as consultas.
 - **CI desta entrega ainda nao validada.** Nao ha alteracao de codigo de producao, migrations, regras clinicas, endpoints HTTP ou interface de Relatorios. Historicos clinicos e indicadores antigos continuam fora do corte definitivo da etapa 6.3.
+
+## Impedir novo rascunho de decisao sobre ticket ja deliberado — 23/11/2026
+
+- GitHub Actions #45243164043 (commit `57693b08ffde131fb28cd22595726b6dfb7d9815`): **SUCCESS**; 1.240 testes backend, 12 testes de concorrencia, 28 testes Angular direcionados e build de producao aprovados. A falha anterior de captura de variavel em lambda foi corrigida.
+- Revisao de seguranca identificou que `PreparacaoDecisaoRevisaoProvenienciaService` usava a consulta bruta V12 por `PENDENTE`. Como V12 permanece imutavel mesmo apos decisao V13, o rascunho poderia continuar sendo preparado depois da deliberacao, ainda que o comando de persistencia impedisse a segunda decisao.
+- Esta entrega substitui apenas a consulta da **preparacao de rascunho** pela busca de ticket aberto sem evento de decisao V13; preserva a consulta bruta do comando transacional para manter o tratamento explicito de duplicidade.
+- Testes unitarios cobrem busca escopada e recusa de ticket ja decidido. Testes reais de integracao H2 exercitam preparacao antes de APROVAR/REJEITAR e recusa do rascunho apos decisao, mantendo V12 e V13 imutaveis.
+- **CI desta alteracao ainda pendente**. Nao foram ativados endpoints, painel, migracoes, correcao de proveniencia clinica nem compartilhamento entre unidades.

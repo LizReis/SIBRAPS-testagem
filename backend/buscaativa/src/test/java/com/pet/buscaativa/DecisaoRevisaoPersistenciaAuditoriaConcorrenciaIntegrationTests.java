@@ -39,6 +39,7 @@ import com.pet.buscaativa.services.impl.EscopoUnidadeService;
 import com.pet.buscaativa.services.impl.RegistroDecisaoRevisaoProvenienciaService;
 import com.pet.buscaativa.services.impl.ConsultaDecisaoRevisaoProvenienciaService;
 import com.pet.buscaativa.services.impl.FilaRevisaoProvenienciaService;
+import com.pet.buscaativa.services.impl.PreparacaoDecisaoRevisaoProvenienciaService;
 import com.pet.buscaativa.services.impl.SolicitacaoRevisaoProvenienciaService;
 import com.pet.buscaativa.services.impl.SusApiAdapter;
 
@@ -74,6 +75,7 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
     @Autowired RegistroDecisaoRevisaoProvenienciaService decisoes;
     @Autowired ConsultaDecisaoRevisaoProvenienciaService consultaDecisoes;
     @Autowired FilaRevisaoProvenienciaService fila;
+    @Autowired PreparacaoDecisaoRevisaoProvenienciaService preparacao;
     @Autowired PendenciaRevisaoProvenienciaRepository pendenciasAbertas;
     @Autowired JdbcTemplate jdbc;
 
@@ -120,6 +122,10 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
     @Test
     void decisaoRealGeraAuditoriaEnversEConservaPendenciaEAtendimento() {
         Cenario c = criarCenario();
+        assertEquals(c.pendenciaId(), preparacao.preparar(
+                c.pendenciaId(),
+                PreparacaoDecisaoRevisaoProvenienciaService.Decisao.APROVAR,
+                MOTIVO_DECISAO).pendenciaId());
 
         UUID id = decisoes.registrar(
                 c.pacientePublico(), c.pendenciaId(), Decisao.APROVAR, MOTIVO_DECISAO);
@@ -160,6 +166,10 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
         // mas deixa de aparecer nas duas consultas de tickets abertos.
         assertThrows(ResourceNotFoundException.class,
                 () -> fila.detalharPendente(c.pendenciaId()));
+        assertThrows(ResourceNotFoundException.class,
+                () -> preparacao.preparar(c.pendenciaId(),
+                        PreparacaoDecisaoRevisaoProvenienciaService.Decisao.APROVAR,
+                        MOTIVO_DECISAO));
         assertTrue(fila.listarPendentes(PageRequest.of(0, 100)).getContent().stream()
                 .noneMatch(p -> p.id().equals(c.pendenciaId())));
         assertTrue(pendenciasAbertas.findByIdAndPacienteIdAndUnidadeChave(
@@ -181,6 +191,10 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
     void rejeicaoRealRetiraPendenciaDaFilaAbertaSemApagarTrilhaOuFatoClinico() {
         Cenario c = criarCenario();
         assertEquals(c.pendenciaId(), fila.detalharPendente(c.pendenciaId()).id());
+        assertEquals(c.pendenciaId(), preparacao.preparar(
+                c.pendenciaId(),
+                PreparacaoDecisaoRevisaoProvenienciaService.Decisao.REJEITAR,
+                MOTIVO_DECISAO).pendenciaId());
         assertEquals(1, pendenciasAbertas
                 .findByPacienteIdAndUnidadeChaveAndEstadoOrderBySolicitadoEmDesc(
                         c.pacienteId(), "CAPS_AD",
@@ -199,6 +213,10 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
         assertEquals(id, historico.getContent().get(0).id());
         assertThrows(ResourceNotFoundException.class,
                 () -> fila.detalharPendente(c.pendenciaId()));
+        assertThrows(ResourceNotFoundException.class,
+                () -> preparacao.preparar(c.pendenciaId(),
+                        PreparacaoDecisaoRevisaoProvenienciaService.Decisao.APROVAR,
+                        MOTIVO_DECISAO));
         assertTrue(fila.listarPendentes(PageRequest.of(0, 100)).getContent().stream()
                 .noneMatch(p -> p.id().equals(c.pendenciaId())));
         assertTrue(pendenciasAbertas.findByIdAndPacienteIdAndUnidadeChave(
