@@ -412,3 +412,11 @@
 - A revisao da classe `OrigemClinicaPreflight` encontrou um **falso negativo de prontidao**: quando os agendamentos antigos tinham um profissional atualmente lotado em unidade e os historicos tinham fontes do mesmo paciente, `necessitaRevisaoHistorica()` retornava `false`, apesar de o preflight V8 nao ter evidencias de unidade historica.
 - Correcao **somente diagnostica e fail-closed**: havendo agendamentos ou historicos legados, a triagem exige comprovacao/revisao posterior, mesmo sem outras inconsistencias detectadas. Nenhum atendimento foi reclassificado; nenhuma origem e inferida nem persistida. A ausencia de fatos ainda pode resultar em `false`.
 - Testes novos e ampliados caracterizam o caso V8 com todos os usuarios configurados e com fontes integrais, alem da base sem fatos. Nao muda tabela, migration, relatorio clinico oficial, endpoint, autorizacao ou indicador assistencial. **CI desta alteracao ainda pendente.**
+
+## Triagem V8: sessoes realizadas tambem exigem revisao de unidade historica — 23/11/2026
+
+- CI #45269797416 no commit `570848f983dad99653e55094667d49034f5552cd`: **SUCCESS**, 1.254 testes backend, matriz de concorrencia, 28 testes Angular direcionados e build Angular aprovados.
+- O preflight `OrigemClinicaPreflight` registrava sessoes REALIZADAS sem responsavel, mas nao contava o total de sessoes realizadas, permitindo falso negativo quando havia **apenas sessao antiga com responsavel identificado**, sem agendamento ou historico individual. A identidade do responsavel nao prova a unidade assistencial da epoca.
+- Adicionada a contagem agregada `sessoesRealizadasTotais`, sempre em SELECT, ao relatorio de preflight legado. O sinal `necessitaRevisaoHistorica` passa a exigir evidencia humana quando existir qualquer sessao realizada, ainda que responsavel esteja confirmado. Nao foi atribuida origem historica.
+- Novo teste puro caracteriza sessao como unico fato legado; teste H2 cria grupo e sessao realizados sinteticos com responsavel sem historico individual, verifica contagem, sinal de revisao e snapshot identico pre/post triagem. Testes anteriores de construcao do record foram atualizados.
+- **CI deste novo commit pendente.** Nenhuma migration, comando clinico, backend de atendimento, painel, autorizacao operacional ou indicador assistencial foi alterado.

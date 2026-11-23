@@ -28,18 +28,21 @@ public final class OrigemClinicaPreflight {
             long historicosAssociadosASessaoRealizadaComResponsavelRegistrado,
             long historicosSemFonteDireta,
             long historicosComFonteDePacienteInconsistente,
-            long sessoesRealizadasSemResponsavelConfirmado
+            long sessoesRealizadasSemResponsavelConfirmado,
+            long sessoesRealizadasTotais
     ) {
         /**
          * Este preflight opera sobre o esquema V8 e NAO consulta prova
          * historica de unidade. Mesmo quando ha indicio pela lotacao atual
          * e a fonte pertence ao mesmo paciente, nao ha garantia de origem.
          * Por seguranca, qualquer fato legado exige revisao/prova externa
-         * antes do corte; lista vazia pode ser considerada sem risco por
-         * ausencia de fatos a atribuir.
+         * antes do corte, inclusive sessao realizada com responsavel
+         * identificado e sem historico individual associado. Uma lista
+         * sem fatos pode ser considerada sem risco por ausencia de atribuicoes.
          */
         public boolean necessitaRevisaoHistorica() {
             return agendamentosTotais > 0 || historicosTotais > 0
+                    || sessoesRealizadasTotais > 0
                     || agendamentosSemIndicioDaUnidade > 0
                     || historicosSemFonteDireta > 0
                     || historicosComFonteDePacienteInconsistente > 0
@@ -104,6 +107,11 @@ public final class OrigemClinicaPreflight {
                              and p.paciente_id = h.paciente_id
                        ))
                 """);
+        // Contar TODAS as sessoes legadas realizadas: um responsavel
+        // historico conhecido prova quem atendeu, NAO qual era a unidade.
+        // Uma sessao pode existir sem historico individual associado.
+        long sessoesRealizadas = contar(jdbc,
+                "select count(*) from tb_sessao_grupo where status = 'REALIZADA'");
         long sessoesSemAutor = contar(jdbc, """
                 select count(*) from tb_sessao_grupo s
                 where s.status = 'REALIZADA'
@@ -113,7 +121,7 @@ public final class OrigemClinicaPreflight {
         return new Relatorio(
                 agendamentos, agendamentosComIndicio, agendamentos - agendamentosComIndicio,
                 historicos, historiasAgendamento, historiasGrupo, semFonte,
-                inconsistentes, sessoesSemAutor);
+                inconsistentes, sessoesSemAutor, sessoesRealizadas);
     }
 
     private static long contar(JdbcTemplate jdbc, String sql) {
