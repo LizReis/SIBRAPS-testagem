@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
@@ -36,6 +37,7 @@ import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
 import com.pet.buscaativa.services.exceptions.ValidationException;
 import com.pet.buscaativa.services.impl.EscopoUnidadeService;
 import com.pet.buscaativa.services.impl.RegistroDecisaoRevisaoProvenienciaService;
+import com.pet.buscaativa.services.impl.ConsultaDecisaoRevisaoProvenienciaService;
 import com.pet.buscaativa.services.impl.FilaRevisaoProvenienciaService;
 import com.pet.buscaativa.services.impl.SolicitacaoRevisaoProvenienciaService;
 import com.pet.buscaativa.services.impl.SusApiAdapter;
@@ -70,6 +72,7 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
     @Autowired AgendamentoRepository agendamentos;
     @Autowired SolicitacaoRevisaoProvenienciaService solicitacoes;
     @Autowired RegistroDecisaoRevisaoProvenienciaService decisoes;
+    @Autowired ConsultaDecisaoRevisaoProvenienciaService consultaDecisoes;
     @Autowired FilaRevisaoProvenienciaService fila;
     @Autowired PendenciaRevisaoProvenienciaRepository pendenciasAbertas;
     @Autowired JdbcTemplate jdbc;
@@ -122,6 +125,14 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
                 c.pacientePublico(), c.pendenciaId(), Decisao.APROVAR, MOTIVO_DECISAO);
 
         assertNotNull(id);
+        var leitura = consultaDecisoes.detalhar(c.pacientePublico(), c.pendenciaId());
+        assertEquals(id, leitura.id());
+        assertEquals(c.pendenciaId(), leitura.pendenciaId());
+        assertEquals(Decisao.APROVAR, leitura.decisao());
+        assertEquals(MOTIVO_DECISAO, leitura.justificativa());
+        assertNotNull(leitura.decididaEm());
+        assertEquals(5, ConsultaDecisaoRevisaoProvenienciaService.Detalhe.class
+                .getRecordComponents().length);
         assertEquals(1, jdbc.queryForObject("""
                 select count(*) from tb_decisao_revisao_proveniencia
                 where id=? and pendencia_id=? and paciente_id=?
@@ -176,6 +187,9 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
                 c.pacientePublico(), c.pendenciaId(), Decisao.REJEITAR, MOTIVO_DECISAO);
 
         assertNotNull(id);
+        var leitura = consultaDecisoes.detalhar(c.pacientePublico(), c.pendenciaId());
+        assertEquals(Decisao.REJEITAR, leitura.decisao());
+        assertEquals(MOTIVO_DECISAO, leitura.justificativa());
         assertThrows(ResourceNotFoundException.class,
                 () -> fila.detalharPendente(c.pendenciaId()));
         assertTrue(fila.listarPendentes(PageRequest.of(0, 100)).getContent().stream()
@@ -211,12 +225,45 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
 
         assertThrows(ResourceNotFoundException.class, () -> decisoes.registrar(
                 c.pacientePublico(), c.pendenciaId(), Decisao.REJEITAR, MOTIVO_DECISAO));
+        assertThrows(ResourceNotFoundException.class,
+                () -> consultaDecisoes.detalhar(c.pacientePublico(), c.pendenciaId()));
         assertEquals(0, jdbc.queryForObject(
                 "select count(*) from tb_decisao_revisao_proveniencia where pendencia_id=?",
                 Integer.class, c.pendenciaId()));
         assertEquals("PENDENTE", jdbc.queryForObject(
                 "select estado from tb_pendencia_revisao_proveniencia where id=?",
                 String.class, c.pendenciaId()));
+    }
+
+    @Test
+    void somenteAdministradorDaUnidadeComVinculoConsultaDecisaoRegistrada() {
+        Cenario c = criarCenario();
+        UUID decisaoId = decisoes.registrar(
+                c.pacientePublico(), c.pendenciaId(), Decisao.REJEITAR, MOTIVO_DECISAO);
+        assertEquals(decisaoId,
+                consultaDecisoes.detalhar(c.pacientePublico(), c.pendenciaId()).id());
+
+        Usuario profissional = new Usuario();
+        profissional.setTipoUsuario(TipoUsuario.PROFISSIONAL);
+        profissional.setUnidadeAtuacao(UnidadeAtuacao.CAPS_AD);
+        when(escopo.usuarioLogado()).thenReturn(profissional);
+        assertThrows(AccessDeniedException.class,
+                () -> consultaDecisoes.detalhar(c.pacientePublico(), c.pendenciaId()));
+
+        when(escopo.usuarioLogado()).thenReturn(c.administrador());
+        assertThrows(ResourceNotFoundException.class,
+                () -> consultaDecisoes.detalhar(c.pacientePublico(), UUID.randomUUID()));
+        assertThrows(ResourceNotFoundException.class,
+                () -> consultaDecisoes.detalhar(null, c.pendenciaId()));
+        assertThrows(ResourceNotFoundException.class,
+                () -> consultaDecisoes.detalhar(c.pacientePublico(), null));
+
+        assertEquals("PENDENTE", jdbc.queryForObject(
+                "select estado from tb_pendencia_revisao_proveniencia where id=?",
+                String.class, c.pendenciaId()));
+        assertEquals(1, jdbc.queryForObject(
+                "select count(*) from tb_decisao_revisao_proveniencia where id=?",
+                Integer.class, decisaoId));
     }
 
     @Test
