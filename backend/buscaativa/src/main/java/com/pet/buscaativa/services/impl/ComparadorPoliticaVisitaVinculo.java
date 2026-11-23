@@ -57,8 +57,14 @@ public final class ComparadorPoliticaVisitaVinculo {
             }
         }
 
-        boolean necessario = politicaExistente.necessaria(
-                locais, diagnostico.ultimaPresencaComprovada().orElse(null));
-        return Optional.of(necessario);
+        return compararAgendaComprovada(locais, diagnostico, politicaExistente);
+    }
+
+    static Optional<Boolean> compararAgendaComprovada(List<Agendamento> locais,
+            DiagnosticoFaltasConsecutivasVinculoService.Resultado diagnostico,
+            PoliticaVisitaDomiciliar politicaExistente) {
+        if (!diagnostico.podeAvaliarSequencia()) return Optional.empty();
+        return Optional.of(politicaExistente.necessaria(
+                locais, diagnostico.ultimaPresencaComprovada().orElse(null)));
     }
 }

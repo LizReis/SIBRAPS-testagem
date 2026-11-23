@@ -63,11 +63,20 @@ public class LinhaDoTempoFrequenciasVinculoService {
         return analisar(autorizacao.exigirVinculoLocal(pacienteId));
     }
 
-    // Usado pelo diagnóstico da unidade e pelo ensaio interno sobre vínculos persistidos.
+    record Evidencias(Diagnostico diagnostico, List<Agendamento> agenda,
+            List<SessaoGrupoParticipante> participacoes, boolean agendaLocalInconclusiva) {}
+
     Diagnostico analisar(VinculoAssistencial vinculo) {
+        return examinar(vinculo, false).diagnostico();
+    }
+
+    Evidencias examinar(VinculoAssistencial vinculo, boolean incluirReservas) {
         Long pacienteId = vinculo.getPaciente().getId();
         String unidade = vinculo.getUnidadeChave();
         List<Evento> eventos = new ArrayList<>();
+        List<Agendamento> agenda = new ArrayList<>();
+        List<SessaoGrupoParticipante> sessoes = new ArrayList<>();
+        boolean agendaLocalInconclusiva = false;
         long agendamentosSemOrigem = 0;
         long gruposSemOrigem = 0;
         long inconsistentes = 0;
@@ -80,11 +89,13 @@ public class LinhaDoTempoFrequenciasVinculoService {
                   and (a.unidadeOrigemChave = :unidade or a.unidadeOrigemChave is null
                        or trim(a.unidadeOrigemChave) = '')
                   and (a.migracaoPendente = true or a.migracaoPendente is null or a.situacaoReserva is null
-                       or a.frequenciaAssistencial is null or a.frequenciaAssistencial in :frequencias)
+                       or a.frequenciaAssistencial is null or a.frequenciaAssistencial in :frequencias
+                       or (:incluirReservas = true and a.unidadeOrigemChave = :unidade))
                 """, Agendamento.class)
                 .setParameter("paciente", pacienteId)
                 .setParameter("unidade", unidade)
                 .setParameter("frequencias", frequencias)
+                .setParameter("incluirReservas", incluirReservas)
                 .getResultList();
 
         for (Agendamento a : agendamentos) {
@@ -93,6 +104,14 @@ public class LinhaDoTempoFrequenciasVinculoService {
                             || agendaRepositorio.existsByAgendamentoOriginal_IdAndIdNot(
                                     original.getId(), sucessor.getId()));
             boolean origemAusente = AvaliacaoProvenienciaClinica.origemAusente(a.getUnidadeOrigemChave());
+            if (incluirReservas && unidade.equals(a.getUnidadeOrigemChave())) {
+                if (origem == AvaliacaoProvenienciaClinica.Situacao.COMPROVADA) {
+                    agenda.add(a);
+                } else {
+                    agendaLocalInconclusiva = true;
+                }
+                if (!AvaliacaoProvenienciaClinica.frequenciaIndividualEmAnalise(a)) continue;
+            }
             if (origemAusente || origem == AvaliacaoProvenienciaClinica.Situacao.SEM_ORIGEM_COMPROVADA) {
                 agendamentosSemOrigem++;
                 if (!origemAusente) agendamentosLocaisPendentes++;
@@ -116,17 +135,24 @@ public class LinhaDoTempoFrequenciasVinculoService {
                        or s.unidadeOrigemChave is null or trim(s.unidadeOrigemChave) = ''
                        or g.unidadeOrigemChave is null or trim(g.unidadeOrigemChave) = '')
                   and (s.status = :realizada or s.status is null
-                       or p.statusPresenca is null or p.statusPresenca in :frequencias)
+                       or p.statusPresenca is null or p.statusPresenca in :frequencias
+                       or (:incluirReservas = true and s.unidadeOrigemChave = :unidade))
                 """, SessaoGrupoParticipante.class)
                 .setParameter("paciente", pacienteId)
                 .setParameter("unidade", unidade)
                 .setParameter("realizada", StatusSessaoGrupo.REALIZADA)
+                .setParameter("incluirReservas", incluirReservas)
                 .setParameter("frequencias", List.of(StatusPresencaGrupo.PRESENTE, StatusPresencaGrupo.FALTOU))
                 .getResultList();
 
         for (SessaoGrupoParticipante p : participacoes) {
             var sessao = p.getSessaoGrupo();
             var origem = AvaliacaoProvenienciaClinica.origemSessao(sessao);
+            if (incluirReservas && unidade.equals(sessao.getUnidadeOrigemChave())) {
+                if (origem == AvaliacaoProvenienciaClinica.Situacao.COMPROVADA) sessoes.add(p);
+                if (sessao.getStatus() != null && sessao.getStatus() != StatusSessaoGrupo.REALIZADA
+                        && p.getStatusPresenca() == StatusPresencaGrupo.NAO_REGISTRADA) continue;
+            }
             if (origem == AvaliacaoProvenienciaClinica.Situacao.SEM_ORIGEM_COMPROVADA) {
                 gruposSemOrigem++;
             } else if (origem == AvaliacaoProvenienciaClinica.Situacao.INCONSISTENTE
@@ -143,7 +169,8 @@ public class LinhaDoTempoFrequenciasVinculoService {
         eventos.sort(Comparator.comparing(Evento::ocorridoEm)
                 .thenComparingInt(e -> e.fonte() == Fonte.ATENDIMENTO_INDIVIDUAL ? 0 : 1)
                 .thenComparing(Evento::registroId));
-        return new Diagnostico(List.copyOf(eventos), agendamentosSemOrigem, gruposSemOrigem,
+        var diagnostico = new Diagnostico(List.copyOf(eventos), agendamentosSemOrigem, gruposSemOrigem,
                 inconsistentes, agendamentosLocaisPendentes);
+        return new Evidencias(diagnostico, List.copyOf(agenda), List.copyOf(sessoes), agendaLocalInconclusiva);
     }
 }

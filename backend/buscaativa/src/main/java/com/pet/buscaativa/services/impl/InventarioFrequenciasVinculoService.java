@@ -37,7 +37,10 @@ public class InventarioFrequenciasVinculoService {
 
     @Transactional(readOnly = true)
     public Inventario inventariar(UUID pacienteId) {
-        var diagnostico = linhaDoTempo.analisar(pacienteId);
+        return inventariar(linhaDoTempo.analisar(pacienteId));
+    }
+
+    static Inventario inventariar(Diagnostico diagnostico) {
         return new Inventario(
                 contar(diagnostico, Fonte.ATENDIMENTO_INDIVIDUAL, true),
                 contar(diagnostico, Fonte.ATENDIMENTO_INDIVIDUAL, false),

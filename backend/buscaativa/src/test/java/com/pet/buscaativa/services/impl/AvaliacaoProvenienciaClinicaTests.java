@@ -127,6 +127,19 @@ class AvaliacaoProvenienciaClinicaTests {
     }
 
     @Test
+    void cicloEntreElosDaMesmaUnidadeInterrompeAvaliacao() {
+        var primeiro = agendamento(1, 10, capsAd, true);
+        var segundo = sucessor(2, 11, primeiro);
+        primeiro.setAgendamentoOriginal(segundo);
+        primeiro.setSituacaoAtendimento(SituacaoAtendimento.REMARCADO_ORIGEM);
+        segundo.setSituacaoAtendimento(SituacaoAtendimento.REMARCADO_ORIGEM);
+
+        assertEquals(AvaliacaoProvenienciaClinica.Situacao.INCONSISTENTE, verificar(segundo));
+        assertEquals(primeiro, segundo.getAgendamentoOriginal());
+        assertEquals(segundo, primeiro.getAgendamentoOriginal());
+    }
+
+    @Test
     void origemAntigaAusentePermaneceSemComprovacaoMesmoComCadeiaIrregular() {
         var raiz = agendamento(1, 10, capsAd, false);
         var filho = sucessor(2, 11, raiz);

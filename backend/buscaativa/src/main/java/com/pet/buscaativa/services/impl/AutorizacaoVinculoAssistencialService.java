@@ -60,6 +60,17 @@ public class AutorizacaoVinculoAssistencialService {
                 .orElseThrow(AutorizacaoVinculoAssistencialService::pacienteNaoEncontrado);
     }
 
+    /** Resolve o identificador diagnóstico já restrito à identidade e à unidade autenticada. */
+    @Transactional(readOnly = true)
+    VinculoAssistencial exigirVinculoIdentificado(UUID pacienteIdPublico, UUID vinculoIdPublico) {
+        escopo.validarUnidadeConfigurada();
+        String unidade = ChaveUnidadeAssistencial.doUsuarioAtual(escopo.usuarioLogado());
+        if (pacienteIdPublico == null || vinculoIdPublico == null) throw pacienteNaoEncontrado();
+        return vinculos.findByIdPublicoAndPaciente_IdPublicoAndUnidadeChave(
+                vinculoIdPublico, pacienteIdPublico, unidade)
+                .orElseThrow(AutorizacaoVinculoAssistencialService::pacienteNaoEncontrado);
+    }
+
     /**
      * Apenas para o futuro caminho de leitura/escrita clinica por vinculo.
      * Sem proveniencia imutavel ou sem vinculo local, negar acesso.

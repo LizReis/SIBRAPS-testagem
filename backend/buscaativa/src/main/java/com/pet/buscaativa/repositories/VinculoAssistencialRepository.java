@@ -22,6 +22,8 @@ import com.pet.buscaativa.entities.VinculoAssistencial;
 public interface VinculoAssistencialRepository extends JpaRepository<VinculoAssistencial, Long> {
     Optional<VinculoAssistencial> findByPacienteIdAndUnidadeChave(Long pacienteId, String unidadeChave);
     Optional<VinculoAssistencial> findByIdPublico(UUID idPublico);
+    Optional<VinculoAssistencial> findByIdPublicoAndPaciente_IdPublicoAndUnidadeChave(
+            UUID vinculoPublico, UUID pacientePublico, String unidadeChave);
     List<VinculoAssistencial> findByPacienteId(Long pacienteId);
     boolean existsByPacienteIdAndUnidadeChave(Long pacienteId, String unidadeChave);
     boolean existsByPacienteId(Long pacienteId);
