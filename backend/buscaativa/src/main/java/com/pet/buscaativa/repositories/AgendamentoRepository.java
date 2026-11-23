@@ -36,6 +36,22 @@ public interface AgendamentoRepository extends JpaRepository<Agendamento, Long>,
     @Query("SELECT a FROM Agendamento a JOIN FETCH a.usuario WHERE a.paciente = :paciente ORDER BY a.dataAgendamento DESC, a.horaAtendimento DESC")
     List<Agendamento> findDetalhesByPaciente(@Param("paciente") Paciente paciente);
 
+    /**
+     * Somente fatos de atendimento com origem assistencial local gravada.
+     * NULL no registro antigo e origem de outra unidade nunca participam.
+     */
+    @Query("""
+            select a from Agendamento a
+            join fetch a.usuario
+            join fetch a.paciente
+            where a.paciente.idPublico = :pacienteId
+              and a.unidadeOrigemChave = :unidade
+            order by a.dataAgendamento desc, a.horaAtendimento desc, a.id desc
+            """)
+    List<Agendamento> findComOrigemLocalComprovada(
+            @Param("pacienteId") java.util.UUID pacienteId,
+            @Param("unidade") String unidade);
+
     @Query("SELECT a FROM Agendamento a JOIN FETCH a.usuario JOIN FETCH a.paciente WHERE a.id = :id")
     java.util.Optional<Agendamento> findByIdWithUsuarioAndPaciente(@Param("id") Long id);
 
