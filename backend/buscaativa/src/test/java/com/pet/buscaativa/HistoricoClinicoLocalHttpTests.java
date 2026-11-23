@@ -16,6 +16,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.pet.buscaativa.entities.Agendamento;
 import com.pet.buscaativa.entities.HistoricoPaciente;
 import com.pet.buscaativa.entities.Paciente;
 import com.pet.buscaativa.entities.Usuario;
@@ -25,6 +26,7 @@ import com.pet.buscaativa.entities.enums.SituacaoAtendimento;
 import com.pet.buscaativa.entities.enums.TipoEventoHistoricoPaciente;
 import com.pet.buscaativa.entities.enums.TipoUsuario;
 import com.pet.buscaativa.entities.enums.UnidadeAtuacao;
+import com.pet.buscaativa.repositories.AgendamentoRepository;
 import com.pet.buscaativa.repositories.HistoricoPacienteRepository;
 import com.pet.buscaativa.repositories.PacienteRepository;
 import com.pet.buscaativa.repositories.UsuarioRepository;
@@ -50,6 +52,7 @@ class HistoricoClinicoLocalHttpTests extends SecurityTestSupport {
     @Autowired PacienteRepository pacientes;
     @Autowired VinculoAssistencialRepository vinculos;
     @Autowired HistoricoPacienteRepository historicos;
+    @Autowired AgendamentoRepository agendamentos;
 
     private Paciente paciente() {
         Paciente p = new Paciente();
@@ -138,6 +141,74 @@ class HistoricoClinicoLocalHttpTests extends SecurityTestSupport {
         assertEquals(1, iiJson.get("totalEventos").asInt());
         assertEquals(1, iiJson.get("totalFaltas").asInt());
         assertFalse(respostaIi.getContentAsString().contains("Presenca comprovada no CAPS AD"));
+    }
+
+    @Test
+    void historicoLocalNaoExibeRemarcacaoComRaizDeOutroCapsOuSemOrigem()
+            throws Exception {
+        Paciente p = paciente();
+        Usuario ad = usuario(UnidadeAtuacao.CAPS_AD, TipoUsuario.ADMINISTRADOR);
+        Usuario ii = usuario(UnidadeAtuacao.CAPS_II, TipoUsuario.PROFISSIONAL);
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_II));
+
+        Agendamento raizIi = agendamento(p, ii, LocalDate.of(2026, 12, 5), true);
+        Agendamento filhoAd = agendamento(p, ad, LocalDate.of(2026, 12, 6), true);
+        filhoAd.setAgendamentoOriginal(raizIi);
+        agendamentos.saveAndFlush(filhoAd);
+        var irregularCaps = historicoAgendamento(p, filhoAd, "Nao divulgar remarcacao CAPS II");
+
+        Agendamento raizSemOrigem = agendamento(p, ad, LocalDate.of(2026, 12, 7), false);
+        Agendamento filhoComRaizIncerta = agendamento(p, ad, LocalDate.of(2026, 12, 8), true);
+        filhoComRaizIncerta.setAgendamentoOriginal(raizSemOrigem);
+        agendamentos.saveAndFlush(filhoComRaizIncerta);
+        var irregularAntigo = historicoAgendamento(p, filhoComRaizIncerta,
+                "Nao divulgar remarcacao com origem desconhecida");
+
+        Agendamento raizLocal = agendamento(p, ad, LocalDate.of(2026, 12, 9), true);
+        Agendamento remarcacaoLocal = agendamento(p, ad, LocalDate.of(2026, 12, 10), true);
+        remarcacaoLocal.setAgendamentoOriginal(raizLocal);
+        agendamentos.saveAndFlush(remarcacaoLocal);
+        var valido = historicoAgendamento(p, remarcacaoLocal, "Fato local com cadeia comprovada");
+
+        var resposta = consultar(p, ad);
+        assertEquals(200, resposta.getStatus());
+        var payload = json.readTree(resposta.getContentAsString());
+        assertEquals(1, payload.get("totalEventos").asInt());
+        assertEquals(valido.getId(), payload.get("eventos").get(0).get("id").asLong());
+        assertFalse(resposta.getContentAsString().contains(irregularCaps.getDescricao()));
+        assertFalse(resposta.getContentAsString().contains(irregularAntigo.getDescricao()));
+        assertEquals("CAPS_AD", historicos.findById(irregularCaps.getId())
+                .orElseThrow().getUnidadeOrigemChave());
+        assertEquals("CAPS_II", agendamentos.findById(raizIi.getId())
+                .orElseThrow().getUnidadeOrigemChave());
+        assertNull(agendamentos.findById(raizSemOrigem.getId())
+                .orElseThrow().getUnidadeOrigemChave());
+        assertEquals(9, pacientes.findById(p.getId()).orElseThrow().getCountFaltas());
+    }
+
+    private Agendamento agendamento(Paciente p, Usuario responsavel,
+            LocalDate data, boolean origemComprovada) {
+        Agendamento a = new Agendamento();
+        a.setPaciente(p);
+        a.setUsuario(responsavel);
+        a.setDataAgendamento(data);
+        a.setHoraAtendimento(java.time.LocalTime.of(9, 30));
+        a.setSituacaoAtendimento(SituacaoAtendimento.AGENDADO);
+        if (origemComprovada) a.registrarUnidadeDeOrigem(responsavel);
+        return agendamentos.saveAndFlush(a);
+    }
+
+    private HistoricoPaciente historicoAgendamento(Paciente p, Agendamento a, String descricao) {
+        HistoricoPaciente h = new HistoricoPaciente();
+        h.setPaciente(p);
+        h.setAgendamento(a);
+        h.setProfissional(a.getUsuario());
+        h.setTipo(TipoEventoHistoricoPaciente.CONSULTA_AGENDADA);
+        h.setDescricao(descricao);
+        h.setOcorridoEm(LocalDateTime.of(2026, 12, 10, 9, 30));
+        h.registrarOrigemDoAgendamento(a);
+        return historicos.saveAndFlush(h);
     }
 
     @Test

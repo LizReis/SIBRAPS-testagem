@@ -68,8 +68,26 @@ public class AutorizacaoVinculoAssistencialService {
                 || agendamento.getUnidadeOrigemChave() == null)
             throw new ResourceNotFoundException("Agendamento não encontrado.");
         VinculoAssistencial vinculo = exigirVinculoLocal(agendamento.getPaciente().getIdPublico());
-        if (!Objects.equals(vinculo.getUnidadeChave(), agendamento.getUnidadeOrigemChave()))
-            throw new ResourceNotFoundException("Agendamento não encontrado.");
+        String unidadeLocal = vinculo.getUnidadeChave();
+        Long pacienteId = agendamento.getPaciente().getId();
+        // Uma origem local no ultimo atendimento nao prova a origem
+        // assistencial da cadeia de remarcacoes. Rejeitar elo antigo sem
+        // origem, unidade diferente, paciente divergente, pendencia e ciclo.
+        // Nao inferir origem pela lotacao atual do profissional.
+        var idsVisitados = new java.util.HashSet<Long>();
+        var objetosVisitados = java.util.Collections.newSetFromMap(
+                new java.util.IdentityHashMap<Agendamento, Boolean>());
+        Agendamento elo = agendamento;
+        while (elo != null) {
+            if (!objetosVisitados.add(elo)
+                    || elo.getId() != null && !idsVisitados.add(elo.getId())
+                    || elo.getPaciente() == null
+                    || !Objects.equals(pacienteId, elo.getPaciente().getId())
+                    || elo.isMigracaoPendente()
+                    || !Objects.equals(unidadeLocal, elo.getUnidadeOrigemChave()))
+                throw new ResourceNotFoundException("Agendamento não encontrado.");
+            elo = elo.getAgendamentoOriginal();
+        }
     }
 
     /** A origem da sessão prevalece sobre a lotação ATUAL do coordenador. */
@@ -105,6 +123,9 @@ public class AutorizacaoVinculoAssistencialService {
                     || !Objects.equals(historico.getPaciente().getId(), fonte.getPaciente().getId())
                     || !Objects.equals(origem, fonte.getUnidadeOrigemChave()))
                 throw new ResourceNotFoundException("Histórico não encontrado.");
+            // A cadeia da fonte tambem deve ser integralmente local:
+            // historico novo nao pode "lavar" uma remarcacao externa.
+            validarAgendamentoLocal(fonte);
         }
         if (historico.getSessaoGrupo() != null) {
             var sessao = historico.getSessaoGrupo();
