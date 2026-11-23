@@ -30,6 +30,10 @@ import com.pet.buscaativa.repositories.PacienteRepository;
 import com.pet.buscaativa.repositories.UsuarioRepository;
 import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
 import com.pet.buscaativa.services.TokenService;
+import com.pet.buscaativa.services.AgendamentoService;
+import com.pet.buscaativa.entities.dto.AgendamentoDTO;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import com.pet.buscaativa.services.impl.SusApiAdapter;
 
 import tools.jackson.databind.ObjectMapper;
@@ -46,6 +50,7 @@ class AgendamentosClinicosLocaisHttpTests extends SecurityTestSupport {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     @Autowired TokenService tokens;
+    @Autowired AgendamentoService agendamentoService;
     @Autowired PacienteRepository pacientes;
     @Autowired UsuarioRepository usuarios;
     @Autowired VinculoAssistencialRepository vinculos;
@@ -276,6 +281,46 @@ class AgendamentosClinicosLocaisHttpTests extends SecurityTestSupport {
 
         assertEquals(200, consultarAgendamentoLegado(fatoLocal, ad).getStatus());
         assertEquals("CAPS_AD", agendamentos.findById(fatoLocal.getId())
+                .orElseThrow().getUnidadeOrigemChave());
+    }
+
+    @Test
+    void consultaGeralInternaTambemExigeProvenienciaImutavel() {
+        Paciente paciente = pessoa();
+        Usuario localAd = usuario(UnidadeAtuacao.CAPS_AD, TipoUsuario.ADMINISTRADOR);
+        Usuario transferido = usuario(UnidadeAtuacao.CAPS_II, TipoUsuario.PROFISSIONAL);
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(paciente, UnidadeAtuacao.CAPS_AD));
+
+        var origemOutroCaps = agendamento(paciente, transferido, LocalDate.of(2026, 12, 19), true);
+        // A alteracao da lotacao torna o profissional visivel no filtro legado,
+        // mas nao pode transportar o fato clinico originado no CAPS II.
+        transferido.setUnidadeAtuacao(UnidadeAtuacao.CAPS_AD);
+        usuarios.saveAndFlush(transferido);
+
+        var proprio = agendamento(paciente, localAd, LocalDate.of(2026, 12, 20), true);
+        var origemDesconhecida = agendamento(paciente, localAd, LocalDate.of(2026, 12, 21), false);
+        var remarcacaoDeOutraOrigem = agendamento(paciente, localAd, LocalDate.of(2026, 12, 22), true);
+        remarcacaoDeOutraOrigem.setAgendamentoOriginal(origemOutroCaps);
+        agendamentos.saveAndFlush(remarcacaoDeOutraOrigem);
+
+        // Esse metodo e interno, nao existe GET /api/agendamentos sem ID.
+        // Testar o servico usando o mesmo principal que o filtro JWT fornece.
+        try {
+            SecurityContextHolder.getContext().setAuthentication(
+                    new UsernamePasswordAuthenticationToken(localAd, null, java.util.List.of()));
+            var ids = agendamentoService.findAll().stream()
+                    .map(AgendamentoDTO::id).toList();
+            assertTrue(ids.contains(proprio.getId()));
+            assertFalse(ids.contains(origemOutroCaps.getId()));
+            assertFalse(ids.contains(origemDesconhecida.getId()));
+            assertFalse(ids.contains(remarcacaoDeOutraOrigem.getId()));
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+
+        assertEquals("CAPS_II", agendamentos.findById(origemOutroCaps.getId())
+                .orElseThrow().getUnidadeOrigemChave());
+        assertNull(agendamentos.findById(origemDesconhecida.getId())
                 .orElseThrow().getUnidadeOrigemChave());
     }
 

@@ -479,7 +479,11 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     public List<AgendamentoDTO> findAll() {
         var list = agendamentoRepository.findAll(escopoUnidadeService.<Agendamento>specificationPaciente("paciente")
                 .and(escopoUnidadeService.specificationUsuario("usuario")));
-        return list.stream().map(agendamentoMapper::toAgendamentoDTO).toList();
+        // Defense-in-depth: filtros de paciente e profissional nao provam
+        // origem de cada atendimento apos mudanca de lotacao. Aplicar a
+        // mesma verificacao de proveniencia usada na agenda HTTP e no GET por ID.
+        return list.stream().filter(escopoUnidadeService::agendamentoPertenceAoEscopo)
+                .map(agendamentoMapper::toAgendamentoDTO).toList();
     }
 
     @Override
