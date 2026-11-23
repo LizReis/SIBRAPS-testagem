@@ -12,6 +12,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * vinculos assistenciais e nunca produz DTOs identificaveis.
  *
  * Requer schema explicitamente migrado ate V8. Sem endpoint HTTP.
+ * ATENCAO: todas as unidades observadas neste preflight sao INDICIOS;
+ * mesmo 100% de profissionais com unidade configurada nao prova origem
+ * historica nem autoriza marcar a migracao como pronta.
  */
 public final class OrigemClinicaPreflight {
     private OrigemClinicaPreflight() {}
@@ -27,8 +30,17 @@ public final class OrigemClinicaPreflight {
             long historicosComFonteDePacienteInconsistente,
             long sessoesRealizadasSemResponsavelConfirmado
     ) {
+        /**
+         * Este preflight opera sobre o esquema V8 e NAO consulta prova
+         * historica de unidade. Mesmo quando ha indicio pela lotacao atual
+         * e a fonte pertence ao mesmo paciente, nao ha garantia de origem.
+         * Por seguranca, qualquer fato legado exige revisao/prova externa
+         * antes do corte; lista vazia pode ser considerada sem risco por
+         * ausencia de fatos a atribuir.
+         */
         public boolean necessitaRevisaoHistorica() {
-            return agendamentosSemIndicioDaUnidade > 0
+            return agendamentosTotais > 0 || historicosTotais > 0
+                    || agendamentosSemIndicioDaUnidade > 0
                     || historicosSemFonteDireta > 0
                     || historicosComFonteDePacienteInconsistente > 0
                     || sessoesRealizadasSemResponsavelConfirmado > 0;

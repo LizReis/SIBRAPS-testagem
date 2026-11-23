@@ -405,3 +405,10 @@
 - Ver documento [`etapa6-3-checkpoint-conciliacao-historicos-legados.md`](etapa6-3-checkpoint-conciliacao-historicos-legados.md), com bloqueios, critérios de prova e sequência para futura conciliação.
 - A V12/V13 atual somente aceita fatos de origem local comprovada; históricos legados de origem desconhecida ou conflitante exigem fluxo de revisão diferente e autorizado antes de qualquer backfill.
 - Esta entrega é **somente documentação**, sem alterações clínicas ou de schema. CI do novo commit pendente.
+
+## Triagem V8: presenca de fatos antigos nao equivale a origem comprovada — 23/11/2026
+
+- O ultimo codigo validado foi o commit `1277c5483f0b358b74659fcd3e7c4f0f58ea89dd`, CI #45264281787, 1.253 testes Maven sem falhas. Os commits `949a2f0` e `cf628b3` modificaram apenas documentacao, portanto nao dispararam o workflow da branch, filtrado por backend/frontend.
+- A revisao da classe `OrigemClinicaPreflight` encontrou um **falso negativo de prontidao**: quando os agendamentos antigos tinham um profissional atualmente lotado em unidade e os historicos tinham fontes do mesmo paciente, `necessitaRevisaoHistorica()` retornava `false`, apesar de o preflight V8 nao ter evidencias de unidade historica.
+- Correcao **somente diagnostica e fail-closed**: havendo agendamentos ou historicos legados, a triagem exige comprovacao/revisao posterior, mesmo sem outras inconsistencias detectadas. Nenhum atendimento foi reclassificado; nenhuma origem e inferida nem persistida. A ausencia de fatos ainda pode resultar em `false`.
+- Testes novos e ampliados caracterizam o caso V8 com todos os usuarios configurados e com fontes integrais, alem da base sem fatos. Nao muda tabela, migration, relatorio clinico oficial, endpoint, autorizacao ou indicador assistencial. **CI desta alteracao ainda pendente.**

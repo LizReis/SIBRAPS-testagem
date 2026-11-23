@@ -31,8 +31,24 @@ class OrigemClinicaPreflightTests {
         assertEquals(6, report.historicosAssociadosAoAgendamentoDoMesmoPaciente());
         assertEquals(0, report.historicosAssociadosASessaoRealizadaComResponsavelRegistrado());
         assertEquals(0, report.historicosComFonteDePacienteInconsistente());
+        // Todos os profissionais possuem indicio de unidade atual, mas
+        // nenhum desses metadados V8 comprova unidade historica.
+        assertTrue(report.necessitaRevisaoHistorica());
         assertEquals(before, LegacyMigrationFixture.snapshot(source, columns));
         assertFalse(report.toString().contains("41f5f5c9-89f2-496d-ae8e-b049dfae1428"));
+    }
+
+    @Test
+    void metadadosLegadosSemAlertasNaoSignificamOrigemHistoricaComprovada() {
+        var legadoComIndicios = new OrigemClinicaPreflight.Relatorio(
+                12, 12, 0, 6, 6, 0, 0, 0, 0);
+        assertTrue(legadoComIndicios.necessitaRevisaoHistorica(),
+                "Origem historica de fatos V8 nao e provada pela unidade atual.");
+
+        var vazio = new OrigemClinicaPreflight.Relatorio(
+                0, 0, 0, 0, 0, 0, 0, 0, 0);
+        assertFalse(vazio.necessitaRevisaoHistorica(),
+                "Sem fatos legados, nenhum registro demanda atribuicao.");
     }
 
     @Test
