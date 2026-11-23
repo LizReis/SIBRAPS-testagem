@@ -14,6 +14,7 @@ import com.pet.buscaativa.entities.SessaoGrupo;
 import com.pet.buscaativa.entities.Usuario;
 import com.pet.buscaativa.entities.VinculoAssistencial;
 import com.pet.buscaativa.repositories.PacienteRepository;
+import com.pet.buscaativa.repositories.AgendamentoRepository;
 import com.pet.buscaativa.repositories.SessaoGrupoParticipanteRepository;
 import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
@@ -35,6 +36,7 @@ import lombok.RequiredArgsConstructor;
 public class AutorizacaoVinculoAssistencialService {
     private final EscopoUnidadeService escopo;
     private final PacienteRepository pacientes;
+    private final AgendamentoRepository agendamentos;
     private final VinculoAssistencialRepository vinculos;
     private final SessaoGrupoParticipanteRepository participantes;
 
@@ -70,7 +72,10 @@ public class AutorizacaoVinculoAssistencialService {
         VinculoAssistencial vinculo = exigirVinculoLocal(agendamento.getPaciente().getIdPublico());
         String unidadeLocal = vinculo.getUnidadeChave();
         Long pacienteId = agendamento.getPaciente().getId();
-        if (AvaliacaoProvenienciaClinica.cadeiaAgendamento(agendamento, pacienteId, unidadeLocal)
+        if (AvaliacaoProvenienciaClinica.cadeiaAgendamento(agendamento, pacienteId, unidadeLocal,
+                (original, sucessor) -> original.getId() == null || sucessor.getId() == null
+                        || agendamentos.existsByAgendamentoOriginal_IdAndIdNot(
+                                original.getId(), sucessor.getId()))
                 != AvaliacaoProvenienciaClinica.Situacao.COMPROVADA) {
             throw new ResourceNotFoundException("Agendamento não encontrado.");
         }

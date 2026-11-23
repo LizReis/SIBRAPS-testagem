@@ -8,6 +8,8 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Objects;
+import java.time.LocalDateTime;
+import java.util.function.BiPredicate;
 
 import com.pet.buscaativa.entities.Agendamento;
 import com.pet.buscaativa.entities.HistoricoPaciente;
@@ -28,13 +30,19 @@ final class AvaliacaoProvenienciaClinica {
     }
 
     /**
-     * A cadeia inteira deve conservar a identidade e a origem gravada.
-     * O responsável é verificado como relação, sem consultar sua lotação atual.
+     * Verificação estrutural da cadeia inteira: paciente, unidade, estado
+     * canônico, cronologia e origem SUBSTITUIDA para cada sucessor.
+     *
+     * O callback é apenas uma CONSULTA read-only de irmãos já persistidos.
+     * A validação de criação em AgendamentoServiceImpl permanece intacta.
      */
-    static Situacao cadeiaAgendamento(Agendamento agendamento, Long pacienteId, String unidade) {
+    static Situacao cadeiaAgendamento(Agendamento agendamento, Long pacienteId, String unidade,
+            BiPredicate<Agendamento, Agendamento> existeOutroSucessor) {
+        Objects.requireNonNull(existeOutroSucessor, "Consulta de sucessores obrigatoria.");
         var idsVisitados = new HashSet<Long>();
         var objetosVisitados = Collections.newSetFromMap(new IdentityHashMap<Agendamento, Boolean>());
-        boolean origemAusente = false;
+        boolean semOrigem = false;
+        boolean inconsistenciaEstrutural = false;
         for (var elo = agendamento; elo != null; elo = elo.getAgendamentoOriginal()) {
             if (!objetosVisitados.add(elo)
                     || elo.getId() != null && !idsVisitados.add(elo.getId())
@@ -45,15 +53,34 @@ final class AvaliacaoProvenienciaClinica {
 
             String origem = elo.getUnidadeOrigemChave();
             if (origemAusente(origem)) {
-                origemAusente = true;
-            } else if (!Objects.equals(unidade, origem)
-                    || !elo.temEstadoCanonicoIdentificado()
-                    || ((elo.getSituacaoReserva() == SituacaoReserva.REMARCADA || elo.isRemarcacaoAposFalta())
-                        && elo.getAgendamentoOriginal() == null)) {
+                semOrigem = true;
+            } else if (!Objects.equals(unidade, origem) || !elo.temEstadoCanonicoIdentificado()) {
                 return INCONSISTENTE;
             }
+
+            var original = elo.getAgendamentoOriginal();
+            if (original == null) {
+                if (elo.getSituacaoReserva() == SituacaoReserva.REMARCADA
+                        || elo.isRemarcacaoAposFalta()) {
+                    inconsistenciaEstrutural = true;
+                }
+            } else {
+                // O próprio fluxo de criação exige que o antecessor seja
+                // SUBSTITUIDA e que o sucessor tenha data/hora posterior.
+                if (original.getSituacaoReserva() != SituacaoReserva.SUBSTITUIDA
+                        || original.getDataAgendamento() == null || original.getHoraAtendimento() == null
+                        || elo.getDataAgendamento() == null || elo.getHoraAtendimento() == null
+                        || !LocalDateTime.of(original.getDataAgendamento(), original.getHoraAtendimento())
+                            .isBefore(LocalDateTime.of(elo.getDataAgendamento(), elo.getHoraAtendimento()))
+                        || existeOutroSucessor.test(original, elo)) {
+                    inconsistenciaEstrutural = true;
+                }
+            }
         }
-        return origemAusente ? SEM_ORIGEM_COMPROVADA : COMPROVADA;
+        // Ausência de prova histórica não deve ser "corrigida" por outra
+        // inconsistência estrutural; em ambos os casos o corte é bloqueado.
+        return semOrigem ? SEM_ORIGEM_COMPROVADA
+                : inconsistenciaEstrutural ? INCONSISTENTE : COMPROVADA;
     }
 
     static Situacao origemSessao(SessaoGrupo sessao) {

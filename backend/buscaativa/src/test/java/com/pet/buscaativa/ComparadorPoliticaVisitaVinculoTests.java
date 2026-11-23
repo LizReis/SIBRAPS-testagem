@@ -53,6 +53,9 @@ class ComparadorPoliticaVisitaVinculoTests {
         Agendamento a = falta(pessoa, profissional, dia, comOrigem);
         a.setAgendamentoOriginal(original);
         a.setRemarcacaoAposFalta(true);
+        // O fluxo real marca o registro original como SUBSTITUIDA quando
+        // cria um sucessor; preservar esse estado nos testes de visita.
+        original.setSituacaoAtendimento(SituacaoAtendimento.REMARCADO_ORIGEM);
         return a;
     }
 

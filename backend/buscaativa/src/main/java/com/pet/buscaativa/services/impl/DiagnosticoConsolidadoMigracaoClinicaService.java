@@ -25,6 +25,7 @@ import com.pet.buscaativa.entities.SessaoGrupo;
 import com.pet.buscaativa.entities.SessaoGrupoParticipante;
 import com.pet.buscaativa.entities.UsfReferencia;
 import com.pet.buscaativa.entities.VinculoAssistencial;
+import com.pet.buscaativa.repositories.AgendamentoRepository;
 import com.pet.buscaativa.entities.enums.StatusPresencaGrupo;
 import com.pet.buscaativa.entities.enums.StatusSessaoGrupo;
 import com.pet.buscaativa.migration.CadastroUnicoPreflight;
@@ -43,6 +44,7 @@ import lombok.RequiredArgsConstructor;
 public class DiagnosticoConsolidadoMigracaoClinicaService {
     private final EntityManager em;
     private final DataSource fonte;
+    private final AgendamentoRepository agendaRepositorio;
     private final LinhaDoTempoFrequenciasVinculoService linhaDoTempo;
 
     public enum TipoRegistro { AGENDAMENTO, GRUPO, SESSAO, PARTICIPACAO, HISTORICO }
@@ -179,12 +181,15 @@ public class DiagnosticoConsolidadoMigracaoClinicaService {
         return unidades.contains(chave) ? COMPROVADA : INCONSISTENTE;
     }
 
-    private static Situacao origemAgendamento(Agendamento agenda, Set<ChaveVinculo> vinculos) {
+    private Situacao origemAgendamento(Agendamento agenda, Set<ChaveVinculo> vinculos) {
         String unidade = agenda.getUnidadeOrigemChave();
         if (AvaliacaoProvenienciaClinica.origemAusente(unidade)) return SEM_ORIGEM_COMPROVADA;
         Long paciente = agenda.getPaciente().getId();
         if (!vinculos.contains(new ChaveVinculo(paciente, unidade))) return INCONSISTENTE;
-        return AvaliacaoProvenienciaClinica.cadeiaAgendamento(agenda, paciente, unidade);
+        return AvaliacaoProvenienciaClinica.cadeiaAgendamento(agenda, paciente, unidade,
+                (original, sucessor) -> original.getId() == null || sucessor.getId() == null
+                        || agendaRepositorio.existsByAgendamentoOriginal_IdAndIdNot(
+                                original.getId(), sucessor.getId()));
     }
 
     private static Situacao origemSessao(SessaoGrupo sessao, Set<String> unidades) {
@@ -195,7 +200,7 @@ public class DiagnosticoConsolidadoMigracaoClinicaService {
         return unidadeGravada(sessao.getUnidadeOrigemChave(), unidades);
     }
 
-    private static Situacao origemHistorico(HistoricoPaciente h, Set<String> unidades,
+    private Situacao origemHistorico(HistoricoPaciente h, Set<String> unidades,
             Set<ChaveVinculo> vinculos) {
         String unidade = h.getUnidadeOrigemChave();
         Long paciente = h.getPaciente().getId();

@@ -46,7 +46,12 @@ public final class ComparadorPoliticaVisitaVinculo {
 
         for (Agendamento agenda : locais) {
             if (agenda.getPaciente() == null || AvaliacaoProvenienciaClinica.cadeiaAgendamento(
-                    agenda, agenda.getPaciente().getId(), unidadeDoVinculoAutorizado)
+                    agenda, agenda.getPaciente().getId(), unidadeDoVinculoAutorizado,
+                    (original, sucessor) -> agendamentosDaIdentidade.stream().anyMatch(outro ->
+                            outro != sucessor && outro != null && outro.getAgendamentoOriginal() != null
+                            && (outro.getAgendamentoOriginal() == original
+                                || original.getId() != null && java.util.Objects.equals(
+                                        original.getId(), outro.getAgendamentoOriginal().getId()))))
                     != AvaliacaoProvenienciaClinica.Situacao.COMPROVADA) {
                 return Optional.empty();
             }

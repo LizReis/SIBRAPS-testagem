@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.pet.buscaativa.entities.Agendamento;
 import com.pet.buscaativa.entities.SessaoGrupoParticipante;
 import com.pet.buscaativa.entities.VinculoAssistencial;
+import com.pet.buscaativa.repositories.AgendamentoRepository;
 import com.pet.buscaativa.entities.enums.FrequenciaAssistencial;
 import com.pet.buscaativa.entities.enums.StatusPresencaGrupo;
 import com.pet.buscaativa.entities.enums.StatusSessaoGrupo;
@@ -35,6 +36,7 @@ import lombok.RequiredArgsConstructor;
 public class LinhaDoTempoFrequenciasVinculoService {
     private final AutorizacaoVinculoAssistencialService autorizacao;
     private final EntityManager em;
+    private final AgendamentoRepository agendaRepositorio;
 
     public enum Fonte { ATENDIMENTO_INDIVIDUAL, SESSAO_GRUPO }
 
@@ -86,7 +88,10 @@ public class LinhaDoTempoFrequenciasVinculoService {
                 .getResultList();
 
         for (Agendamento a : agendamentos) {
-            var origem = AvaliacaoProvenienciaClinica.cadeiaAgendamento(a, pacienteId, unidade);
+            var origem = AvaliacaoProvenienciaClinica.cadeiaAgendamento(a, pacienteId, unidade,
+                    (original, sucessor) -> original.getId() == null || sucessor.getId() == null
+                            || agendaRepositorio.existsByAgendamentoOriginal_IdAndIdNot(
+                                    original.getId(), sucessor.getId()));
             boolean origemAusente = AvaliacaoProvenienciaClinica.origemAusente(a.getUnidadeOrigemChave());
             if (origemAusente || origem == AvaliacaoProvenienciaClinica.Situacao.SEM_ORIGEM_COMPROVADA) {
                 agendamentosSemOrigem++;
