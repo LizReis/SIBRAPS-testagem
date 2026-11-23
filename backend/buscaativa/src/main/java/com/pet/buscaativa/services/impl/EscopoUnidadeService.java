@@ -224,8 +224,21 @@ public class EscopoUnidadeService {
         if (!agendamentoPertenceAoEscopo(agendamento)) throw new ResourceNotFoundException("Agendamento não encontrado.");
     }
 
+    /**
+     * Grupos NOVOS com origem registrada continuam pertencendo a unidade
+     * onde foram criados, mesmo que a lotacao do coordenador mude depois.
+     * O escopo antigo do coordenador permanece como uma segunda barreira.
+     *
+     * A origem NULL do grupo legado nao e reconstruida: a revisao humana
+     * desses fatos continua pendente e o filtro legado nao e ampliado.
+     */
     public boolean grupoPertenceAoEscopo(GrupoTerapeutico grupo) {
-        return grupo != null && usuarioPertenceAoEscopo(grupo.getCoordenador());
+        if (grupo == null || grupo.getCoordenador() == null
+                || !usuarioPertenceAoEscopo(grupo.getCoordenador()))
+            return false;
+        String origem = grupo.getUnidadeOrigemChave();
+        return origem == null || Objects.equals(origem,
+                ChaveUnidadeAssistencial.doUsuarioAtual(usuarioComUnidade()));
     }
 
     public void validarGrupo(GrupoTerapeutico grupo) {

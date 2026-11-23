@@ -311,6 +311,52 @@ class IsolamentoUnidadeTests extends SecurityTestSupport {
     }
 
     @Test
+    void mudancaDeCoordenadorNaoTransfereGrupoOuSessaoDeOutroCaps() throws Exception {
+        // A origem foi comprovada na criacao, antes da transferencia.
+        GrupoTerapeutico grupoComOrigem = new GrupoTerapeutico();
+        grupoComOrigem.setTema("Isolamento origem CAPS AD");
+        grupoComOrigem.setCoordenador(coordenadorAd);
+        grupoComOrigem.setRecorrencia(RecorrenciaGrupo.UNICA);
+        grupoComOrigem.setHorarioPadrao(LocalTime.of(10, 0));
+        grupoComOrigem.registrarUnidadeDeOrigem(coordenadorAd);
+        grupoComOrigem = grupos.saveAndFlush(grupoComOrigem);
+
+        SessaoGrupo sessaoComOrigem = new SessaoGrupo();
+        sessaoComOrigem.setGrupo(grupoComOrigem);
+        sessaoComOrigem.setDataSessao(LocalDate.now().plusDays(7));
+        sessaoComOrigem.setHorario(LocalTime.of(10, 0));
+        sessaoComOrigem.setStatus(StatusSessaoGrupo.AGENDADA);
+        sessaoComOrigem.registrarUnidadeDeOrigemDoGrupo();
+        sessaoComOrigem = sessoes.saveAndFlush(sessaoComOrigem);
+
+        Long grupoId = grupoComOrigem.getId();
+        Long sessaoId = sessaoComOrigem.getId();
+        assertEquals(200, getAs(ad, "/api/grupos/" + grupoId).getStatus());
+
+        // A mudanca de coordenador nao autoriza o CAPS I a ler nem editar
+        // o grupo ou sua sessao, cuja origem continua sendo CAPS AD.
+        grupoComOrigem.setCoordenador(coordenadorI);
+        grupos.saveAndFlush(grupoComOrigem);
+        assertEquals("CAPS_AD", grupoComOrigem.getUnidadeOrigemChave());
+        assertEquals("CAPS_AD", sessaoComOrigem.getUnidadeOrigemChave());
+
+        assertEquals(404, getAs(capsI, "/api/grupos/" + grupoId).getStatus());
+        assertEquals(404, getAs(capsI, "/api/grupos/" + grupoId + "/participantes").getStatus());
+        assertFalse(ok(capsI, "/api/grupos").valueStream()
+                .anyMatch(g -> g.get("id").asLong() == grupoId));
+        String periodo = "/api/grupos/sessoes?dataInicio=" + LocalDate.now().plusDays(6)
+                + "&dataFim=" + LocalDate.now().plusDays(8);
+        assertFalse(ok(capsI, periodo).valueStream()
+                .anyMatch(s -> s.get("id").asLong() == sessaoId));
+
+        assertEquals(404, postAs(capsI, "/api/grupos/sessoes",
+                "{\"grupoId\":" + grupoId + ",\"dataSessao\":\"" + LocalDate.now().plusDays(9)
+                        + "\",\"horario\":\"10:00:00\",\"participantesIds\":[]}").getStatus());
+        assertEquals(StatusSessaoGrupo.AGENDADA, sessoes.findById(sessaoId)
+                .orElseThrow().getStatus());
+    }
+
+    @Test
     void gruposRejeitamIdsExternosEFiltramParticipantesLegados() throws Exception {
         assertEquals(404, postAs(ad, "/api/grupos/sessoes/" + futura.getId() + "/participantes",
                 "{\"pacienteId\":\"" + pI.getIdPublico() + "\"}").getStatus());
