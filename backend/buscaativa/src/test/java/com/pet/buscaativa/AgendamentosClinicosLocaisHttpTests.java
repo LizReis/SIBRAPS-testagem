@@ -111,7 +111,11 @@ class AgendamentosClinicosLocaisHttpTests extends SecurityTestSupport {
         assertEquals(1, adJson.get("totalAgendamentos").asInt());
         assertEquals(1, adJson.get("agendamentos").size());
         assertEquals(compromissoAd.getId(), adJson.get("agendamentos").get(0).get("id").asLong());
-        assertFalse(respostaAd.getContentAsString().contains(compromissoIi.getId().toString()));
+        // Comparar o campo numerico exato. Buscar "2" no JSON inteiro
+        // gera falso positivo em datas como "2026-12-11".
+        assertNotEquals(compromissoIi.getId(),
+                adJson.get("agendamentos").get(0).get("id").asLong(),
+                "Um atendimento do CAPS II nao pode aparecer na lista do CAPS AD.");
         assertFalse(respostaAd.getContentAsString().contains("2026-12-12"));
         assertFalse(respostaAd.getContentAsString().contains("2026-12-13"));
         assertFalse(adJson.has("countFaltas"));
@@ -123,6 +127,10 @@ class AgendamentosClinicosLocaisHttpTests extends SecurityTestSupport {
         var iiJson = json.readTree(respostaIi.getContentAsString());
         assertEquals(1, iiJson.get("totalAgendamentos").asInt());
         assertEquals(compromissoIi.getId(), iiJson.get("agendamentos").get(0).get("id").asLong());
+        assertNotEquals(compromissoAd.getId(),
+                iiJson.get("agendamentos").get(0).get("id").asLong(),
+                "Um atendimento do CAPS AD nao pode aparecer na lista do CAPS II.");
+        assertFalse(respostaIi.getContentAsString().contains("2026-12-11"));
         assertEquals(9, pacientes.findById(p.getId()).orElseThrow().getCountFaltas());
         assertNull(agendamentos.findById(desconhecido.getId()).orElseThrow()
                 .getUnidadeOrigemChave());
