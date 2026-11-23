@@ -1,0 +1,49 @@
+:host { display: block; }
+
+.cadastro-existente {
+  margin-bottom: 22px;
+  padding: 20px;
+  border: 1px solid #b5cce9;
+  border-radius: 14px;
+  background: #f5f9ff;
+}
+
+.cabecalho h2 { margin: 0 0 5px; font-size: 19px; color: #123e70; }
+.cabecalho p, .orientacao { margin: 5px 0 15px; font-size: 13px; color: #485d73; }
+
+.cadastro-existente form { display: block; }
+.campos-documentos { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.campos-documentos label { flex: 1 1 190px; font-size: 13px; font-weight: 700; }
+.campos-documentos input {
+  display: block; box-sizing: border-box; margin-top: 5px; width: 100%;
+  min-height: 42px; padding: 11px; border: 1px solid #bfcde0;
+  border-radius: 9px; background: white; font: inherit;
+}
+button {
+  min-height: 42px; padding: 10px 15px; border: 0; border-radius: 9px;
+  background: #1754d4; color: white; font: inherit; font-weight: 700;
+  cursor: pointer;
+}
+button:disabled { opacity: .55; cursor: not-allowed; }
+button:focus-visible, input:focus-visible { outline: 3px solid #6ca0ff; outline-offset: 2px; }
+
+.resultado {
+  border: 1px solid #b6c8dd; border-radius: 10px;
+  background: #fff; padding: 16px; margin-top: 16px;
+}
+.resultado h3 { font-size: 16px; margin: 0 0 10px; color: #123e70; }
+.resultado dl { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+.resultado dl div { min-width: 0; }
+.resultado dt { font-size: 12px; font-weight: 700; color: #586b7b; }
+.resultado dd { margin: 5px 0 0; overflow-wrap: anywhere; }
+.confirmacao { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; margin: 14px 0; }
+.confirmacao input { margin-top: 2px; flex-shrink: 0; }
+.erro { color: #a92535; font-size: 13px; margin-top: 12px; }
+.status-sucesso { margin: 12px 0 0; color: #155e47; font-weight: 600; }
+@media (max-width: 600px) {
+  .cadastro-existente { padding: 15px; }
+  .campos-documentos { flex-direction: column; align-items: stretch; }
+  .campos-documentos label, .campos-documentos button { width: 100%; flex: auto; }
+  .resultado dl { grid-template-columns: 1fr; }
+  .confirmar { width: 100%; }
+}

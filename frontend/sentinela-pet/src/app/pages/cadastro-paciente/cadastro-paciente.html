@@ -27,7 +27,11 @@
   </div>
 
 
-  <form [formGroup]="pacienteForm" (ngSubmit)="salvarPaciente()" autocomplete="on">
+  <app-cadastro-existente *ngIf="!modoEdicao"
+    (vinculoConfirmado)="onVinculoExistenteConfirmado()"></app-cadastro-existente>
+
+  <form *ngIf="!vinculoExistenteConfirmado || modoEdicao"
+    [formGroup]="pacienteForm" (ngSubmit)="salvarPaciente()" autocomplete="on">
     <div class="form-main">
       <section class="form-section" aria-labelledby="titulo-identificacao">
         <h2 id="titulo-identificacao"><span class="step-number">1</span>Identificação</h2>

@@ -6,6 +6,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 
 import { UnidadeSaude, UnidadeSaudeService } from '../../services/unidade-saude-service';
 import { ProfissionalService, UsuarioReferencia } from '../../services/profissional/profissional-service';
+import { CadastroExistente } from './cadastro-existente';
 
 import {
   PacientePayload,
@@ -46,7 +47,7 @@ enum CapsEnum {
 @Component({
   selector: 'app-cadastro-paciente',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule],
+  imports: [CommonModule, ReactiveFormsModule, CadastroExistente],
   templateUrl: './cadastro-paciente.html',
   styleUrl: './cadastro-paciente.css',
 })
@@ -90,6 +91,13 @@ export class CadastroPaciente implements OnInit {
 
   modoEdicao = false;
   idPublico: string | null = null;
+  vinculoExistenteConfirmado = false;
+
+  onVinculoExistenteConfirmado(): void {
+    this.vinculoExistenteConfirmado = true;
+    this.erroGeral = null;
+    this.errosPorCampo = {};
+  }
 
   pacienteForm = new FormGroup({
     nome: new FormControl('', Validators.required),
@@ -243,6 +251,9 @@ export class CadastroPaciente implements OnInit {
   }
 
   salvarPaciente(): void {
+    // Um vinculo confirmado nao pode acionar acidentalmente o POST legado
+    // de novo paciente. A tela clinica continua protegida pelo escopo antigo.
+    if (this.vinculoExistenteConfirmado && !this.modoEdicao) return;
     this.erroGeral = null;
     this.errosPorCampo = {};
 

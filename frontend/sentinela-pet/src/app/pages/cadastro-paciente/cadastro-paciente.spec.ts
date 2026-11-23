@@ -4,6 +4,7 @@ import { of } from 'rxjs';
 import { Validators } from '@angular/forms';
 
 import { PacienteService } from '../../services/paciente/paciente-service';
+import { CadastroUnicoService } from '../../services/paciente/cadastro-unico-service';
 import { UnidadeSaudeService } from '../../services/unidade-saude-service';
 import { ProfissionalService } from '../../services/profissional/profissional-service';
 import { CadastroPaciente } from './cadastro-paciente';
@@ -24,6 +25,10 @@ describe('CadastroPaciente', () => {
     await TestBed.configureTestingModule({
       imports: [CadastroPaciente],
       providers: [
+        { provide: CadastroUnicoService, useValue: {
+          conferirDocumentos: vi.fn(() => of({ nome: 'Teste', nomeMae: 'Responsavel', dataNascimento: '2000-01-01' })),
+          confirmarVinculo: vi.fn(() => of(void 0)),
+        } },
         { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => null } } } },
         { provide: Router, useValue: { navigate } },
         { provide: UnidadeSaudeService, useValue: { listarUnidades: () => of([unidade]) } },
@@ -68,6 +73,23 @@ describe('CadastroPaciente', () => {
       },
     });
   }
+
+  it('exibe a conferencia somente em novo cadastro', () => {
+    expect(fixture.nativeElement.querySelector('app-cadastro-existente')).not.toBeNull();
+    component.modoEdicao = true;
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('app-cadastro-existente')).toBeNull();
+  });
+
+  it('vinculo existente confirmado bloqueia o POST legado mesmo se tentar salvar', () => {
+    preencherFormulario(false);
+    component.onVinculoExistenteConfirmado();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('form[formgroup]')).toBeNull();
+    component.salvarPaciente();
+    expect(cadastrarPaciente).not.toHaveBeenCalled();
+    expect(atualizarPaciente).not.toHaveBeenCalled();
+  });
 
   it('sincroniza os inputs explícitos com seus FormControls', () => {
     const nome = fixture.nativeElement.querySelector('#nome') as HTMLInputElement;

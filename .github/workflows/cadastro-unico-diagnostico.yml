@@ -93,3 +93,7 @@ jobs:
         run: npm test -- --watch=false --include=src/app/auth/permissoes.spec.ts
       - name: Teste do contrato HTTP Angular do cadastro unico
         run: npm test -- --watch=false --include=src/app/services/paciente/cadastro-unico-service.spec.ts
+      - name: Testes da interface de conferencia e do cadastro legado
+        run: |
+          npm test -- --watch=false --include=src/app/pages/cadastro-paciente/cadastro-existente.spec.ts
+          npm test -- --watch=false --include=src/app/pages/cadastro-paciente/cadastro-paciente.spec.ts

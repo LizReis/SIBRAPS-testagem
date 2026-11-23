@@ -1,0 +1,53 @@
+<section class="cadastro-existente" aria-labelledby="titulo-cadastro-existente">
+  <div class="cabecalho">
+    <h2 id="titulo-cadastro-existente">Paciente já cadastrado no SIBRAPS?</h2>
+    <p>Consulte CPF ou CNS para conferir a identidade e vinculá-la somente à sua unidade.
+      Nenhum atendimento de outra unidade será compartilhado.</p>
+  </div>
+
+  <p class="status-sucesso" role="status" *ngIf="concluido">
+    Vínculo com a sua unidade confirmado. Não foi criado outro cadastro.
+    A visualização do acompanhamento clínico depende da migração das consultas locais.
+  </p>
+
+  <form *ngIf="!concluido" [formGroup]="documentosForm" (ngSubmit)="conferir()" autocomplete="off">
+    <div class="campos-documentos">
+      <label for="cpf-existente">CPF do paciente
+        <input id="cpf-existente" type="text" inputmode="numeric" maxlength="14"
+          formControlName="cpf" autocomplete="off" placeholder="000.000.000-00"
+          [readonly]="vinculando">
+      </label>
+      <label for="cns-existente">CNS do paciente
+        <input id="cns-existente" type="text" inputmode="numeric" maxlength="18"
+          formControlName="cns" autocomplete="off" placeholder="15 dígitos"
+          [readonly]="vinculando">
+      </label>
+      <button type="submit" [disabled]="buscando || vinculando">
+        {{ buscando ? 'Consultando…' : 'Conferir cadastro existente' }}
+      </button>
+    </div>
+    <p class="orientacao">Informe pelo menos um documento. Se informar os dois, ambos devem pertencer à mesma pessoa.</p>
+
+    <p class="erro" role="alert" *ngIf="erro">{{ erro }}</p>
+
+    <div class="resultado" *ngIf="identidade as pessoa">
+      <h3>Confira com o paciente antes de continuar</h3>
+      <dl>
+        <div><dt>Nome completo</dt><dd>{{ pessoa.nome }}</dd></div>
+        <div><dt>Nome da mãe</dt><dd>{{ pessoa.nomeMae }}</dd></div>
+        <div><dt>Data de nascimento</dt><dd>{{ pessoa.dataNascimento }}</dd></div>
+      </dl>
+      <label class="confirmacao">
+        <input type="checkbox" [checked]="confirmouIdentidade"
+          (change)="confirmouIdentidade = $any($event.target).checked"
+          [disabled]="vinculando">
+        Conferi os três dados com o paciente ou documento confiável e confirmo que se trata da mesma pessoa.
+      </label>
+      <button type="button" class="confirmar"
+        [disabled]="!confirmouIdentidade || vinculando"
+        (click)="confirmarVinculoLocal()">
+        {{ vinculando ? 'Vinculando…' : 'Confirmar e vincular à minha unidade' }}
+      </button>
+    </div>
+  </form>
+</section>
