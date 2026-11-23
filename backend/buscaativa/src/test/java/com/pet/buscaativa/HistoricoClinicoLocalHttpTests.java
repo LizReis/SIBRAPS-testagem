@@ -212,6 +212,43 @@ class HistoricoClinicoLocalHttpTests extends SecurityTestSupport {
     }
 
     @Test
+    void historicoNaoContaFatoLocalComRaizDeRemarcacaoPendente() throws Exception {
+        Paciente p = paciente();
+        Usuario ad = usuario(UnidadeAtuacao.CAPS_AD, TipoUsuario.ADMINISTRADOR);
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+
+        Agendamento raizPendente = new Agendamento();
+        raizPendente.setPaciente(p);
+        raizPendente.setUsuario(ad);
+        raizPendente.setDataAgendamento(LocalDate.of(2026, 12, 14));
+        raizPendente.setHoraAtendimento(java.time.LocalTime.of(9, 30));
+        raizPendente.registrarUnidadeDeOrigem(ad);
+        raizPendente = agendamentos.saveAndFlush(raizPendente);
+
+        Agendamento filho = agendamento(p, ad, LocalDate.of(2026, 12, 15), true);
+        filho.setAgendamentoOriginal(raizPendente);
+        agendamentos.saveAndFlush(filho);
+        var inconsistente = historicoAgendamento(p, filho,
+                "Nao expor historico com remarcacao clinica pendente");
+
+        Agendamento correto = agendamento(p, ad, LocalDate.of(2026, 12, 16), true);
+        var legitimo = historicoAgendamento(p, correto, "Historico local comprovado");
+
+        var resposta = consultar(p, ad);
+        assertEquals(200, resposta.getStatus());
+        var dados = json.readTree(resposta.getContentAsString());
+        assertEquals(1, dados.get("totalEventos").asInt());
+        assertEquals(1, dados.get("totalConsultas").asInt());
+        assertEquals(legitimo.getId(), dados.get("eventos").get(0).get("id").asLong());
+        assertFalse(resposta.getContentAsString().contains(inconsistente.getDescricao()));
+        assertTrue(agendamentos.findById(raizPendente.getId()).orElseThrow()
+                .isMigracaoPendente());
+        assertEquals("CAPS_AD", historicos.findById(inconsistente.getId())
+                .orElseThrow().getUnidadeOrigemChave());
+        assertEquals(9, pacientes.findById(p.getId()).orElseThrow().getCountFaltas());
+    }
+
+    @Test
     void outroCapsDeReferenciaNaoTemLeituraSemVinculoExplicito() throws Exception {
         Paciente p = paciente();
         Usuario ad = usuario(UnidadeAtuacao.CAPS_AD, TipoUsuario.ADMINISTRADOR);

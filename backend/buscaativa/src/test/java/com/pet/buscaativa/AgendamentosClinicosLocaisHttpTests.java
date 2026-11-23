@@ -190,6 +190,40 @@ class AgendamentosClinicosLocaisHttpTests extends SecurityTestSupport {
     }
 
     @Test
+    void estadoCanonicoPendenteNaRaizNaoAutorizaRemarcacaoLocal() throws Exception {
+        Paciente p = pessoa();
+        Usuario ad = usuario(UnidadeAtuacao.CAPS_AD, TipoUsuario.ADMINISTRADOR);
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+
+        // Registro sintetico com origem local, mas sem os dois campos
+        // canonicos: JPA deve manter a migracao pendente e nao inventar fatos.
+        Agendamento raizPendente = new Agendamento();
+        raizPendente.setPaciente(p);
+        raizPendente.setUsuario(ad);
+        raizPendente.setDataAgendamento(LocalDate.of(2026, 12, 14));
+        raizPendente.setHoraAtendimento(LocalTime.of(9, 30));
+        raizPendente.registrarUnidadeDeOrigem(ad);
+        raizPendente = agendamentos.saveAndFlush(raizPendente);
+
+        var filho = agendamento(p, ad, LocalDate.of(2026, 12, 15), true);
+        filho.setAgendamentoOriginal(raizPendente);
+        agendamentos.saveAndFlush(filho);
+        var comprovado = agendamento(p, ad, LocalDate.of(2026, 12, 16), true);
+
+        var resposta = consultar(p, ad);
+        assertEquals(200, resposta.getStatus());
+        var dados = json.readTree(resposta.getContentAsString());
+        assertEquals(1, dados.get("totalAgendamentos").asInt());
+        assertEquals(comprovado.getId(), dados.get("agendamentos").get(0).get("id").asLong());
+        assertTrue(agendamentos.findById(raizPendente.getId()).orElseThrow()
+                .isMigracaoPendente());
+        assertEquals("CAPS_AD", agendamentos.findById(raizPendente.getId())
+                .orElseThrow().getUnidadeOrigemChave());
+        assertEquals("CAPS_AD", agendamentos.findById(filho.getId())
+                .orElseThrow().getUnidadeOrigemChave());
+    }
+
+    @Test
     void remarcacaoComCadeiaInteiramenteLocalContinuaVisivel() throws Exception {
         Paciente p = pessoa();
         Usuario ad = usuario(UnidadeAtuacao.CAPS_AD, TipoUsuario.ADMINISTRADOR);
