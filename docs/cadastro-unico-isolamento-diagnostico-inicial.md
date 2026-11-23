@@ -267,3 +267,10 @@
 - A regra de transicao permanece: **somente dados cadastrais globais sao compartilhados**; fatos, frequencias, historias e indicadores nao sao compartilhados por causa da identidade global ou referencia territorial. Eventos antigos com origem desconhecida nao recebem backfill nem acesso por inferencia.
 - Esta entrega acrescenta testes HTTP em `HistoricoClinicoLocalHttpTests` e `AgendamentosClinicosLocaisHttpTests`: raiz de remarcacao com origem local conhecida, mas estado canonico incompleto, nao deve vazar dados para agenda/historico local, preservando os fatos locais comprovados e os registros pendentes.
 - **CI desta entrega ainda nao validada.** Nao ha mudanca de regra clinica ou migracao em producao. A Etapa 6.3 continua SEM corte para o modelo definitivo por vinculo: faltam reconciliacao humana auditavel, avaliacao das atribuicoes antigas, transacao dos indicadores locais e revisao dos paineis/relatorios legados. Nao inferir unidade de origem pelos campos `capsReferencia`, `usfReferencia` ou lotacao atual.
+
+## Validacao e correcao do teste HTTP de historico local — 23/11/2026
+
+- Execucao #45229663019 no commit `947fef5021a7c341cf2ecb200dec5849947bd08f`: **FAILURE**, backend 1.235 testes, 0 falhas de assertivas e 1 erro. Jobs Angular build e permissoes passaram.
+- A falha foi exclusivamente no teste `HistoricoClinicoLocalHttpTests.historicoNaoContaFatoLocalComRaizDeRemarcacaoPendente`, que procurava o nome de campo inexistente `totalConsultas`; o contrato real de `HistoricoClinicoLocalDTO` define `totalConsultasAgendadas`.
+- Ajustado o teste para verificar o campo do DTO existente, preservando a validacao de um evento local legitimo e a exclusao da cadeia pendente.
+- Nenhum codigo de producao, dado clinico, migracao, indicador ou autorizacao foi alterado nesta correcao. A nova CI ainda precisa confirmar a aprovacao.

@@ -238,7 +238,7 @@ class HistoricoClinicoLocalHttpTests extends SecurityTestSupport {
         assertEquals(200, resposta.getStatus());
         var dados = json.readTree(resposta.getContentAsString());
         assertEquals(1, dados.get("totalEventos").asInt());
-        assertEquals(1, dados.get("totalConsultas").asInt());
+        assertEquals(1, dados.get("totalConsultasAgendadas").asInt());
         assertEquals(legitimo.getId(), dados.get("eventos").get(0).get("id").asLong());
         assertFalse(resposta.getContentAsString().contains(inconsistente.getDescricao()));
         assertTrue(agendamentos.findById(raizPendente.getId()).orElseThrow()
