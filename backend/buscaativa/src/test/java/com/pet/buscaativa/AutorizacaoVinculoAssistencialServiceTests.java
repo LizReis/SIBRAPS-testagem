@@ -16,6 +16,7 @@ import com.pet.buscaativa.entities.SessaoGrupo;
 import com.pet.buscaativa.entities.Usuario;
 import com.pet.buscaativa.entities.VinculoAssistencial;
 import com.pet.buscaativa.entities.enums.UnidadeAtuacao;
+import com.pet.buscaativa.entities.enums.SituacaoAtendimento;
 import com.pet.buscaativa.repositories.PacienteRepository;
 import com.pet.buscaativa.repositories.SessaoGrupoParticipanteRepository;
 import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
@@ -84,6 +85,7 @@ class AutorizacaoVinculoAssistencialServiceTests {
         a.setPaciente(pessoa);
         a.setUsuario(profissional);
         a.registrarUnidadeDeOrigem(profissional);
+        a.setSituacaoAtendimento(SituacaoAtendimento.AGENDADO);
         assertDoesNotThrow(() -> service.validarAgendamentoLocal(a));
     }
 
@@ -96,11 +98,47 @@ class AutorizacaoVinculoAssistencialServiceTests {
         a.setPaciente(pessoa);
         a.setUsuario(profissional);
         a.registrarUnidadeDeOrigem(profissional);
+        a.setSituacaoAtendimento(SituacaoAtendimento.AGENDADO);
         HistoricoPaciente h = new HistoricoPaciente();
         h.setPaciente(pessoa);
         h.setAgendamento(a);
         h.registrarOrigemDoAgendamento(a);
         assertDoesNotThrow(() -> service.validarHistoricoLocal(h));
+    }
+
+    @Test
+    void eloAnteriorSemEstadoCanonicoNaoAutorizaAgendaNemHistoricoLocal() {
+        Usuario profissional = new Usuario();
+        profissional.setId(25L);
+        profissional.setUnidadeAtuacao(UnidadeAtuacao.CAPS_AD);
+
+        Agendamento origem = new Agendamento();
+        origem.setPaciente(pessoa);
+        origem.setUsuario(profissional);
+        origem.registrarUnidadeDeOrigem(profissional);
+        // A origem assistencial existe, mas o estado canonico da raiz e incerto.
+
+        Agendamento remarcado = new Agendamento();
+        remarcado.setPaciente(pessoa);
+        remarcado.setUsuario(profissional);
+        remarcado.registrarUnidadeDeOrigem(profissional);
+        remarcado.setSituacaoAtendimento(SituacaoAtendimento.AGENDADO);
+        remarcado.setAgendamentoOriginal(origem);
+
+        HistoricoPaciente historico = new HistoricoPaciente();
+        historico.setPaciente(pessoa);
+        historico.setAgendamento(remarcado);
+        historico.registrarOrigemDoAgendamento(remarcado);
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.validarAgendamentoLocal(remarcado));
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.validarHistoricoLocal(historico));
+
+        // Cadeia local valida segue acessivel apos os estados serem conhecidos.
+        origem.setSituacaoAtendimento(SituacaoAtendimento.AGENDADO);
+        assertDoesNotThrow(() -> service.validarAgendamentoLocal(remarcado));
+        assertDoesNotThrow(() -> service.validarHistoricoLocal(historico));
     }
 
     @Test
