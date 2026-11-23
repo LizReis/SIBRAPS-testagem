@@ -420,3 +420,10 @@
 - Adicionada a contagem agregada `sessoesRealizadasTotais`, sempre em SELECT, ao relatorio de preflight legado. O sinal `necessitaRevisaoHistorica` passa a exigir evidencia humana quando existir qualquer sessao realizada, ainda que responsavel esteja confirmado. Nao foi atribuida origem historica.
 - Novo teste puro caracteriza sessao como unico fato legado; teste H2 cria grupo e sessao realizados sinteticos com responsavel sem historico individual, verifica contagem, sinal de revisao e snapshot identico pre/post triagem. Testes anteriores de construcao do record foram atualizados.
 - **CI deste novo commit pendente.** Nenhuma migration, comando clinico, backend de atendimento, painel, autorizacao operacional ou indicador assistencial foi alterado.
+
+## Triagem conservadora de sessoes coletivas e frequencia ausente — 23/11/2026
+
+- CI #45272208012 do commit `78116f6d64f7909f781e681e82714768c8bf9a5f`: **SUCCESS**, backend 1.255/1.255, concorrencia 12/12, Angular direcionado 28/28 e build de producao aprovados.
+- `OrigemClinicaPreflight` agora apresenta duas contagens apenas diagnosticas, sem identificacao: sessoes REALIZADAS sem participantes e participacoes com `status_presenca=NAO_REGISTRADA` em sessoes REALIZADAS. Essas ocorrencias requerem conferencia, mas nao podem ser convertidas em frequencia de presenca ou falta, nem usadas para deduzir unidade historica.
+- Testes H2 sinteticos confirmam sessao sem participantes, sessao realizada com frequencia NAO_REGISTRADA, sessao ainda AGENDADA excluida das contagens de fatos realizados e banco integralmente preservado antes/depois do preflight.
+- Nenhum fato clinico, migration, indicador, regra, endpoint ou tela foi alterado. **CI desta mudanca pendente.** A revisao dos legados com origem desconhecida segue bloqueada ate definicao da politica de acesso/evidencia.

@@ -32,6 +32,8 @@ class OrigemClinicaPreflightTests {
         assertEquals(0, report.historicosAssociadosASessaoRealizadaComResponsavelRegistrado());
         assertEquals(0, report.historicosComFonteDePacienteInconsistente());
         assertEquals(0, report.sessoesRealizadasTotais());
+        assertEquals(0, report.sessoesRealizadasSemParticipantes());
+        assertEquals(0, report.participacoesComFrequenciaNaoRegistrada());
         // Todos os profissionais possuem indicio de unidade atual, mas
         // nenhum desses metadados V8 comprova unidade historica.
         assertTrue(report.necessitaRevisaoHistorica());
@@ -42,12 +44,12 @@ class OrigemClinicaPreflightTests {
     @Test
     void metadadosLegadosSemAlertasNaoSignificamOrigemHistoricaComprovada() {
         var legadoComIndicios = new OrigemClinicaPreflight.Relatorio(
-                12, 12, 0, 6, 6, 0, 0, 0, 0, 0);
+                12, 12, 0, 6, 6, 0, 0, 0, 0, 0, 0, 0);
         assertTrue(legadoComIndicios.necessitaRevisaoHistorica(),
                 "Origem historica de fatos V8 nao e provada pela unidade atual.");
 
         var vazio = new OrigemClinicaPreflight.Relatorio(
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         assertFalse(vazio.necessitaRevisaoHistorica(),
                 "Sem fatos legados, nenhum registro demanda atribuicao.");
     }
@@ -57,7 +59,7 @@ class OrigemClinicaPreflightTests {
         // Um fato coletivo realizado existe sem historico individual
         // associado; conhecer o responsavel nao comprova a unidade na data.
         var relatorioSomenteSessao = new OrigemClinicaPreflight.Relatorio(
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 1);
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0);
         assertTrue(relatorioSomenteSessao.necessitaRevisaoHistorica());
 
         var fonte = LegacyMigrationFixture.legacy(temp.resolve("sessao-realizada"));
@@ -78,7 +80,50 @@ class OrigemClinicaPreflightTests {
         var antes = LegacyMigrationFixture.snapshot(fonte, colunas);
         var relatorio = OrigemClinicaPreflight.analisar(fonte);
         assertEquals(1, relatorio.sessoesRealizadasTotais());
+        assertEquals(1, relatorio.sessoesRealizadasSemParticipantes());
+        assertEquals(0, relatorio.participacoesComFrequenciaNaoRegistrada());
         assertEquals(0, relatorio.sessoesRealizadasSemResponsavelConfirmado());
+        assertTrue(relatorio.necessitaRevisaoHistorica());
+        assertEquals(antes, LegacyMigrationFixture.snapshot(fonte, colunas));
+    }
+
+    @Test
+    void frequenciaNaoRegistradaEmSessaoRealizadaExigeConferenciaSemEscrita() throws Exception {
+        var fonte = LegacyMigrationFixture.legacy(temp.resolve("frequencia-coletiva"));
+        AgendaMigrationTool.migrar(fonte);
+        var jdbc = new JdbcTemplate(fonte);
+        jdbc.update("""
+                insert into tb_grupo_terapeutico(id, ativo, coordenador_id, tema, recorrencia)
+                values (9101, true, 2, 'Grupo sintetico de conferencia', 'UNICA')
+                """);
+        jdbc.update("""
+                insert into tb_sessao_grupo(
+                    id, grupo_id, status, responsavel_atendimento_id,
+                    responsabilidade_pendente)
+                values (9102, 9101, 'REALIZADA', 2, false)
+                """);
+        jdbc.update("""
+                insert into tb_sessao_grupo_participante(
+                    sessao_grupo_id, paciente_id, status_presenca)
+                values (9102, 1, 'NAO_REGISTRADA')
+                """);
+        // O registro NAO_REGISTRADA de sessao ainda AGENDADA nao deve
+        // contar como participacao de uma sessao realizada.
+        jdbc.update("""
+                insert into tb_sessao_grupo(id, grupo_id, status)
+                values (9103, 9101, 'AGENDADA')
+                """);
+        jdbc.update("""
+                insert into tb_sessao_grupo_participante(
+                    sessao_grupo_id, paciente_id, status_presenca)
+                values (9103, 1, 'NAO_REGISTRADA')
+                """);
+        var colunas = LegacyMigrationFixture.columns(fonte);
+        var antes = LegacyMigrationFixture.snapshot(fonte, colunas);
+        var relatorio = OrigemClinicaPreflight.analisar(fonte);
+        assertEquals(1, relatorio.sessoesRealizadasTotais());
+        assertEquals(0, relatorio.sessoesRealizadasSemParticipantes());
+        assertEquals(1, relatorio.participacoesComFrequenciaNaoRegistrada());
         assertTrue(relatorio.necessitaRevisaoHistorica());
         assertEquals(antes, LegacyMigrationFixture.snapshot(fonte, colunas));
     }

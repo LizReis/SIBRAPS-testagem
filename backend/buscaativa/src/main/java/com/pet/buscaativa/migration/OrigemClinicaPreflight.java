@@ -29,7 +29,9 @@ public final class OrigemClinicaPreflight {
             long historicosSemFonteDireta,
             long historicosComFonteDePacienteInconsistente,
             long sessoesRealizadasSemResponsavelConfirmado,
-            long sessoesRealizadasTotais
+            long sessoesRealizadasTotais,
+            long sessoesRealizadasSemParticipantes,
+            long participacoesComFrequenciaNaoRegistrada
     ) {
         /**
          * Este preflight opera sobre o esquema V8 e NAO consulta prova
@@ -112,6 +114,22 @@ public final class OrigemClinicaPreflight {
         // Uma sessao pode existir sem historico individual associado.
         long sessoesRealizadas = contar(jdbc,
                 "select count(*) from tb_sessao_grupo where status = 'REALIZADA'");
+        // Contagens apenas diagnosticas, nunca presenca/falta ou
+        // identificacao da unidade historica.
+        long sessoesSemParticipantes = contar(jdbc, """
+                select count(*) from tb_sessao_grupo s
+                where s.status = 'REALIZADA'
+                  and not exists (
+                      select 1 from tb_sessao_grupo_participante p
+                      where p.sessao_grupo_id = s.id
+                  )
+                """);
+        long participacoesNaoRegistradas = contar(jdbc, """
+                select count(*) from tb_sessao_grupo_participante p
+                join tb_sessao_grupo s on s.id = p.sessao_grupo_id
+                where s.status = 'REALIZADA'
+                  and p.status_presenca = 'NAO_REGISTRADA'
+                """);
         long sessoesSemAutor = contar(jdbc, """
                 select count(*) from tb_sessao_grupo s
                 where s.status = 'REALIZADA'
@@ -121,7 +139,8 @@ public final class OrigemClinicaPreflight {
         return new Relatorio(
                 agendamentos, agendamentosComIndicio, agendamentos - agendamentosComIndicio,
                 historicos, historiasAgendamento, historiasGrupo, semFonte,
-                inconsistentes, sessoesSemAutor, sessoesRealizadas);
+                inconsistentes, sessoesSemAutor, sessoesRealizadas,
+                sessoesSemParticipantes, participacoesNaoRegistradas);
     }
 
     private static long contar(JdbcTemplate jdbc, String sql) {
