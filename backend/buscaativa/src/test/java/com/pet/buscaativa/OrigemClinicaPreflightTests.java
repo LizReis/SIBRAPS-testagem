@@ -34,6 +34,7 @@ class OrigemClinicaPreflightTests {
         assertEquals(0, report.sessoesRealizadasTotais());
         assertEquals(0, report.sessoesRealizadasSemParticipantes());
         assertEquals(0, report.participacoesComFrequenciaNaoRegistrada());
+        assertEquals(0, report.historicosVinculadosASessaoNaoRealizada());
         // Todos os profissionais possuem indicio de unidade atual, mas
         // nenhum desses metadados V8 comprova unidade historica.
         assertTrue(report.necessitaRevisaoHistorica());
@@ -44,12 +45,12 @@ class OrigemClinicaPreflightTests {
     @Test
     void metadadosLegadosSemAlertasNaoSignificamOrigemHistoricaComprovada() {
         var legadoComIndicios = new OrigemClinicaPreflight.Relatorio(
-                12, 12, 0, 6, 6, 0, 0, 0, 0, 0, 0, 0);
+                12, 12, 0, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0);
         assertTrue(legadoComIndicios.necessitaRevisaoHistorica(),
                 "Origem historica de fatos V8 nao e provada pela unidade atual.");
 
         var vazio = new OrigemClinicaPreflight.Relatorio(
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         assertFalse(vazio.necessitaRevisaoHistorica(),
                 "Sem fatos legados, nenhum registro demanda atribuicao.");
     }
@@ -59,7 +60,7 @@ class OrigemClinicaPreflightTests {
         // Um fato coletivo realizado existe sem historico individual
         // associado; conhecer o responsavel nao comprova a unidade na data.
         var relatorioSomenteSessao = new OrigemClinicaPreflight.Relatorio(
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0);
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0);
         assertTrue(relatorioSomenteSessao.necessitaRevisaoHistorica());
 
         var fonte = LegacyMigrationFixture.legacy(temp.resolve("sessao-realizada"));
@@ -82,6 +83,7 @@ class OrigemClinicaPreflightTests {
         assertEquals(1, relatorio.sessoesRealizadasTotais());
         assertEquals(1, relatorio.sessoesRealizadasSemParticipantes());
         assertEquals(0, relatorio.participacoesComFrequenciaNaoRegistrada());
+        assertEquals(0, relatorio.historicosVinculadosASessaoNaoRealizada());
         assertEquals(0, relatorio.sessoesRealizadasSemResponsavelConfirmado());
         assertTrue(relatorio.necessitaRevisaoHistorica());
         assertEquals(antes, LegacyMigrationFixture.snapshot(fonte, colunas));
@@ -124,6 +126,61 @@ class OrigemClinicaPreflightTests {
         assertEquals(1, relatorio.sessoesRealizadasTotais());
         assertEquals(0, relatorio.sessoesRealizadasSemParticipantes());
         assertEquals(1, relatorio.participacoesComFrequenciaNaoRegistrada());
+        assertTrue(relatorio.necessitaRevisaoHistorica());
+        assertEquals(antes, LegacyMigrationFixture.snapshot(fonte, colunas));
+    }
+
+    @Test
+    void historicosVinculadosASessoesAgendadaECanceladaExigemRevisao() throws Exception {
+        var fonte = LegacyMigrationFixture.legacy(temp.resolve("historia-sessao-nao-realizada"));
+        AgendaMigrationTool.migrar(fonte);
+        var jdbc = new JdbcTemplate(fonte);
+        jdbc.update("""
+                insert into tb_grupo_terapeutico(id, ativo, coordenador_id, tema, recorrencia)
+                values (9201, true, 2, 'Grupo legado somente para teste', 'UNICA')
+                """);
+        jdbc.update("""
+                insert into tb_sessao_grupo(id, grupo_id, status)
+                values (9202, 9201, 'AGENDADA')
+                """);
+        jdbc.update("""
+                insert into tb_sessao_grupo(id, grupo_id, status)
+                values (9203, 9201, 'CANCELADA')
+                """);
+        Long paciente1 = jdbc.queryForObject(
+                "select paciente_id from tb_historico_paciente where id=1", Long.class);
+        Long paciente2 = jdbc.queryForObject(
+                "select paciente_id from tb_historico_paciente where id=2", Long.class);
+        jdbc.update("""
+                insert into tb_sessao_grupo_participante(
+                    sessao_grupo_id, paciente_id, status_presenca)
+                values (9202, ?, 'NAO_REGISTRADA')
+                """, paciente1);
+        jdbc.update("""
+                insert into tb_sessao_grupo_participante(
+                    sessao_grupo_id, paciente_id, status_presenca)
+                values (9203, ?, 'NAO_REGISTRADA')
+                """, paciente2);
+        jdbc.update("""
+                update tb_historico_paciente
+                set agendamento_id=null, sessao_grupo_id=9202
+                where id=1
+                """);
+        jdbc.update("""
+                update tb_historico_paciente
+                set agendamento_id=null, sessao_grupo_id=9203
+                where id=2
+                """);
+
+        var colunas = LegacyMigrationFixture.columns(fonte);
+        var antes = LegacyMigrationFixture.snapshot(fonte, colunas);
+        var relatorio = OrigemClinicaPreflight.analisar(fonte);
+
+        assertEquals(2, relatorio.historicosVinculadosASessaoNaoRealizada());
+        // Pacientes constam como participantes, mas a sessao NAO ocorreu.
+        assertEquals(0, relatorio.historicosComFonteDePacienteInconsistente());
+        assertEquals(0, relatorio.historicosAssociadosASessaoRealizadaComResponsavelRegistrado());
+        assertEquals(0, relatorio.sessoesRealizadasTotais());
         assertTrue(relatorio.necessitaRevisaoHistorica());
         assertEquals(antes, LegacyMigrationFixture.snapshot(fonte, colunas));
     }

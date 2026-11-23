@@ -427,3 +427,11 @@
 - `OrigemClinicaPreflight` agora apresenta duas contagens apenas diagnosticas, sem identificacao: sessoes REALIZADAS sem participantes e participacoes com `status_presenca=NAO_REGISTRADA` em sessoes REALIZADAS. Essas ocorrencias requerem conferencia, mas nao podem ser convertidas em frequencia de presenca ou falta, nem usadas para deduzir unidade historica.
 - Testes H2 sinteticos confirmam sessao sem participantes, sessao realizada com frequencia NAO_REGISTRADA, sessao ainda AGENDADA excluida das contagens de fatos realizados e banco integralmente preservado antes/depois do preflight.
 - Nenhum fato clinico, migration, indicador, regra, endpoint ou tela foi alterado. **CI desta mudanca pendente.** A revisao dos legados com origem desconhecida segue bloqueada ate definicao da politica de acesso/evidencia.
+
+## Preflight V8: historico vinculado a sessao nao realizada — 23/11/2026
+
+- Execucao #45273573038 no commit `5755777fe7afd6cfffee4750b5b10d344931d219`: **SUCCESS**, Maven 1.256/1.256, concorrencia 12/12, testes Angular direcionados 28/28 e build Angular aprovados.
+- Foi identificada a lacuna de um `HistoricoPaciente` com participante corretamente associado a uma sessao, mas cuja sessao estava **AGENDADA** ou **CANCELADA**. A consulta existente de integridade do paciente nao classificava isso como divergencia, e a contagem de sessoes REALIZADAS nao capturava o caso.
+- Adicionada a contagem independente e agregada `historicosVinculadosASessaoNaoRealizada`, derivada apenas de SELECT sobre historico e status da sessao de origem. A contagem e indicio de conferencia humana, nao equivale a declaracao de erro/falta, nao determina a unidade historica e nao altera nenhum fato.
+- Novo teste H2 sintetico relaciona dois historicos a sessoes AGENDADA e CANCELADA, com participacao do mesmo paciente; verifica contagem 2, zero historicos associados a sessao realizada e snapshot completo pre/post consulta inalterado.
+- **CI da nova entrega pendente.** Somente diagnóstico read-only, testes e diario tecnico; sem migration, endpoint, tela, correção de frequencia, indicadores ou atribuição de origem. A conciliação humana continua bloqueada pela falta de politica aprovada de evidencia e autorizacao.

@@ -31,7 +31,8 @@ public final class OrigemClinicaPreflight {
             long sessoesRealizadasSemResponsavelConfirmado,
             long sessoesRealizadasTotais,
             long sessoesRealizadasSemParticipantes,
-            long participacoesComFrequenciaNaoRegistrada
+            long participacoesComFrequenciaNaoRegistrada,
+            long historicosVinculadosASessaoNaoRealizada
     ) {
         /**
          * Este preflight opera sobre o esquema V8 e NAO consulta prova
@@ -95,6 +96,14 @@ public final class OrigemClinicaPreflight {
                 select count(*) from tb_historico_paciente h
                 where h.agendamento_id is null and h.sessao_grupo_id is null
                 """);
+        // O vinculo cadastral de paciente com a sessao nao significa
+        // participacao em atendimento realizado. Sessoes AGENDADAS e
+        // CANCELADAS nao podem comprovar frequencia ou origem historica.
+        long historicosDeSessaoNaoRealizada = contar(jdbc, """
+                select count(*) from tb_historico_paciente h
+                join tb_sessao_grupo s on s.id = h.sessao_grupo_id
+                where s.status is null or s.status <> 'REALIZADA'
+                """);
         long inconsistentes = contar(jdbc, """
                 select count(*) from tb_historico_paciente h
                 where (h.agendamento_id is not null
@@ -140,7 +149,8 @@ public final class OrigemClinicaPreflight {
                 agendamentos, agendamentosComIndicio, agendamentos - agendamentosComIndicio,
                 historicos, historiasAgendamento, historiasGrupo, semFonte,
                 inconsistentes, sessoesSemAutor, sessoesRealizadas,
-                sessoesSemParticipantes, participacoesNaoRegistradas);
+                sessoesSemParticipantes, participacoesNaoRegistradas,
+                historicosDeSessaoNaoRealizada);
     }
 
     private static long contar(JdbcTemplate jdbc, String sql) {
