@@ -370,3 +370,10 @@
 - Repositorios internos ganharam apenas consultas de `count` com filtro explicito pela `unidadeChave` e `NOT EXISTS` no calculo da fila; nao carregam registros clinicos nem disponibilizam busca global. Nao reutilizar os totais como indicadores de risco/frequencia.
 - Testes de integracao H2 exercitam CAPS AD/I/II, dois pacientes em CAPS AD, e duas USFs distintas da mesma identidade, inclusive perfil profissional negado e preservacao do evento V12 `PENDENTE` e da decisao V13.
 - **CI deste novo commit pendente.** Nao existe nova rota HTTP nem painel ativado, nem migration, alteração de fatos clinicos ou aplicacao automatica de decisao sobre historicos. A migração de indicadores assistenciais continua pendente em etapa separada.
+
+## Correcao do contrato de teste apos contagem de decisoes por unidade — 23/11/2026
+
+- Execucao GitHub Actions #45255943389 no commit `a74ce4dcad6bfd4c650252955842c840f87f50b7`: **FAILURE**. O backend executou 1.247 testes, com 1.246 aprovados e uma falha de assercao no teste `DecisaoRevisaoProvenienciaJpaTests.contratoNaoPermiteEscritaEEntidadeEImutavelEAuditada`. Angular build e testes de permissao foram aprovados.
+- Diagnostico: o contrato reflexivo de metodos permitidos no repositorio somente de leitura nao incluiu `contarDecisoesDaUnidade`, metodo de contagem `@Query` da nova implementacao. O teste ainda esperava exatamente os tres metodos anteriores.
+- Ajustado somente o teste para incluir a nova consulta autorizada, mantendo a checagem de que o repositorio **nao** pode oferecer escrita, busca global sem escopo ou alteracao da entidade imutavel/auditada.
+- Nenhuma alteracao de producao, migracao, painel, endpoint, dado clinico ou indicador foi realizada neste ajuste. **Nova CI ainda pendente.**

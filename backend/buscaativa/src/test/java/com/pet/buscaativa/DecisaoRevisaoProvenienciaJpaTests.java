@@ -318,9 +318,12 @@ class DecisaoRevisaoProvenienciaJpaTests extends SecurityTestSupport {
     void contratoNaoPermiteEscritaEEntidadeEImutavelEAuditada() {
         var metodos = Arrays.stream(DecisaoRevisaoProvenienciaRepository.class.getDeclaredMethods())
                 .map(m -> m.getName()).collect(Collectors.toSet());
+        // A contagem por unidade e tambem uma operacao de leitura;
+        // o contrato continua sem save/delete/findAll sem escopo.
         assertEquals(Set.of("findByIdAndPacienteIdAndUnidadeChave",
                 "findByPendenciaIdAndPacienteIdAndUnidadeChave",
-                "listarPorPacienteEUnidade"), metodos);
+                "listarPorPacienteEUnidade",
+                "contarDecisoesDaUnidade"), metodos);
         assertTrue(DecisaoRevisaoProveniencia.class.isAnnotationPresent(Immutable.class));
         assertTrue(DecisaoRevisaoProveniencia.class.isAnnotationPresent(Audited.class));
         assertEquals(0, Arrays.stream(DecisaoRevisaoProveniencia.class.getDeclaredMethods())
