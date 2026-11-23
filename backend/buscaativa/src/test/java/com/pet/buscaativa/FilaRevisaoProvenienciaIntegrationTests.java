@@ -381,6 +381,78 @@ class FilaRevisaoProvenienciaIntegrationTests extends SecurityTestSupport {
     }
 
     @Test
+    void resumoDaRevisaoEmDuasUsfsNaoCompartilhaContagensDaMesmaPessoa() {
+        Paciente p = pessoa();
+        UsfReferencia usfA = new UsfReferencia();
+        usfA.setNomeUsf("USF resumo sintetica A");
+        usfA.setCnes(UUID.randomUUID().toString());
+        usfA = usfs.saveAndFlush(usfA);
+        UsfReferencia usfB = new UsfReferencia();
+        usfB.setNomeUsf("USF resumo sintetica B");
+        usfB.setCnes(UUID.randomUUID().toString());
+        usfB = usfs.saveAndFlush(usfB);
+        UsfReferencia usfSemVinculo = new UsfReferencia();
+        usfSemVinculo.setNomeUsf("USF resumo sem vinculo");
+        usfSemVinculo.setCnes(UUID.randomUUID().toString());
+        usfSemVinculo = usfs.saveAndFlush(usfSemVinculo);
+
+        Usuario adminA = administrador(UnidadeAtuacao.USF, usfA);
+        Usuario adminB = administrador(UnidadeAtuacao.USF, usfB);
+        Usuario terceiro = administrador(UnidadeAtuacao.USF, usfSemVinculo);
+        var va = vinculos.saveAndFlush(VinculoAssistencial.paraUsf(p, usfA));
+        var vb = vinculos.saveAndFlush(VinculoAssistencial.paraUsf(p, usfB));
+        assertNotEquals(va.getUnidadeChave(), vb.getUnidadeChave());
+
+        UUID abertaA = UUID.randomUUID();
+        UUID decididaA = UUID.randomUUID();
+        UUID abertaB1 = UUID.randomUUID();
+        UUID abertaB2 = UUID.randomUUID();
+        pendencia(abertaA, va, adminA, 901L);
+        pendencia(decididaA, va, adminA, 902L);
+        pendencia(abertaB1, vb, adminB, 903L);
+        pendencia(abertaB2, vb, adminB, 904L);
+        jdbc.update("""
+                insert into tb_decisao_revisao_proveniencia(
+                    id, pendencia_id, paciente_id, unidade_chave, decisao,
+                    justificativa, revisor_id, perfil_revisor, decidida_em)
+                values (?, ?, ?, ?, 'REJEITAR',
+                    'Revisao sintetica concluida pela propria USF',
+                    ?, 'ADMINISTRADOR', CURRENT_TIMESTAMP)
+                """, UUID.randomUUID(), decididaA, p.getId(), va.getUnidadeChave(),
+                adminA.getId());
+
+        when(escopo.usuarioLogado()).thenReturn(adminA);
+        var resumoA = resumo.consultar(p.getIdPublico());
+        assertEquals(1, resumoA.pendenciasAbertas());
+        assertEquals(1, resumoA.decisoesRegistradas());
+
+        when(escopo.usuarioLogado()).thenReturn(adminB);
+        var resumoB = resumo.consultar(p.getIdPublico());
+        assertEquals(2, resumoB.pendenciasAbertas());
+        assertEquals(0, resumoB.decisoesRegistradas());
+
+        when(escopo.usuarioLogado()).thenReturn(terceiro);
+        assertThrows(ResourceNotFoundException.class,
+                () -> resumo.consultar(p.getIdPublico()));
+
+        Usuario profissional = new Usuario();
+        profissional.setTipoUsuario(TipoUsuario.PROFISSIONAL);
+        profissional.setUnidadeAtuacao(UnidadeAtuacao.USF);
+        profissional.setUsfAtuacao(usfA);
+        when(escopo.usuarioLogado()).thenReturn(profissional);
+        assertThrows(AccessDeniedException.class,
+                () -> resumo.consultar(p.getIdPublico()));
+
+        assertEquals("PENDENTE", jdbc.queryForObject(
+                "select estado from tb_pendencia_revisao_proveniencia where id=?",
+                String.class, decididaA));
+        assertEquals(1, jdbc.queryForObject(
+                "select count(*) from tb_decisao_revisao_proveniencia where pendencia_id=?",
+                Integer.class, decididaA));
+        assertEquals(1L, pacientes.count());
+    }
+
+    @Test
     void duasUsfsDistintasNaoCompartilhamFilaMesmoComMesmaIdentidade() {
         Paciente p = pessoa();
         UsfReferencia usfA = new UsfReferencia();

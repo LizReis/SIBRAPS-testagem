@@ -355,3 +355,10 @@
 - Adicionado `ResumoRevisaoProvenienciaService` **interno e read-only**, que reaproveita as consultas ja autorizadas de pendencias abertas V12 e decisoes registradas V13 para devolver apenas dois totais do paciente na unidade logada. A consulta de decisoes e executada primeiro e exige ADMINISTRADOR com vinculo local, sem inferir escopo por referencia territorial. Consultas de contagem usam paginacao minima, sem carregar listas inteiras.
 - Novo teste integrado H2 verifica: identidade global acompanhada no CAPS AD e CAPS II; AD com uma aberta e uma decidida, II com duas abertas e nenhuma decidida; CAPS I sem vinculo recebe negativa e PROFISSIONAL nao acessa o resumo. Os registros V12/V13 permanecem inalterados.
 - **CI deste novo commit pendente.** Nao foi ativada rota, painel, modificacao de dados clinicos, indicador assistencial nem migration. A integracao visual da area Relatorios e os historicos legados ainda exigem corte coordenado da Etapa 6.3.
+
+## Resumo das revisoes em duas USFs distintas — 23/11/2026
+
+- CI #45251297918, commit `b73499c3ad289093717517961b7e7bce23326e1d`: **SUCCESS**, 1.244 testes Maven, 12 de concorrencia, 28 Angular direcionados e build Angular de producao aprovados.
+- A cobertura anterior de `ResumoRevisaoProvenienciaService` simulava apenas CAPS AD e CAPS II. Esta entrega acrescenta teste integrado com H2 para uma identidade cadastrada em duas USFs com chaves canônicas distintas, A com uma solicitacao aberta e uma decisao registrada, B com duas abertas e nenhuma decisao.
+- Verifica que cada administrador recebe apenas suas contagens, que uma terceira USF sem vinculo explicito nao consegue consultar o resumo, e que o perfil PROFISSIONAL nao ganha acesso administrativo ao agregado. Mantem a solicitacao V12 original pendente e a decisao V13 auditada separadamente.
+- **CI desta entrega ainda pendente.** Somente teste e diario tecnico foram alterados; nenhuma nova API, tela, migracao, correção automatica, transferencia de historico ou mudanca em indicadores clinicos.
