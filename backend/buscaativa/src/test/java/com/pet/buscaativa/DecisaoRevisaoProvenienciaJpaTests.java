@@ -126,6 +126,83 @@ class DecisaoRevisaoProvenienciaJpaTests extends SecurityTestSupport {
     }
 
     @Test
+    void paginacaoEstavelNaoDuplicaDecisoesNemMisturaUnidadesOuPacientes() {
+        Paciente p = new Paciente();
+        p.setNome("Paciente sintetico paginacao local");
+        p.setCpf(UUID.randomUUID().toString());
+        p.setCns(UUID.randomUUID().toString());
+        p = pacientes.saveAndFlush(p);
+
+        Paciente outro = new Paciente();
+        outro.setNome("Outro paciente sintetico no mesmo CAPS");
+        outro.setCpf(UUID.randomUUID().toString());
+        outro.setCns(UUID.randomUUID().toString());
+        outro = pacientes.saveAndFlush(outro);
+
+        Usuario admin = new Usuario();
+        admin.setNome("Administrador sintetico paginacao");
+        admin.setEmail(UUID.randomUUID() + "@test.local");
+        admin.setSenha("somente-teste");
+        admin.setTipoUsuario(TipoUsuario.ADMINISTRADOR);
+        admin.setUnidadeAtuacao(UnidadeAtuacao.CAPS_AD);
+        admin = usuarios.saveAndFlush(admin);
+
+        var ad = vinculos.saveAndFlush(
+                VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+        var ii = vinculos.saveAndFlush(
+                VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_II));
+        var adOutro = vinculos.saveAndFlush(
+                VinculoAssistencial.paraCaps(outro, UnidadeAtuacao.CAPS_AD));
+
+        Set<UUID> idsEsperados = new java.util.HashSet<>();
+        for (int i = 0; i < 5; i++) {
+            UUID id = UUID.randomUUID();
+            idsEsperados.add(id);
+            fixture(UUID.randomUUID(), id, ad, admin, 301L + i,
+                    i % 2 == 0 ? "APROVAR" : "REJEITAR");
+        }
+        UUID idIi = UUID.randomUUID();
+        UUID idOutro = UUID.randomUUID();
+        fixture(UUID.randomUUID(), idIi, ii, admin, 401L, "APROVAR");
+        fixture(UUID.randomUUID(), idOutro, adOutro, admin, 501L, "REJEITAR");
+
+        java.util.List<UUID> primeiraLeitura = new java.util.ArrayList<>();
+        for (int indice = 0; indice < 3; indice++) {
+            var pagina = decisoes.listarPorPacienteEUnidade(
+                    p.getId(), "CAPS_AD", PageRequest.of(indice, 2));
+            assertEquals(5, pagina.getTotalElements());
+            assertEquals(3, pagina.getTotalPages());
+            assertEquals(indice == 2 ? 1 : 2, pagina.getNumberOfElements());
+            primeiraLeitura.addAll(pagina.getContent().stream()
+                    .map(DecisaoRevisaoProveniencia::getId).toList());
+        }
+        assertEquals(5, primeiraLeitura.size());
+        assertEquals(idsEsperados, new java.util.HashSet<>(primeiraLeitura));
+        assertFalse(primeiraLeitura.contains(idIi));
+        assertFalse(primeiraLeitura.contains(idOutro));
+        assertTrue(decisoes.listarPorPacienteEUnidade(
+                p.getId(), "CAPS_AD", PageRequest.of(3, 2)).isEmpty());
+
+        // Reconsultar paginas com os mesmos dados deve preservar a sequencia
+        // mesmo se os registros tiverem instantes de decisao iguais.
+        java.util.List<UUID> segundaLeitura = new java.util.ArrayList<>();
+        for (int indice = 0; indice < 3; indice++)
+            segundaLeitura.addAll(decisoes.listarPorPacienteEUnidade(
+                    p.getId(), "CAPS_AD", PageRequest.of(indice, 2))
+                    .getContent().stream().map(DecisaoRevisaoProveniencia::getId).toList());
+        assertEquals(primeiraLeitura, segundaLeitura);
+
+        var outroCaps = decisoes.listarPorPacienteEUnidade(
+                p.getId(), "CAPS_II", PageRequest.of(0, 2));
+        assertEquals(1, outroCaps.getTotalElements());
+        assertEquals(idIi, outroCaps.getContent().get(0).getId());
+        var outroPaciente = decisoes.listarPorPacienteEUnidade(
+                outro.getId(), "CAPS_AD", PageRequest.of(0, 2));
+        assertEquals(1, outroPaciente.getTotalElements());
+        assertEquals(idOutro, outroPaciente.getContent().get(0).getId());
+    }
+
+    @Test
     void contratoNaoPermiteEscritaEEntidadeEImutavelEAuditada() {
         var metodos = Arrays.stream(DecisaoRevisaoProvenienciaRepository.class.getDeclaredMethods())
                 .map(m -> m.getName()).collect(Collectors.toSet());

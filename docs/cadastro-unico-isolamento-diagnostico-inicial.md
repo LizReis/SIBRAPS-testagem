@@ -305,3 +305,10 @@
 - Esta entrega acrescenta leitura paginada somente de eventos V13, com consulta JPA por `pacienteId` E `unidadeChave`, ordenacao cronologica com desempate por UUID, pagina de ate 100 resultados e DTO minimo (sem expor entidades ou identidade do revisor).
 - A lista esta separada da fila de pendencias abertas. Decisoes de outra unidade sobre a mesma identidade global permanecem invisiveis. A ausencia de vinculo/role administrativo nao deve consultar registros de outras unidades. Nao ha novas rotas HTTP, tela, migration nem qualquer alteracao de indicadores ou de fatos clinicos.
 - Testes JPA e H2 comparam CAPS AD, CAPS II, CAPS I, outro paciente, aprovacao, rejeicao, permissao profissional e limites de paginacao. **CI deste novo commit ainda pendente.** A Etapa 6.3 ainda precisa de reconciliacao humana dos registros antigos e integracao coordenada do modelo clinico por vinculo.
+
+## Cobertura de paginacao e isolamento do historico V13 — 23/11/2026
+
+- GitHub Actions #45237381026 (commit `b0be5c074e1811e310ec884a435db7b525f17117`): **SUCCESS**. Backend 1.238/1.238 testes, 12 testes de concorrencia, 28 testes Angular direcionados e build de producao aprovados.
+- Esta entrega e apenas uma ampliacao de testes JPA com H2 sintetico: um paciente com cinco decisoes CAPS AD e outra CAPS II, alem de outro paciente no CAPS AD. A consulta do mesmo paciente e unidade em paginas de tamanho dois deve apresentar 2+2+1 registros, sem duplicatas, vazamentos, trocas de ordem entre leituras ou contaminacao das contagens de cada unidade/paciente.
+- A consulta V13 ja ordena por instante da decisao e UUID para desempate estavel. Nenhuma logica clinica, migration, permissao, contrato HTTP, tela ou dado real foi modificado.
+- **CI da nova cobertura ainda pendente**. O modelo definitivo de indicadores por vinculo e a reconciliacao clinica de fatos historicos antigos continuam etapas separadas e nao podem ser ativados sem validacao e autorizacao.
