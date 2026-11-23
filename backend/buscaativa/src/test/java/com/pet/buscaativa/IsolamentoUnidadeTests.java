@@ -455,6 +455,68 @@ class IsolamentoUnidadeTests extends SecurityTestSupport {
     }
 
     @Test
+    void operacaoEmLoteNaoAlteraSerieComSessaoDeOutraUnidade() throws Exception {
+        GrupoTerapeutico grupoLocal = new GrupoTerapeutico();
+        grupoLocal.setTema("Isolamento operacao em lote");
+        grupoLocal.setCoordenador(coordenadorAd);
+        grupoLocal.setRecorrencia(RecorrenciaGrupo.SEMANAL);
+        grupoLocal.setHorarioPadrao(LocalTime.of(10, 0));
+        grupoLocal.registrarUnidadeDeOrigem(coordenadorAd);
+        grupoLocal = grupos.saveAndFlush(grupoLocal);
+
+        GrupoTerapeutico grupoExterno = new GrupoTerapeutico();
+        grupoExterno.setTema("Isolamento origem de sessao externa");
+        grupoExterno.setCoordenador(coordenadorI);
+        grupoExterno.setRecorrencia(RecorrenciaGrupo.UNICA);
+        grupoExterno.setHorarioPadrao(LocalTime.of(10, 0));
+        grupoExterno.registrarUnidadeDeOrigem(coordenadorI);
+        grupoExterno = grupos.saveAndFlush(grupoExterno);
+
+        SessaoGrupo local = new SessaoGrupo();
+        local.setGrupo(grupoLocal);
+        local.setDataSessao(LocalDate.now().plusDays(10));
+        local.setHorario(LocalTime.of(10, 0));
+        local.setStatus(StatusSessaoGrupo.AGENDADA);
+        local.registrarUnidadeDeOrigemDoGrupo();
+        local = sessoes.saveAndFlush(local);
+        participante(local, pAd, StatusPresencaGrupo.NAO_REGISTRADA);
+
+        SessaoGrupo externa = new SessaoGrupo();
+        externa.setGrupo(grupoExterno);
+        externa.setDataSessao(LocalDate.now().plusDays(17));
+        externa.setHorario(LocalTime.of(10, 0));
+        externa.setStatus(StatusSessaoGrupo.AGENDADA);
+        externa.registrarUnidadeDeOrigemDoGrupo();
+        externa = sessoes.saveAndFlush(externa);
+        externa.setGrupo(grupoLocal);
+        sessoes.saveAndFlush(externa);
+
+        Long grupoId = grupoLocal.getId();
+        Long sessaoLocalId = local.getId();
+        Long sessaoExternaId = externa.getId();
+
+        // O sistema nao pode aplicar uma inscricao ou exclusao em parte da
+        // serie quando existe sessao de origem divergente.
+        assertEquals(404, postAs(ad, "/api/grupos/" + grupoId + "/inscricoes-futuras",
+                "{\"pacienteId\":\"" + pAdB.getIdPublico() + "\"}").getStatus());
+        assertEquals(404, mvc.perform(delete("/api/grupos/" + grupoId
+                + "/participantes/" + pAd.getIdPublico())
+                .header("Authorization", "Bearer " + tokens.gerarToken(ad)))
+                .andReturn().getResponse().getStatus());
+
+        assertTrue(participantes.findBySessaoGrupoAndPaciente(
+                sessoes.findById(sessaoLocalId).orElseThrow(), pAd).isPresent(),
+                "O participante local precisa permanecer inscrito.");
+        assertTrue(participantes.findBySessaoGrupoAndPaciente(
+                sessoes.findById(sessaoLocalId).orElseThrow(), pAdB).isEmpty(),
+                "Uma inscricao recusada nao pode criar participante.");
+        assertTrue(participantes.findBySessaoGrupoAndPaciente(
+                sessoes.findById(sessaoExternaId).orElseThrow(), pAdB).isEmpty());
+        assertEquals("CAPS_I", sessoes.findById(sessaoExternaId)
+                .orElseThrow().getUnidadeOrigemChave());
+    }
+
+    @Test
     void gruposRejeitamIdsExternosEFiltramParticipantesLegados() throws Exception {
         assertEquals(404, postAs(ad, "/api/grupos/sessoes/" + futura.getId() + "/participantes",
                 "{\"pacienteId\":\"" + pI.getIdPublico() + "\"}").getStatus());

@@ -168,7 +168,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         escopoUnidadeService.validarUsuario(coordenador);
         if (coordenador.getTipoUsuario() != TipoUsuario.PROFISSIONAL && coordenador.getTipoUsuario() != TipoUsuario.ADMINISTRADOR)
             throw new ValidationException("O coordenador deve ser profissional ou administrador.");
-        List<SessaoGrupo> sessoes = sessaoRepository.findByGrupoOrderByDataSessaoDesc(grupo);
+        List<SessaoGrupo> sessoes = sessoesParaOperacaoLocal(grupo);
         LocalDateTime agora = LocalDateTime.now(clock);
         boolean iniciado = sessoes.stream().anyMatch(s -> s.getStatus() != StatusSessaoGrupo.AGENDADA
                 || !LocalDateTime.of(s.getDataSessao(), s.getHorario()).isAfter(agora));
@@ -257,7 +257,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
             throw new ValidationException("Não é possível criar sessões para um grupo inativo.");
         if (dto.dataSessao().isBefore(LocalDate.now(clock)))
             throw new ValidationException("Não é permitido criar sessão em data passada.");
-        boolean existe = sessaoRepository.findByGrupoOrderByDataSessaoDesc(grupo).stream()
+        boolean existe = sessoesParaOperacaoLocal(grupo).stream()
                 .anyMatch(s -> s.getDataSessao().equals(dto.dataSessao())
                         && s.getStatus() != StatusSessaoGrupo.CANCELADA);
         if (existe)
@@ -413,7 +413,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         autorizacaoClinica.validarGrupoClinico(grupo);
         if (paciente.getStatusPaciente() != StatusPaciente.ATIVO)
             throw new ValidationException("Somente pacientes ativos podem ser inscritos.");
-        List<SessaoGrupo> sessoes = sessaoRepository.findByGrupoOrderByDataSessaoDesc(grupo);
+        List<SessaoGrupo> sessoes = sessoesParaOperacaoLocal(grupo);
         Map<Long, StatusPresencaGrupo> informadas = new java.util.HashMap<>();
         for (var f : dto.frequenciasPassadas()) {
             if (informadas.put(f.sessaoId(), f.statusPresenca()) != null)
@@ -505,7 +505,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         Paciente paciente = pacienteRepository.findByIdPublico(dto.pacienteId()).orElseThrow();
         if (paciente.getStatusPaciente() != StatusPaciente.ATIVO) throw new ValidationException("Somente pacientes ativos podem ser inscritos.");
         LocalDateTime agora = LocalDateTime.now(clock);
-        List<SessaoGrupo> futuras = sessaoRepository.findByGrupoOrderByDataSessaoDesc(grupo).stream()
+        List<SessaoGrupo> futuras = sessoesParaOperacaoLocal(grupo).stream()
                 .filter(s -> s.getStatus() == StatusSessaoGrupo.AGENDADA && LocalDateTime.of(s.getDataSessao(), s.getHorario()).isAfter(agora))
                 .sorted(Comparator.comparing(SessaoGrupo::getDataSessao).thenComparing(SessaoGrupo::getHorario)).toList();
         if (futuras.isEmpty()) throw new ValidationException("Não existem sessões futuras para inscrição.");
@@ -527,7 +527,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         GrupoTerapeutico grupo = bloquearGrupoComSujeitos(grupoId, List.of(pacienteId));
         Paciente paciente = pacienteRepository.findByIdPublico(pacienteId).orElseThrow();
         LocalDateTime agora = LocalDateTime.now(clock);
-        List<SessaoGrupoParticipante> remover = sessaoRepository.findByGrupoOrderByDataSessaoDesc(grupo).stream()
+        List<SessaoGrupoParticipante> remover = sessoesParaOperacaoLocal(grupo).stream()
                 .filter(s -> s.getStatus() == StatusSessaoGrupo.AGENDADA && LocalDateTime.of(s.getDataSessao(), s.getHorario()).isAfter(agora))
                 .map(s -> participanteRepository.findBySessaoGrupoAndPaciente(s, paciente).orElse(null)).filter(java.util.Objects::nonNull).toList();
         if (remover.isEmpty()) throw new ValidationException("Não existem inscrições futuras para remover.");
@@ -774,6 +774,18 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         p.setStatusPresenca(StatusPresencaGrupo.NAO_REGISTRADA);
         participanteRepository.save(p);
         sessao.getParticipantes().add(p);
+    }
+
+    /**
+     * Operacoes em lote nao podem ignorar parte das sessoes e continuar
+     * gravando as demais: a presenca de uma unica origem incoerente exige
+     * reconciliacao humana e interrompe toda a transacao antes da escrita.
+     * Sessoes historicas sem origem continuam sob a barreira legada.
+     */
+    private List<SessaoGrupo> sessoesParaOperacaoLocal(GrupoTerapeutico grupo) {
+        List<SessaoGrupo> serie = sessaoRepository.findByGrupoOrderByDataSessaoDesc(grupo);
+        serie.forEach(escopoUnidadeService::validarSessao);
+        return serie;
     }
 
     private void validarSessaoEditavel(SessaoGrupo sessao) {
