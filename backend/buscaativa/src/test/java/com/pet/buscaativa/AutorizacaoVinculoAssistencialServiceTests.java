@@ -119,16 +119,15 @@ class AutorizacaoVinculoAssistencialServiceTests {
         profissional.setUnidadeAtuacao(UnidadeAtuacao.CAPS_AD);
 
         Agendamento origem = new Agendamento();
-        origem.setId(10L);
         origem.setDataAgendamento(LocalDate.of(2026, 11, 10));
         origem.setHoraAtendimento(LocalTime.of(9, 0));
         origem.setPaciente(pessoa);
         origem.setUsuario(profissional);
         origem.registrarUnidadeDeOrigem(profissional);
+        origem.setId(10L);
         // A origem assistencial existe, mas o estado canonico da raiz e incerto.
 
         Agendamento remarcado = new Agendamento();
-        remarcado.setId(11L);
         remarcado.setDataAgendamento(LocalDate.of(2026, 11, 11));
         remarcado.setHoraAtendimento(LocalTime.of(9, 0));
         remarcado.setPaciente(pessoa);
@@ -136,6 +135,7 @@ class AutorizacaoVinculoAssistencialServiceTests {
         remarcado.registrarUnidadeDeOrigem(profissional);
         remarcado.setSituacaoAtendimento(SituacaoAtendimento.AGENDADO);
         remarcado.setAgendamentoOriginal(origem);
+        remarcado.setId(11L);
 
         HistoricoPaciente historico = new HistoricoPaciente();
         historico.setPaciente(pessoa);
