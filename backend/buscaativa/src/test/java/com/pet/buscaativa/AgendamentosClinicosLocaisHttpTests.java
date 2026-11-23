@@ -137,6 +137,74 @@ class AgendamentosClinicosLocaisHttpTests extends SecurityTestSupport {
     }
 
     @Test
+    void remarcacaoLocalComPaiDeOutraUnidadeNaoApareceNaAgenda() throws Exception {
+        Paciente p = pessoa();
+        Usuario ad = usuario(UnidadeAtuacao.CAPS_AD, TipoUsuario.ADMINISTRADOR);
+        Usuario ii = usuario(UnidadeAtuacao.CAPS_II, TipoUsuario.PROFISSIONAL);
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+
+        var origemEstrangeira = agendamento(p, ii, LocalDate.of(2026, 12, 10), true);
+        var remarcacaoLocal = agendamento(p, ad, LocalDate.of(2026, 12, 11), true);
+        remarcacaoLocal.setAgendamentoOriginal(origemEstrangeira);
+        agendamentos.saveAndFlush(remarcacaoLocal);
+
+        var resposta = consultar(p, ad);
+        assertEquals(200, resposta.getStatus());
+        var payload = json.readTree(resposta.getContentAsString());
+        assertEquals(0, payload.get("totalAgendamentos").asInt());
+        assertEquals(0, payload.get("agendamentos").size());
+        assertEquals("CAPS_AD", agendamentos.findById(remarcacaoLocal.getId())
+                .orElseThrow().getUnidadeOrigemChave());
+        assertEquals("CAPS_II", agendamentos.findById(origemEstrangeira.getId())
+                .orElseThrow().getUnidadeOrigemChave());
+    }
+
+    @Test
+    void cadeiaDeRemarcacoesNaoTransfereOrigemAntigaDesconhecida() throws Exception {
+        Paciente p = pessoa();
+        Usuario ad = usuario(UnidadeAtuacao.CAPS_AD, TipoUsuario.ADMINISTRADOR);
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+
+        var originalSemOrigem = agendamento(p, ad, LocalDate.of(2026, 12, 9), false);
+        var intermediario = agendamento(p, ad, LocalDate.of(2026, 12, 10), true);
+        intermediario.setAgendamentoOriginal(originalSemOrigem);
+        agendamentos.saveAndFlush(intermediario);
+        var maisRecente = agendamento(p, ad, LocalDate.of(2026, 12, 11), true);
+        maisRecente.setAgendamentoOriginal(intermediario);
+        agendamentos.saveAndFlush(maisRecente);
+
+        var resposta = consultar(p, ad);
+        assertEquals(200, resposta.getStatus());
+        var payload = json.readTree(resposta.getContentAsString());
+        assertEquals(0, payload.get("totalAgendamentos").asInt());
+        assertEquals(0, payload.get("agendamentos").size());
+        assertNull(agendamentos.findById(originalSemOrigem.getId())
+                .orElseThrow().getUnidadeOrigemChave(),
+                "Nenhum backfill pode ser efetuado ao consultar a cadeia.");
+    }
+
+    @Test
+    void remarcacaoComCadeiaInteiramenteLocalContinuaVisivel() throws Exception {
+        Paciente p = pessoa();
+        Usuario ad = usuario(UnidadeAtuacao.CAPS_AD, TipoUsuario.ADMINISTRADOR);
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+
+        var original = agendamento(p, ad, LocalDate.of(2026, 12, 9), true);
+        var remarcado = agendamento(p, ad, LocalDate.of(2026, 12, 10), true);
+        remarcado.setAgendamentoOriginal(original);
+        agendamentos.saveAndFlush(remarcado);
+
+        var resposta = consultar(p, ad);
+        assertEquals(200, resposta.getStatus());
+        var payload = json.readTree(resposta.getContentAsString());
+        assertEquals(2, payload.get("totalAgendamentos").asInt());
+        assertEquals(2, payload.get("agendamentos").size());
+        var ids = new java.util.HashSet<Long>();
+        payload.get("agendamentos").forEach(item -> ids.add(item.get("id").asLong()));
+        assertEquals(java.util.Set.of(original.getId(), remarcado.getId()), ids);
+    }
+
+    @Test
     void referenciaTerritorialNaoSubstituiVinculoExplicito() throws Exception {
         Paciente p = pessoa();
         Usuario ad = usuario(UnidadeAtuacao.CAPS_AD, TipoUsuario.ADMINISTRADOR);

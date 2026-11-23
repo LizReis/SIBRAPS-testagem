@@ -48,11 +48,12 @@ public class ConsultaAgendamentosClinicosLocaisService {
                     || !Objects.equals(a.getPaciente().getId(), paciente.getId()))
                 continue;
 
-            var anterior = a.getAgendamentoOriginal();
-            if (anterior != null
-                    && (!Objects.equals(anterior.getPaciente().getId(), paciente.getId())
-                    || !Objects.equals(anterior.getUnidadeOrigemChave(),
-                            vinculo.getUnidadeChave())))
+            // Nao basta validar o pai imediato. Uma remarcacao pode
+            // apontar para uma cadeia antiga com origem NULL, outra unidade
+            // ou migracao pendente. Qualquer elo incoerente bloqueia somente
+            // esta projecao de leitura, sem modificar os registros.
+            if (!cadeiaLocalComprovada(a, paciente.getId(),
+                    vinculo.getUnidadeChave()))
                 continue;
 
             try {
@@ -70,5 +71,29 @@ public class ConsultaAgendamentosClinicosLocaisService {
 
         return new AgendamentosClinicosLocaisDTO(paciente.getNome(),
                 locais.size(), List.copyOf(locais));
+    }
+
+    /**
+     * Valida a cadeia de origem com limite de ciclos. A referencia do
+     * profissional atual e a unidade territorial nao sao evidencias.
+     * Uma cadeia incompleta, circular ou com outra identidade/unidade
+     * nao deve contribuir para a agenda local.
+     */
+    private static boolean cadeiaLocalComprovada(Agendamento atual, Long pacienteId,
+            String unidade) {
+        var visitados = new java.util.HashSet<Long>();
+        Agendamento elo = atual;
+        while (elo != null) {
+            if (elo.getId() == null || !visitados.add(elo.getId())
+                    || elo.getPaciente() == null
+                    || !Objects.equals(elo.getPaciente().getId(), pacienteId)
+                    || !Objects.equals(elo.getUnidadeOrigemChave(), unidade)
+                    || elo.isMigracaoPendente()
+                    || elo.getSituacaoReserva() == null
+                    || elo.getFrequenciaAssistencial() == null)
+                return false;
+            elo = elo.getAgendamentoOriginal();
+        }
+        return true;
     }
 }
