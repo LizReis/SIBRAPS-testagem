@@ -49,9 +49,12 @@ public class ConsultaPendenciasRevisaoProvenienciaService {
 
     public Page<Resumo> listar(UUID pacienteIdPublico, Pageable pagina) {
         exigirPerfilAssistencial();
+        // Preservar a ordem cronologica com desempate por UUID do banco.
+        // Nenhuma interface deve injetar ordenacao dinamica nessa consulta.
         if (pagina == null || !pagina.isPaged() || pagina.getPageSize() < 1
-                || pagina.getPageSize() > 100)
-            throw new IllegalArgumentException("Paginacao limitada a 1..100 registros.");
+                || pagina.getPageSize() > 100 || pagina.getSort().isSorted())
+            throw new IllegalArgumentException(
+                    "Paginacao limitada a 1..100 registros e sem ordenacao externa.");
         VinculoAssistencial vinculo = exigirVinculo(pacienteIdPublico);
         return pendencias.findByPacienteIdAndUnidadeChaveAndEstadoOrderBySolicitadoEmDesc(
                 vinculo.getPaciente().getId(), vinculo.getUnidadeChave(),

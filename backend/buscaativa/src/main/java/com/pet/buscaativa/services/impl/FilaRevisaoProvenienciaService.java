@@ -58,9 +58,13 @@ public class FilaRevisaoProvenienciaService {
 
     public Page<Item> listarPendentes(Pageable pagina) {
         String unidade = unidadeDoAdministrador();
+        // A ordenacao e definida pelo repositorio (data e UUID). Nao
+        // aceitar sort externo que possa alterar a triagem entre paginas.
         if (pagina == null || !pagina.isPaged()
-                || pagina.getPageSize() < 1 || pagina.getPageSize() > 100)
-            throw new IllegalArgumentException("Paginacao limitada a 1..100 registros.");
+                || pagina.getPageSize() < 1 || pagina.getPageSize() > 100
+                || pagina.getSort().isSorted())
+            throw new IllegalArgumentException(
+                    "Paginacao limitada a 1..100 registros e sem ordenacao externa.");
         return fila.findByUnidadeChaveAndEstadoOrderBySolicitadoEmDesc(
                 unidade, Estado.PENDENTE, pagina)
                 .map(FilaRevisaoProvenienciaService::resumir);

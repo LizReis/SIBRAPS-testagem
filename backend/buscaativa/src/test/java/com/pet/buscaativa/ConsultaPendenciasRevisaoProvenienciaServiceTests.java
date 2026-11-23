@@ -117,6 +117,9 @@ class ConsultaPendenciasRevisaoProvenienciaServiceTests {
         ator(TipoUsuario.ADMINISTRADOR);
         assertThrows(IllegalArgumentException.class,
                 () -> service.listar(pacienteId, PageRequest.of(0, 101)));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.listar(pacienteId, PageRequest.of(0, 10,
+                        org.springframework.data.domain.Sort.by("unidadeChave"))));
         assertThrows(ResourceNotFoundException.class,
                 () -> service.detalhar(pacienteId, null));
         verifyNoInteractions(autorizacao, repository);

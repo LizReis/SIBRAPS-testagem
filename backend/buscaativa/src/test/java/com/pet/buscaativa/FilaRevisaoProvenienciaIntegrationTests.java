@@ -239,5 +239,8 @@ class FilaRevisaoProvenienciaIntegrationTests extends SecurityTestSupport {
         when(escopo.usuarioLogado()).thenReturn(administrador);
         assertThrows(IllegalArgumentException.class,
                 () -> fila.listarPendentes(PageRequest.of(0, 101)));
+        assertThrows(IllegalArgumentException.class,
+                () -> fila.listarPendentes(PageRequest.of(0, 10,
+                        org.springframework.data.domain.Sort.by("unidadeChave"))));
     }
 }
