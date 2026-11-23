@@ -30,6 +30,7 @@ import com.pet.buscaativa.repositories.UsfReferenciaRepository;
 import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
 import com.pet.buscaativa.services.impl.EscopoUnidadeService;
 import com.pet.buscaativa.services.impl.FilaRevisaoProvenienciaService;
+import com.pet.buscaativa.services.impl.ConsultaPendenciasRevisaoProvenienciaService;
 import com.pet.buscaativa.services.impl.SusApiAdapter;
 
 /**
@@ -47,6 +48,7 @@ class FilaRevisaoProvenienciaIntegrationTests extends SecurityTestSupport {
     @Autowired UsfReferenciaRepository usfs;
     @Autowired VinculoAssistencialRepository vinculos;
     @Autowired FilaRevisaoProvenienciaService fila;
+    @Autowired ConsultaPendenciasRevisaoProvenienciaService consultaPorPaciente;
     @Autowired JdbcTemplate jdbc;
     @Autowired PendenciaRevisaoProvenienciaRepository consultasPaciente;
 
@@ -242,6 +244,72 @@ class FilaRevisaoProvenienciaIntegrationTests extends SecurityTestSupport {
         assertEquals(1, filaIi.getTotalElements());
         assertEquals(abertaIi, filaIi.getContent().get(0).id());
         assertThrows(ResourceNotFoundException.class, () -> fila.detalharPendente(decididaAd));
+
+        assertEquals("PENDENTE", jdbc.queryForObject(
+                "select estado from tb_pendencia_revisao_proveniencia where id=?",
+                String.class, decididaAd));
+        assertEquals(1, jdbc.queryForObject(
+                "select count(*) from tb_decisao_revisao_proveniencia where pendencia_id=?",
+                Integer.class, decididaAd));
+    }
+
+    @Test
+    void consultaPorPacienteComVinculoRealSeparaCapsEPendenciasJaDecididas() {
+        Paciente p = pessoa();
+        Usuario ad = administrador(UnidadeAtuacao.CAPS_AD, null);
+        Usuario ii = administrador(UnidadeAtuacao.CAPS_II, null);
+        Usuario iSemVinculo = administrador(UnidadeAtuacao.CAPS_I, null);
+        VinculoAssistencial va = vinculos.saveAndFlush(
+                VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+        VinculoAssistencial vi = vinculos.saveAndFlush(
+                VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_II));
+        UUID abertaAd1 = UUID.randomUUID();
+        UUID abertaAd2 = UUID.randomUUID();
+        UUID decididaAd = UUID.randomUUID();
+        UUID abertaIi = UUID.randomUUID();
+        pendencia(abertaAd1, va, ad, 710L);
+        pendencia(abertaAd2, va, ad, 711L);
+        pendencia(decididaAd, va, ad, 712L);
+        pendencia(abertaIi, vi, ii, 713L);
+
+        jdbc.update("""
+                insert into tb_decisao_revisao_proveniencia(
+                    id, pendencia_id, paciente_id, unidade_chave, decisao,
+                    justificativa, revisor_id, perfil_revisor, decidida_em)
+                values (?, ?, ?, 'CAPS_AD', 'APROVAR',
+                    'Conferencia documental concluida pelo administrador local',
+                    ?, 'ADMINISTRADOR', CURRENT_TIMESTAMP)
+                """, UUID.randomUUID(), decididaAd, p.getId(), ad.getId());
+
+        // O autorizador de vinculo e real. Somente a unidade autenticada
+        // e simulada, sem permitir que a identidade global abra outro CAPS.
+        when(escopo.usuarioLogado()).thenReturn(ad);
+        var primeira = consultaPorPaciente.listar(p.getIdPublico(), PageRequest.of(0, 1));
+        var segunda = consultaPorPaciente.listar(p.getIdPublico(), PageRequest.of(1, 1));
+        assertEquals(2, primeira.getTotalElements());
+        assertEquals(2, primeira.getTotalPages());
+        assertEquals(2, segunda.getTotalElements());
+        java.util.Set<UUID> idsAd = java.util.Set.of(
+                primeira.getContent().get(0).id(), segunda.getContent().get(0).id());
+        assertEquals(java.util.Set.of(abertaAd1, abertaAd2), idsAd);
+        assertEquals(abertaAd1, consultaPorPaciente.detalhar(p.getIdPublico(), abertaAd1).id());
+        assertThrows(ResourceNotFoundException.class,
+                () -> consultaPorPaciente.detalhar(p.getIdPublico(), decididaAd));
+        assertThrows(ResourceNotFoundException.class,
+                () -> consultaPorPaciente.detalhar(p.getIdPublico(), abertaIi));
+
+        when(escopo.usuarioLogado()).thenReturn(ii);
+        var localIi = consultaPorPaciente.listar(p.getIdPublico(), PageRequest.of(0, 10));
+        assertEquals(1, localIi.getTotalElements());
+        assertEquals(abertaIi, localIi.getContent().get(0).id());
+        assertThrows(ResourceNotFoundException.class,
+                () -> consultaPorPaciente.detalhar(p.getIdPublico(), abertaAd2));
+
+        when(escopo.usuarioLogado()).thenReturn(iSemVinculo);
+        assertThrows(ResourceNotFoundException.class,
+                () -> consultaPorPaciente.listar(p.getIdPublico(), PageRequest.of(0, 10)));
+        assertThrows(ResourceNotFoundException.class,
+                () -> consultaPorPaciente.detalhar(p.getIdPublico(), abertaIi));
 
         assertEquals("PENDENTE", jdbc.queryForObject(
                 "select estado from tb_pendencia_revisao_proveniencia where id=?",

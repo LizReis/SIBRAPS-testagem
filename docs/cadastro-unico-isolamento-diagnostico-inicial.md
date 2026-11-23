@@ -341,3 +341,10 @@
 - O teste integrado acrescentado cria cinco tickets abertos para um paciente do CAPS AD, um ticket ja decidido na mesma unidade e um ticket aberto no CAPS II. A fila administrativa deve devolver paginas 2+2+1, sem duplicatas, sem exibir a decisao V13 ou a outra unidade; paginas repetidas devem permanecer ordenadas com desempate por UUID.
 - A consulta por paciente deve reportar contagem somente dos cinco tickets ainda abertos e a decisao V13 precisa preservar a solicitacao V12 `PENDENTE`, sem reabrir a fila.
 - **CI deste teste ainda pendente.** Somente classe de teste e diario tecnico foram alterados; nenhum endpoint, tela, migration, origem assistencial, indicador ou regra clinica foi modificado.
+
+## Teste integrado da consulta de pendencias por paciente — 23/11/2026
+
+- CI #45246629024 no commit `33e6a8a81ce25eb96c3525006718f48f9e5b2cb6`: **SUCCESS**; backend 1.242/1.242; concorrencia 12/12, 28 testes direcionados Angular e build Angular aprovados.
+- A consulta de tickets abertos `ConsultaPendenciasRevisaoProvenienciaService` ja tem testes unitarios de perfil e escopo. Esta entrega amplia a cobertura com um teste integrado Spring/H2 **do autorizador de vinculo real**, simulando apenas o contexto de usuario autenticado.
+- Uma identidade global acompanhada em CAPS AD e CAPS II possui pendencias locais distintas; a decisao V13 de um ticket AD deve exclui-lo apenas da lista de abertas, inclusive por paciente e ID; um terceiro CAPS sem vinculo nao pode consultar tickets apesar de conhecer o UUID global.
+- Confirmar paginacao, ausência de acesso cruzado, preservacao de V12 `PENDENTE` e permanencia do evento V13. Nenhum codigo de producao, dado real, migracao, indicador ou painel foi alterado. **CI desta entrega pendente.**
