@@ -410,6 +410,9 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
                 || !historicos.equals(responsaveisHistoricosEscalares(grupoId)))
             throw new ConflictException("A responsabilidade da série foi alterada; atualize antes de tentar novamente.");
         Paciente paciente = pacienteRepository.findByIdPublico(dto.pacienteId()).orElseThrow();
+        // Identidade global nao concede acesso clinico: a inscricao
+        // retroativa altera frequencias, historico e indicadores do paciente.
+        escopoUnidadeService.validarAcesso(paciente);
         autorizacaoClinica.validarGrupoClinico(grupo);
         if (paciente.getStatusPaciente() != StatusPaciente.ATIVO)
             throw new ValidationException("Somente pacientes ativos podem ser inscritos.");
@@ -503,6 +506,8 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     public SessaoGrupoDTO inscreverEmSessoesFuturas(Long grupoId, InscricaoFuturaGrupoDTO dto) {
         GrupoTerapeutico grupo = bloquearGrupoComSujeitos(grupoId, List.of(dto.pacienteId()));
         Paciente paciente = pacienteRepository.findByIdPublico(dto.pacienteId()).orElseThrow();
+        // Verificar unidade ANTES de avaliar vagas e alterar inscricoes.
+        escopoUnidadeService.validarAcesso(paciente);
         if (paciente.getStatusPaciente() != StatusPaciente.ATIVO) throw new ValidationException("Somente pacientes ativos podem ser inscritos.");
         LocalDateTime agora = LocalDateTime.now(clock);
         List<SessaoGrupo> futuras = sessoesParaOperacaoLocal(grupo).stream()
@@ -526,6 +531,9 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     public void removerParticipanteDoGrupo(Long grupoId, UUID pacienteId) {
         GrupoTerapeutico grupo = bloquearGrupoComSujeitos(grupoId, List.of(pacienteId));
         Paciente paciente = pacienteRepository.findByIdPublico(pacienteId).orElseThrow();
+        // Nao remover inscricao de paciente de outra unidade mesmo que um
+        // grupo legado contenha uma participacao clinica inconsistente.
+        escopoUnidadeService.validarAcesso(paciente);
         LocalDateTime agora = LocalDateTime.now(clock);
         List<SessaoGrupoParticipante> remover = sessoesParaOperacaoLocal(grupo).stream()
                 .filter(s -> s.getStatus() == StatusSessaoGrupo.AGENDADA && LocalDateTime.of(s.getDataSessao(), s.getHorario()).isAfter(agora))

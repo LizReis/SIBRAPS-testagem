@@ -517,6 +517,39 @@ class IsolamentoUnidadeTests extends SecurityTestSupport {
     }
 
     @Test
+    void inscricoesColetivasNaoPodemAlterarPacienteDeOutraUnidade() throws Exception {
+        GrupoTerapeutico grupo = grupo(coordenadorAd, "Cadastro paciente fora da unidade");
+        SessaoGrupo sessao = sessao(grupo, LocalDate.now().plusDays(5),
+                StatusSessaoGrupo.AGENDADA);
+        int faltasAntes = pI.getCountFaltas();
+
+        // Nao ha frequencias antigas neste grupo: antes da nova guarda
+        // esta inscricao retroativa poderia vincular um paciente do CAPS I.
+        String corpoRetroativo = "{\"pacienteId\":\"" + pI.getIdPublico()
+                + "\",\"frequenciasPassadas\":[]}";
+        assertEquals(404, postAs(ad, "/api/grupos/" + grupo.getId()
+                + "/inscricoes-retroativas", corpoRetroativo).getStatus());
+        assertEquals(404, postAs(ad, "/api/grupos/" + grupo.getId()
+                + "/inscricoes-futuras",
+                "{\"pacienteId\":\"" + pI.getIdPublico() + "\"}").getStatus());
+
+        assertTrue(participantes.findBySessaoGrupoAndPaciente(sessao, pI).isEmpty());
+        assertEquals(faltasAntes, pacientes.findById(pI.getId())
+                .orElseThrow().getCountFaltas());
+
+        // Dado legado sintetico de participacao cruzada nao autoriza a
+        // unidade a excluir ou corrigir o fato de outra unidade.
+        participante(sessao, pI, StatusPresencaGrupo.NAO_REGISTRADA);
+        assertEquals(404, mvc.perform(delete("/api/grupos/" + grupo.getId()
+                + "/participantes/" + pI.getIdPublico())
+                .header("Authorization", "Bearer " + tokens.gerarToken(ad)))
+                .andReturn().getResponse().getStatus());
+        assertTrue(participantes.findBySessaoGrupoAndPaciente(sessao, pI).isPresent());
+        assertEquals(faltasAntes, pacientes.findById(pI.getId())
+                .orElseThrow().getCountFaltas());
+    }
+
+    @Test
     void gruposRejeitamIdsExternosEFiltramParticipantesLegados() throws Exception {
         assertEquals(404, postAs(ad, "/api/grupos/sessoes/" + futura.getId() + "/participantes",
                 "{\"pacienteId\":\"" + pI.getIdPublico() + "\"}").getStatus());
