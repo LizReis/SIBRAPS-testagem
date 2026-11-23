@@ -29,6 +29,14 @@ public interface DecisaoRevisaoProvenienciaRepository
             UUID pendenciaId, Long pacienteId, String unidadeChave);
 
     /**
+     * Contagem de decisoes da propria unidade, exclusivamente para
+     * servico interno com ADMINISTRADOR autenticado. Nunca aceitar
+     * a chave da unidade informada pelo cliente.
+     */
+    @Query("select count(d) from DecisaoRevisaoProveniencia d where d.unidadeChave = :unidadeChave")
+    long contarDecisoesDaUnidade(@Param("unidadeChave") String unidadeChave);
+
+    /**
      * Historico imutavel das decisoes, isolado por paciente E unidade.
      * Ordenacao com desempate estavel para paginas consecutivas.
      * Nunca oferecer findAll ou consulta apenas por identidade global.

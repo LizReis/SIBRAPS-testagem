@@ -362,3 +362,11 @@
 - A cobertura anterior de `ResumoRevisaoProvenienciaService` simulava apenas CAPS AD e CAPS II. Esta entrega acrescenta teste integrado com H2 para uma identidade cadastrada em duas USFs com chaves canônicas distintas, A com uma solicitacao aberta e uma decisao registrada, B com duas abertas e nenhuma decisao.
 - Verifica que cada administrador recebe apenas suas contagens, que uma terceira USF sem vinculo explicito nao consegue consultar o resumo, e que o perfil PROFISSIONAL nao ganha acesso administrativo ao agregado. Mantem a solicitacao V12 original pendente e a decisao V13 auditada separadamente.
 - **CI desta entrega ainda pendente.** Somente teste e diario tecnico foram alterados; nenhuma nova API, tela, migracao, correção automatica, transferencia de historico ou mudanca em indicadores clinicos.
+
+## Resumo geral por unidade para a futura aba Relatorios — 23/11/2026
+
+- GitHub Actions #45252920600 no commit `c0ee4f6a1c741f5889e5c284a52b3d82fdb4f19e`: **SUCCESS**. Backend 1.245/1.245, concorrencia 12/12, Angular direcionado 28/28 e build de producao aprovados.
+- Nesta entrega foi preparado `ResumoUnidadeRevisaoProvenienciaService`, distinto do resumo por paciente: **somente administrador** e somente unidade derivada do usuario logado, sem aceitar parametro de unidade ou paciente no metodo. Retorna dois totais administrativos: tickets V12 ainda abertos (sem decisao V13) e eventos V13 decididos.
+- Repositorios internos ganharam apenas consultas de `count` com filtro explicito pela `unidadeChave` e `NOT EXISTS` no calculo da fila; nao carregam registros clinicos nem disponibilizam busca global. Nao reutilizar os totais como indicadores de risco/frequencia.
+- Testes de integracao H2 exercitam CAPS AD/I/II, dois pacientes em CAPS AD, e duas USFs distintas da mesma identidade, inclusive perfil profissional negado e preservacao do evento V12 `PENDENTE` e da decisao V13.
+- **CI deste novo commit pendente.** Nao existe nova rota HTTP nem painel ativado, nem migration, alteração de fatos clinicos ou aplicacao automatica de decisao sobre historicos. A migração de indicadores assistenciais continua pendente em etapa separada.

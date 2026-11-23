@@ -45,6 +45,20 @@ public interface FilaPendenciasRevisaoProvenienciaRepository
             @Param("unidadeChave") String unidadeChave, @Param("estado") Estado estado,
             Pageable pagina);
 
+    /**
+     * Contagem local para o futuro painel, sem percorrer registros/DTOs.
+     * Tickets com uma decisao imutavel V13 nao sao pendencias abertas.
+     */
+    @Query("""
+            select count(p) from PendenciaRevisaoProveniencia p
+            where p.unidadeChave = :unidadeChave and p.estado = :estado
+              and not exists (
+                  select d.id from DecisaoRevisaoProveniencia d
+                  where d.pendencia = p)
+            """)
+    long contarAbertasDaUnidade(@Param("unidadeChave") String unidadeChave,
+            @Param("estado") Estado estado);
+
     /** Detalhe apenas da propria unidade e somente enquanto PENDENTE. */
     Optional<PendenciaRevisaoProveniencia> findByIdAndUnidadeChaveAndEstado(
             UUID id, String unidadeChave, Estado estado);
