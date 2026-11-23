@@ -130,6 +130,28 @@ public class EscopoUnidadeService {
                 : AuditEntity.property("capsReferencia").eq(CapsEnum.valueOf(usuario.getUnidadeAtuacao().name()));
     }
 
+    /**
+     * Valida SOMENTE a criacao inicial de um cadastro transiente.
+     *
+     * Nao pode autorizar leitura, atualizacao ou consulta clinica: essas
+     * operacoes exigem paciente persistido e passam pela barreira de
+     * vinculo. Durante a transicao o POST legado ainda requer que a
+     * referencia fornecida seja compativel com a unidade autenticada.
+     * Essa referencia NAO cria vinculo para a unidade mencionada.
+     */
+    public void validarEscopoDoNovoCadastro(Paciente candidato) {
+        Usuario usuario = usuarioComUnidade();
+        if (candidato == null || candidato.getId() != null)
+            throw new ResourceNotFoundException("Paciente não encontrado.");
+
+        boolean referenciaAnterior = usuario.getUnidadeAtuacao() == UnidadeAtuacao.USF
+                ? candidato.getUsfReferencia() != null
+                    && Objects.equals(candidato.getUsfReferencia().getId(), usuario.getUsfAtuacao().getId())
+                : candidato.getCapsReferencia() == CapsEnum.valueOf(usuario.getUnidadeAtuacao().name());
+        if (!referenciaAnterior)
+            throw new ResourceNotFoundException("Paciente não encontrado.");
+    }
+
     public boolean pacientePertenceAoEscopo(Paciente paciente) {
         Usuario usuario = usuarioComUnidade();
         if (paciente == null) return false;

@@ -91,7 +91,14 @@ public class PacienteServiceImpl implements PacienteService{
             pacienteSalvar.setStatusPaciente(StatusPaciente.ATIVO);
         }
 
-        escopoUnidadeService.validarAcesso(pacienteSalvar);
+        if (pacienteDTO.idPublico() == null) {
+            // Entidade ainda sem id de banco: a barreira clinica por vinculo
+            // nao deve ser usada para autorizar um novo INSERT. Preservar
+            // a validacao do escopo de origem do POST legado.
+            escopoUnidadeService.validarEscopoDoNovoCadastro(pacienteSalvar);
+        } else {
+            escopoUnidadeService.validarAcesso(pacienteSalvar);
+        }
 
         // O papel é permissão, não profissão: apenas RECEPCAO é inelegível.
         pacienteSalvar.setProfissionalReferencia(resolverProfissionalReferencia(pacienteDTO.profissionalReferenciaId()));

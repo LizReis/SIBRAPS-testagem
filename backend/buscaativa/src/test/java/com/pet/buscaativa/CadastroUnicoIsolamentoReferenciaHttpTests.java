@@ -107,8 +107,8 @@ class CadastroUnicoIsolamentoReferenciaHttpTests extends SecurityTestSupport {
                 "CAPS de referencia nao equivale a vinculo CAPS; o GET legado nao pode liberar dados globais.");
         assertFalse(detalhe.getContentAsString().contains(p.getNome()));
 
-        var pesquisa = consultar(capsII, "/api/pacientes/pesquisa?q=Identidade%20sintetica%20isolada");
-        assertEquals(200, pesquisa.getStatus());
+        var pesquisa = consultar(capsII, "/api/pacientes/pesquisa?q=isolada");
+        assertEquals(200, pesquisa.getStatus(), pesquisa.getContentAsString());
         assertFalse(pesquisa.getContentAsString().contains(p.getNome()),
                 "A listagem tambem nao pode vazar a identidade sem vinculo CAPS.");
     }
@@ -131,8 +131,8 @@ class CadastroUnicoIsolamentoReferenciaHttpTests extends SecurityTestSupport {
             assertFalse(detalhe.getContentAsString().contains(p.getNome()));
 
             var lista = consultar(usuario,
-                    "/api/pacientes/pesquisa?q=Identidade%20sintetica%20isolada");
-            assertEquals(200, lista.getStatus());
+                    "/api/pacientes/pesquisa?q=isolada");
+            assertEquals(200, lista.getStatus(), lista.getContentAsString());
             assertFalse(lista.getContentAsString().contains(p.getNome()));
         }
         assertEquals(7, pacientes.findById(p.getId()).orElseThrow().getCountFaltas(),
@@ -152,8 +152,8 @@ class CadastroUnicoIsolamentoReferenciaHttpTests extends SecurityTestSupport {
                 "USF de referencia territorial nao equivale a vinculo assistencial local.");
         assertFalse(detalhe.getContentAsString().contains(p.getNome()));
 
-        var pesquisa = consultar(usfA, "/api/pacientes/pesquisa?q=Identidade%20sintetica%20isolada");
-        assertEquals(200, pesquisa.getStatus());
+        var pesquisa = consultar(usfA, "/api/pacientes/pesquisa?q=isolada");
+        assertEquals(200, pesquisa.getStatus(), pesquisa.getContentAsString());
         assertFalse(pesquisa.getContentAsString().contains(p.getNome()));
     }
 }
