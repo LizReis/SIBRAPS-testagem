@@ -44,13 +44,14 @@ public class PreparacaoRevisaoProvenienciaService {
         // Primeiramente exigir vinculo explicito. Uma referencia cadastral
         // da pessoa ou a lotacao atual do profissional nao substitui vinculo.
         String unidade = autorizacao.exigirVinculoLocal(pacienteId).getUnidadeChave();
-        Situacao situacao = ClassificadorEvidenciaClinicaLocal.classificar(
-                unidade, Objects.requireNonNull(evidenciaVerificadaInternamente));
+        var evidencia = Objects.requireNonNull(evidenciaVerificadaInternamente);
+        Situacao situacao = ClassificadorEvidenciaClinicaLocal.classificar(unidade, evidencia);
 
         // Fato de outra unidade, ou fonte que conflita com essa unidade,
         // nunca pode ser submetido por essa via de revisao LOCAL.
+        String origemDaFonte = evidencia.origemDaFonte();
         if (situacao == Situacao.FORA_DA_UNIDADE
-                || situacao == Situacao.REVISAR_ORIGENS_CONFLITANTES)
+                || origemDaFonte != null && !origemDaFonte.isBlank() && !unidade.equals(origemDaFonte))
             throw new ResourceNotFoundException("Registro não encontrado.");
 
         // Reutilizar a politica vigente: 10..2000 caracteres, sem justificativa

@@ -30,7 +30,7 @@ class DiagnosticoFaltasConsecutivasVinculoTests {
                 evento(12, 9, false, origem, 12),
                 evento(14, 9, false, origem, 14));
         var resultado = DiagnosticoFaltasConsecutivasVinculoService.calcular(
-                new LinhaDoTempoFrequenciasVinculoService.Diagnostico(fatos, 0, 0));
+                new LinhaDoTempoFrequenciasVinculoService.Diagnostico(fatos, 0, 0, 0, 0));
         assertEquals(OptionalInt.of(3), resultado.faltasConsecutivasAnalisaveis());
         assertTrue(resultado.ultimaPresencaComprovada().isEmpty());
         assertTrue(resultado.podeAvaliarSequencia());
@@ -44,22 +44,25 @@ class DiagnosticoFaltasConsecutivasVinculoTests {
                 evento(12, 8, true, origem, 12),
                 evento(13, 8, false, origem, 13));
         var resultado = DiagnosticoFaltasConsecutivasVinculoService.calcular(
-                new LinhaDoTempoFrequenciasVinculoService.Diagnostico(fatos, 0, 0));
+                new LinhaDoTempoFrequenciasVinculoService.Diagnostico(fatos, 0, 0, 0, 0));
         assertEquals(OptionalInt.of(2), resultado.faltasConsecutivasAnalisaveis());
         assertEquals(LocalDateTime.of(2026, 11, 12, 8, 0),
                 resultado.ultimaPresencaComprovada().orElseThrow());
     }
 
     @Test
-    void modalidadesDoMesmoVinculoRespeitamDesempateLegado() {
+    void desempateLegadoPreservaSimulacaoSemConfirmarOrdemClinica() {
         var individual = LinhaDoTempoFrequenciasVinculoService.Fonte.ATENDIMENTO_INDIVIDUAL;
         var grupo = LinhaDoTempoFrequenciasVinculoService.Fonte.SESSAO_GRUPO;
         var fatos = List.of(evento(20, 10, true, grupo, 2),
                 evento(20, 10, false, individual, 1),
                 evento(21, 10, false, individual, 3));
         var resultado = DiagnosticoFaltasConsecutivasVinculoService.calcular(
-                new LinhaDoTempoFrequenciasVinculoService.Diagnostico(fatos, 0, 0));
-        assertEquals(OptionalInt.of(1), resultado.faltasConsecutivasAnalisaveis());
+                new LinhaDoTempoFrequenciasVinculoService.Diagnostico(fatos, 0, 0, 0, 0));
+        assertEquals(OptionalInt.of(1), resultado.faltasNaOrdemLegada());
+        assertTrue(resultado.empateComFrequenciasDiferentes());
+        assertTrue(resultado.faltasConsecutivasAnalisaveis().isEmpty());
+        assertFalse(resultado.podeAvaliarSequencia());
     }
 
     @Test
@@ -67,7 +70,7 @@ class DiagnosticoFaltasConsecutivasVinculoTests {
         var individual = LinhaDoTempoFrequenciasVinculoService.Fonte.ATENDIMENTO_INDIVIDUAL;
         var fatos = List.of(evento(22, 9, false, individual, 22));
         var resultado = DiagnosticoFaltasConsecutivasVinculoService.calcular(
-                new LinhaDoTempoFrequenciasVinculoService.Diagnostico(fatos, 1, 0));
+                new LinhaDoTempoFrequenciasVinculoService.Diagnostico(fatos, 1, 0, 0, 0));
         assertTrue(resultado.faltasConsecutivasAnalisaveis().isEmpty());
         assertTrue(resultado.revisaoHistoricaNecessaria());
         assertFalse(resultado.podeAvaliarSequencia());
@@ -78,7 +81,7 @@ class DiagnosticoFaltasConsecutivasVinculoTests {
     @Test
     void semFatosNemPendenciasContagemZeroNaoInventaPresenca() {
         var resultado = DiagnosticoFaltasConsecutivasVinculoService.calcular(
-                new LinhaDoTempoFrequenciasVinculoService.Diagnostico(List.of(), 0, 0));
+                new LinhaDoTempoFrequenciasVinculoService.Diagnostico(List.of(), 0, 0, 0, 0));
         assertEquals(OptionalInt.of(0), resultado.faltasConsecutivasAnalisaveis());
         assertTrue(resultado.ultimaPresencaComprovada().isEmpty());
     }

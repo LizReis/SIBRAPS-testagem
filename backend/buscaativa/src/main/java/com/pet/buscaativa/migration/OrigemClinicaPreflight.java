@@ -32,7 +32,9 @@ public final class OrigemClinicaPreflight {
             long sessoesRealizadasTotais,
             long sessoesRealizadasSemParticipantes,
             long participacoesComFrequenciaNaoRegistrada,
-            long historicosVinculadosASessaoNaoRealizada
+            long historicosVinculadosASessaoNaoRealizada,
+            long gruposTotais,
+            long sessoesTotais
     ) {
         /**
          * Este preflight opera sobre o esquema V8 e NAO consulta prova
@@ -40,12 +42,13 @@ public final class OrigemClinicaPreflight {
          * e a fonte pertence ao mesmo paciente, nao ha garantia de origem.
          * Por seguranca, qualquer fato legado exige revisao/prova externa
          * antes do corte, inclusive sessao realizada com responsavel
-         * identificado e sem historico individual associado. Uma lista
+         * identificado e sem historico individual associado, sessoes nao
+         * realizadas e grupos sem sessao. Uma lista
          * sem fatos pode ser considerada sem risco por ausencia de atribuicoes.
          */
         public boolean necessitaRevisaoHistorica() {
             return agendamentosTotais > 0 || historicosTotais > 0
-                    || sessoesRealizadasTotais > 0
+                    || gruposTotais > 0 || sessoesTotais > 0 || sessoesRealizadasTotais > 0
                     || agendamentosSemIndicioDaUnidade > 0
                     || historicosSemFonteDireta > 0
                     || historicosComFonteDePacienteInconsistente > 0
@@ -61,7 +64,7 @@ public final class OrigemClinicaPreflight {
         long agendamentosComIndicio = contar(jdbc, """
                 select count(*) from tb_agendamento a
                 join tb_usuario u on u.id = a.usuario_id
-                where u.unidade_atuacao in (2,3,4)
+                where (u.unidade_atuacao in (2,3,4) and u.usf_atuacao_id is null)
                    or (u.unidade_atuacao = 1 and u.usf_atuacao_id is not null)
                 """);
         long historicos = contar(jdbc, "select count(*) from tb_historico_paciente");
@@ -84,7 +87,7 @@ public final class OrigemClinicaPreflight {
                       where s.id = h.sessao_grupo_id
                         and s.status = 'REALIZADA'
                         and s.responsabilidade_pendente = false
-                        and (u.unidade_atuacao in (2,3,4)
+                        and ((u.unidade_atuacao in (2,3,4) and u.usf_atuacao_id is null)
                              or (u.unidade_atuacao = 1 and u.usf_atuacao_id is not null))
                         and exists (
                             select 1 from tb_sessao_grupo_participante p
@@ -145,12 +148,14 @@ public final class OrigemClinicaPreflight {
                   and (s.responsavel_atendimento_id is null
                        or s.responsabilidade_pendente = true)
                 """);
+        long grupos = contar(jdbc, "select count(*) from tb_grupo_terapeutico");
+        long sessoes = contar(jdbc, "select count(*) from tb_sessao_grupo");
         return new Relatorio(
                 agendamentos, agendamentosComIndicio, agendamentos - agendamentosComIndicio,
                 historicos, historiasAgendamento, historiasGrupo, semFonte,
                 inconsistentes, sessoesSemAutor, sessoesRealizadas,
                 sessoesSemParticipantes, participacoesNaoRegistradas,
-                historicosDeSessaoNaoRealizada);
+                historicosDeSessaoNaoRealizada, grupos, sessoes);
     }
 
     private static long contar(JdbcTemplate jdbc, String sql) {

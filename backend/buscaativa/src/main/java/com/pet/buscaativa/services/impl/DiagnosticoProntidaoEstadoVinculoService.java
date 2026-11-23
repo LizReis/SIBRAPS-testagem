@@ -1,5 +1,6 @@
 package com.pet.buscaativa.services.impl;
 
+import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -27,8 +28,12 @@ public class DiagnosticoProntidaoEstadoVinculoService {
 
     public enum Situacao {
         REVISAR_PROVENIENCIA_HISTORICA,
+        REVISAR_INCONSISTENCIA_DE_FREQUENCIA,
+        REVISAR_ORDEM_DE_FREQUENCIAS,
         RECONCILIAR_ESTADO_LOCAL,
+        REVISAR_INDICADORES_LOCAIS_PENDENTES,
         REVISAR_DIVERGENCIA_DE_FALTAS,
+        REVISAR_DIVERGENCIA_DE_ULTIMA_PRESENCA,
         COERENTE_APENAS_PARA_TESTES
     }
 
@@ -39,10 +44,14 @@ public class DiagnosticoProntidaoEstadoVinculoService {
             boolean faltaStatusLocal,
             boolean faltaIndicadorDePendenciaLocal,
             boolean faltaContagemLocal,
+            boolean faltaRiscoLocal,
+            boolean faltaGatilhoVisitaLocal,
             boolean contagemLocalDivergenteDaSequencia,
             int eventosLocaisComprovados,
             long agendamentosHistoricosSemOrigem,
-            long sessoesHistoricasSemOrigem
+            long sessoesHistoricasSemOrigem,
+            long frequenciasInconsistentes,
+            boolean ultimaPresencaLocalDivergente
     ) {
         /** Nunca usar como indicador de elegibilidade para migracao automatica. */
         public boolean requerRevisao() {
@@ -66,25 +75,46 @@ public class DiagnosticoProntidaoEstadoVinculoService {
         Objects.requireNonNull(vinculo, "Vinculo explicito obrigatorio.");
         Objects.requireNonNull(diagnostico, "Diagnostico local obrigatorio.");
 
-        boolean origemIncerta = diagnostico.revisaoHistoricaNecessaria()
-                || diagnostico.faltasConsecutivasAnalisaveis().isEmpty();
+        boolean sequenciaBloqueada = !diagnostico.podeAvaliarSequencia();
+        boolean origemIncerta = diagnostico.agendamentosSemOrigemComFrequencia() > 0
+                || diagnostico.presencasGrupoSemOrigem() > 0;
         boolean tipoAusente = vinculo.getTipoAcompanhamento() == null;
         boolean statusAusente = vinculo.getStatusPaciente() == null;
         boolean pendenciaAusente = vinculo.getIndicadoresPendentes() == null;
         boolean contadorAusente = vinculo.getCountFaltas() == null;
-        boolean divergencia = !origemIncerta && vinculo.getCountFaltas() != null
+        boolean riscoAusente = vinculo.getClassificacaoRisco() == null;
+        boolean gatilhoAusente = vinculo.getGatilhoVisitaAcionado() == null;
+        boolean divergencia = !sequenciaBloqueada && vinculo.getCountFaltas() != null
                 && vinculo.getCountFaltas() != diagnostico.faltasConsecutivasAnalisaveis().getAsInt();
 
-        Situacao situacao = origemIncerta ? Situacao.REVISAR_PROVENIENCIA_HISTORICA
-                : (tipoAusente || statusAusente || pendenciaAusente || contadorAusente)
-                    ? Situacao.RECONCILIAR_ESTADO_LOCAL
-                : divergencia ? Situacao.REVISAR_DIVERGENCIA_DE_FALTAS
-                : Situacao.COERENTE_APENAS_PARA_TESTES;
+        boolean presencaDivergente = !sequenciaBloqueada
+                && !Objects.equals(vinculo.getDataUltimaPresenca(),
+                        diagnostico.ultimaPresencaComprovada().map(LocalDateTime::toLocalDate).orElse(null));
+
+        boolean estadoIncompleto = tipoAusente || statusAusente || pendenciaAusente
+                || contadorAusente || riscoAusente || gatilhoAusente;
+        Situacao situacao = classificar(origemIncerta, sequenciaBloqueada, diagnostico.empateComFrequenciasDiferentes(),
+                estadoIncompleto,
+                Boolean.TRUE.equals(vinculo.getIndicadoresPendentes()), divergencia, presencaDivergente);
 
         return new Relatorio(
                 situacao, origemIncerta, tipoAusente, statusAusente,
-                pendenciaAusente, contadorAusente, divergencia, diagnostico.eventosLocaisComprovados(),
+                pendenciaAusente, contadorAusente, riscoAusente, gatilhoAusente, divergencia, diagnostico.eventosLocaisComprovados(),
                 diagnostico.agendamentosSemOrigemComFrequencia(),
-                diagnostico.presencasGrupoSemOrigem());
+                diagnostico.presencasGrupoSemOrigem(), diagnostico.frequenciasInconsistentes(),
+                presencaDivergente);
+    }
+
+    private static Situacao classificar(boolean origemIncerta, boolean sequenciaBloqueada,
+            boolean ordemInconclusiva, boolean estadoIncompleto, boolean indicadoresPendentes, boolean faltasDivergentes,
+            boolean presencaDivergente) {
+        if (origemIncerta) return Situacao.REVISAR_PROVENIENCIA_HISTORICA;
+        if (ordemInconclusiva) return Situacao.REVISAR_ORDEM_DE_FREQUENCIAS;
+        if (sequenciaBloqueada) return Situacao.REVISAR_INCONSISTENCIA_DE_FREQUENCIA;
+        if (estadoIncompleto) return Situacao.RECONCILIAR_ESTADO_LOCAL;
+        if (indicadoresPendentes) return Situacao.REVISAR_INDICADORES_LOCAIS_PENDENTES;
+        if (faltasDivergentes) return Situacao.REVISAR_DIVERGENCIA_DE_FALTAS;
+        if (presencaDivergente) return Situacao.REVISAR_DIVERGENCIA_DE_ULTIMA_PRESENCA;
+        return Situacao.COERENTE_APENAS_PARA_TESTES;
     }
 }

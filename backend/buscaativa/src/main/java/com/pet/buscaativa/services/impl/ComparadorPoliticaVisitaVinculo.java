@@ -32,39 +32,22 @@ public final class ComparadorPoliticaVisitaVinculo {
         if (unidadeDoVinculoAutorizado == null || unidadeDoVinculoAutorizado.isBlank())
             throw new IllegalArgumentException("Unidade local comprovada obrigatoria.");
 
-        if (!diagnostico.podeAvaliarSequencia()
-                || diagnostico.faltasConsecutivasAnalisaveis().isEmpty()) return Optional.empty();
+        if (!diagnostico.podeAvaliarSequencia()) return Optional.empty();
 
-        // Nao atribuir fatos de paciente global com unidade desconhecida
-        // a qualquer vinculo. Sem certeza, nao existe decisao segura.
         if (agendamentosDaIdentidade.stream().anyMatch(a -> a == null
-                || (a.getUnidadeOrigemChave() == null
-                    && (a.isMigracaoPendente()
-                        || a.getFrequenciaAssistencial()
-                           == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU
-                        || a.getFrequenciaAssistencial()
-                           == com.pet.buscaativa.entities.enums.FrequenciaAssistencial.PRESENTE))))
+                || (AvaliacaoProvenienciaClinica.origemAusente(a.getUnidadeOrigemChave())
+                    && AvaliacaoProvenienciaClinica.frequenciaIndividualEmAnalise(a)))) {
             return Optional.empty();
+        }
 
         List<Agendamento> locais = agendamentosDaIdentidade.stream()
                 .filter(a -> unidadeDoVinculoAutorizado.equals(a.getUnidadeOrigemChave()))
                 .toList();
 
-        // Nao tratar migracao inconclusiva como falta nem como ausencia de gatilho.
-        if (locais.stream().anyMatch(Agendamento::isMigracaoPendente)) return Optional.empty();
-
-        for (Agendamento remarcacao : locais) {
-            if (!remarcacao.isRemarcacaoAposFalta()) continue;
-            Agendamento original = remarcacao.getAgendamentoOriginal();
-            if (original == null) {
-                // Uma remarcacao declarada sem fato original nao e avaliavel.
-                return Optional.empty();
-            }
-            if (!unidadeDoVinculoAutorizado.equals(original.getUnidadeOrigemChave())
-                    || original.isMigracaoPendente()
-                    || original.getPaciente() == null || remarcacao.getPaciente() == null
-                    || !Objects.equals(original.getPaciente().getId(), remarcacao.getPaciente().getId())) {
-                // Bloquear ligações cruzadas e historico sem proveniencia.
+        for (Agendamento agenda : locais) {
+            if (agenda.getPaciente() == null || AvaliacaoProvenienciaClinica.cadeiaAgendamento(
+                    agenda, agenda.getPaciente().getId(), unidadeDoVinculoAutorizado)
+                    != AvaliacaoProvenienciaClinica.Situacao.COMPROVADA) {
                 return Optional.empty();
             }
         }

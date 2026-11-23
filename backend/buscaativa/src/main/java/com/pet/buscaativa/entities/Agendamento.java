@@ -125,6 +125,11 @@ public class Agendamento {
 
     public boolean isMigracaoPendente() { return Boolean.TRUE.equals(migracaoPendente); }
 
+    public boolean temEstadoCanonicoIdentificado() {
+        return Boolean.FALSE.equals(migracaoPendente)
+                && situacaoReserva != null && frequenciaAssistencial != null;
+    }
+
     public void setAgendamentoOriginal(Agendamento original) {
         if (original == this) throw new IllegalArgumentException("Vínculo de remarcação circular.");
         agendamentoOriginal = original;

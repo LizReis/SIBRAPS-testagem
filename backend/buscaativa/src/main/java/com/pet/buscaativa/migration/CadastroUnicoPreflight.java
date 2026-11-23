@@ -71,7 +71,8 @@ public final class CadastroUnicoPreflight {
             select count(*) from tb_agendamento a
             left join tb_usuario u on u.id = a.usuario_id
             where u.id is null or u.unidade_atuacao is null
-               or (u.unidade_atuacao = 1 and u.usf_atuacao_id is null)
+               or not ((u.unidade_atuacao in (2, 3, 4) and u.usf_atuacao_id is null)
+                    or (u.unidade_atuacao = 1 and u.usf_atuacao_id is not null))
             """);
         long historicosSemFonte = contar(jdbc, """
             select count(*) from tb_historico_paciente

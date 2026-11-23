@@ -45,12 +45,12 @@ class OrigemClinicaPreflightTests {
     @Test
     void metadadosLegadosSemAlertasNaoSignificamOrigemHistoricaComprovada() {
         var legadoComIndicios = new OrigemClinicaPreflight.Relatorio(
-                12, 12, 0, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0);
+                12, 12, 0, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         assertTrue(legadoComIndicios.necessitaRevisaoHistorica(),
                 "Origem historica de fatos V8 nao e provada pela unidade atual.");
 
         var vazio = new OrigemClinicaPreflight.Relatorio(
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         assertFalse(vazio.necessitaRevisaoHistorica(),
                 "Sem fatos legados, nenhum registro demanda atribuicao.");
     }
@@ -60,7 +60,7 @@ class OrigemClinicaPreflightTests {
         // Um fato coletivo realizado existe sem historico individual
         // associado; conhecer o responsavel nao comprova a unidade na data.
         var relatorioSomenteSessao = new OrigemClinicaPreflight.Relatorio(
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0);
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1);
         assertTrue(relatorioSomenteSessao.necessitaRevisaoHistorica());
 
         var fonte = LegacyMigrationFixture.legacy(temp.resolve("sessao-realizada"));
@@ -232,5 +232,39 @@ class OrigemClinicaPreflightTests {
         assertTrue(report.historicosSemFonteDireta() > 0);
         assertTrue(report.necessitaRevisaoHistorica());
         assertEquals(before, LegacyMigrationFixture.snapshot(source, columns));
+    }
+
+    @Test
+    void grupoESessoesNaoRealizadasExigemConferenciaMesmoSemHistoricos() throws Exception {
+        var fonte = LegacyMigrationFixture.legacy(temp.resolve("grupos-sem-historico"));
+        AgendaMigrationTool.migrar(fonte);
+        var jdbc = new JdbcTemplate(fonte);
+        jdbc.update("delete from tb_historico_paciente");
+        jdbc.update("update tb_agendamento set agendamento_original_id = null");
+        jdbc.update("delete from tb_agendamento");
+        jdbc.update("""
+                insert into tb_grupo_terapeutico(id, ativo, coordenador_id, tema, recorrencia)
+                values (9100, true, 2, 'Grupo sintetico', 'UNICA')
+                """);
+        var soGrupo = OrigemClinicaPreflight.analisar(fonte);
+        assertEquals(1, soGrupo.gruposTotais());
+        assertEquals(0, soGrupo.sessoesTotais());
+        assertTrue(soGrupo.necessitaRevisaoHistorica());
+
+        jdbc.update("""
+                insert into tb_sessao_grupo(id, grupo_id, status, responsabilidade_pendente)
+                values (9101, 9100, 'AGENDADA', false), (9102, 9100, 'CANCELADA', false)
+                """);
+        var colunas = LegacyMigrationFixture.columns(fonte);
+        var antes = LegacyMigrationFixture.snapshot(fonte, colunas);
+        var preflight = OrigemClinicaPreflight.analisar(fonte);
+
+        assertEquals(0, preflight.agendamentosTotais());
+        assertEquals(0, preflight.historicosTotais());
+        assertEquals(1, preflight.gruposTotais());
+        assertEquals(2, preflight.sessoesTotais());
+        assertEquals(0, preflight.sessoesRealizadasTotais());
+        assertTrue(preflight.necessitaRevisaoHistorica());
+        assertEquals(antes, LegacyMigrationFixture.snapshot(fonte, colunas));
     }
 }

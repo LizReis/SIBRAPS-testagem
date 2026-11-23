@@ -5,12 +5,9 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.pet.buscaativa.entities.enums.FrequenciaAssistencial;
-import com.pet.buscaativa.entities.enums.StatusPresencaGrupo;
-import com.pet.buscaativa.entities.enums.StatusSessaoGrupo;
-import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
+import com.pet.buscaativa.services.impl.LinhaDoTempoFrequenciasVinculoService.Diagnostico;
+import com.pet.buscaativa.services.impl.LinhaDoTempoFrequenciasVinculoService.Fonte;
 
-import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -24,8 +21,7 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 public class InventarioFrequenciasVinculoService {
-    private final AutorizacaoVinculoAssistencialService autorizacao;
-    private final EntityManager em;
+    private final LinhaDoTempoFrequenciasVinculoService linhaDoTempo;
 
     public record Inventario(
             long presencasIndividuais,
@@ -41,66 +37,18 @@ public class InventarioFrequenciasVinculoService {
 
     @Transactional(readOnly = true)
     public Inventario inventariar(UUID pacienteId) {
-        // A chave da unidade e obtida do vinculo explicitamente autorizado;
-        // jamais de parametro recebido do cliente ou de referencia territorial.
-        String unidade = autorizacao.exigirVinculoLocal(pacienteId).getUnidadeChave();
+        var diagnostico = linhaDoTempo.analisar(pacienteId);
         return new Inventario(
-                contarIndividuais(pacienteId, unidade, FrequenciaAssistencial.PRESENTE),
-                contarIndividuais(pacienteId, unidade, FrequenciaAssistencial.FALTOU),
-                contarGrupos(pacienteId, unidade, StatusPresencaGrupo.PRESENTE),
-                contarGrupos(pacienteId, unidade, StatusPresencaGrupo.FALTOU),
-                contarIndividuaisPendentes(pacienteId, unidade));
+                contar(diagnostico, Fonte.ATENDIMENTO_INDIVIDUAL, true),
+                contar(diagnostico, Fonte.ATENDIMENTO_INDIVIDUAL, false),
+                contar(diagnostico, Fonte.SESSAO_GRUPO, true),
+                contar(diagnostico, Fonte.SESSAO_GRUPO, false),
+                diagnostico.agendamentosLocaisPendentesDeEvidencia());
     }
 
-    private long contarIndividuais(UUID paciente, String unidade, FrequenciaAssistencial frequencia) {
-        return em.createQuery("""
-                select count(a) from Agendamento a
-                where a.paciente.idPublico = :paciente
-                  and a.unidadeOrigemChave = :unidade
-                  and a.frequenciaAssistencial = :frequencia
-                  and a.migracaoPendente = false
-                  and a.dataAgendamento is not null
-                  and a.horaAtendimento is not null
-                """, Long.class)
-                .setParameter("paciente", paciente)
-                .setParameter("unidade", unidade)
-                .setParameter("frequencia", frequencia)
-                .getSingleResult();
-    }
-
-    private long contarGrupos(UUID paciente, String unidade, StatusPresencaGrupo frequencia) {
-        return em.createQuery("""
-                select count(p) from SessaoGrupoParticipante p
-                join p.sessaoGrupo s
-                join s.grupo g
-                where p.paciente.idPublico = :paciente
-                  and s.unidadeOrigemChave = :unidade
-                  and g.unidadeOrigemChave = :unidade
-                  and s.status = :realizada
-                  and p.statusPresenca = :frequencia
-                  and s.dataSessao is not null
-                  and s.horario is not null
-                """, Long.class)
-                .setParameter("paciente", paciente)
-                .setParameter("unidade", unidade)
-                .setParameter("realizada", StatusSessaoGrupo.REALIZADA)
-                .setParameter("frequencia", frequencia)
-                .getSingleResult();
-    }
-
-    private long contarIndividuaisPendentes(UUID paciente, String unidade) {
-        return em.createQuery("""
-                select count(a) from Agendamento a
-                where a.paciente.idPublico = :paciente
-                  and a.unidadeOrigemChave = :unidade
-                  and (a.migracaoPendente = true
-                       or (a.frequenciaAssistencial in :comprovadas
-                           and (a.dataAgendamento is null or a.horaAtendimento is null)))
-                """, Long.class)
-                .setParameter("paciente", paciente)
-                .setParameter("unidade", unidade)
-                .setParameter("comprovadas", java.util.List.of(
-                        FrequenciaAssistencial.PRESENTE, FrequenciaAssistencial.FALTOU))
-                .getSingleResult();
+    private static long contar(Diagnostico diagnostico, Fonte fonte, boolean presente) {
+        return diagnostico.eventosComOrigemLocal().stream()
+                .filter(evento -> evento.fonte() == fonte && evento.presente() == presente)
+                .count();
     }
 }

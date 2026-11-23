@@ -70,27 +70,9 @@ public class AutorizacaoVinculoAssistencialService {
         VinculoAssistencial vinculo = exigirVinculoLocal(agendamento.getPaciente().getIdPublico());
         String unidadeLocal = vinculo.getUnidadeChave();
         Long pacienteId = agendamento.getPaciente().getId();
-        // Uma origem local no ultimo atendimento nao prova a origem
-        // assistencial da cadeia de remarcacoes. Rejeitar elo antigo sem
-        // origem, unidade diferente, paciente divergente, estado canonico,
-        // responsavel, pendencia ou ciclo.
-        // Nao inferir origem pela lotacao atual do profissional.
-        var idsVisitados = new java.util.HashSet<Long>();
-        var objetosVisitados = java.util.Collections.newSetFromMap(
-                new java.util.IdentityHashMap<Agendamento, Boolean>());
-        Agendamento elo = agendamento;
-        while (elo != null) {
-            if (!objetosVisitados.add(elo)
-                    || elo.getId() != null && !idsVisitados.add(elo.getId())
-                    || elo.getPaciente() == null
-                    || elo.getUsuario() == null
-                    || !Objects.equals(pacienteId, elo.getPaciente().getId())
-                    || elo.isMigracaoPendente()
-                    || elo.getSituacaoReserva() == null
-                    || elo.getFrequenciaAssistencial() == null
-                    || !Objects.equals(unidadeLocal, elo.getUnidadeOrigemChave()))
-                throw new ResourceNotFoundException("Agendamento não encontrado.");
-            elo = elo.getAgendamentoOriginal();
+        if (AvaliacaoProvenienciaClinica.cadeiaAgendamento(agendamento, pacienteId, unidadeLocal)
+                != AvaliacaoProvenienciaClinica.Situacao.COMPROVADA) {
+            throw new ResourceNotFoundException("Agendamento não encontrado.");
         }
     }
 

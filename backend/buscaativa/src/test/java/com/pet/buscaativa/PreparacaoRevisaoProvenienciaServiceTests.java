@@ -79,6 +79,17 @@ class PreparacaoRevisaoProvenienciaServiceTests {
     }
 
     @Test
+    void fonteExternaNaoGeraRascunhoMesmoQuandoEventoOuIdentidadeSaoInconclusivos() {
+        vinculo("USF:10");
+        for (String origemEvento : new String[]{null, "USF:10"}) {
+            assertThrows(ResourceNotFoundException.class, () -> service.preparar(pacienteId,
+                    new Evidencia(Fonte.AGENDAMENTO, origemEvento, "CAPS_AD", false, true),
+                    "Conferir evidencias originais do atendimento."));
+        }
+        verifyNoInteractions(politica);
+    }
+
+    @Test
     void semVinculoAutorizadoNaoClassificaNemValidaJustificativa() {
         when(autorizacao.exigirVinculoLocal(pacienteId))
                 .thenThrow(new ResourceNotFoundException("Paciente não encontrado."));

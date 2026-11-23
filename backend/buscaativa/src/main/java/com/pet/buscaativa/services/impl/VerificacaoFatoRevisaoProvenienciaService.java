@@ -13,6 +13,7 @@ import com.pet.buscaativa.entities.Paciente;
 import com.pet.buscaativa.entities.PendenciaRevisaoProveniencia.TipoRegistro;
 import com.pet.buscaativa.entities.SessaoGrupo;
 import com.pet.buscaativa.entities.VinculoAssistencial;
+import com.pet.buscaativa.entities.enums.StatusSessaoGrupo;
 import com.pet.buscaativa.entities.enums.TipoUsuario;
 import com.pet.buscaativa.repositories.AgendamentoRepository;
 import com.pet.buscaativa.repositories.HistoricoPacienteRepository;
@@ -83,6 +84,16 @@ public class VerificacaoFatoRevisaoProvenienciaService {
                         || !Objects.equals(unidade, fato.getUnidadeOrigemChave()))
                     throw naoEncontrado();
                 autorizacao.validarHistoricoLocal(fato);
+                var sessao = fato.getSessaoGrupo();
+                if (sessao != null && (sessao.getStatus() != StatusSessaoGrupo.REALIZADA
+                        || AvaliacaoProvenienciaClinica.origemSessao(sessao)
+                            != AvaliacaoProvenienciaClinica.Situacao.COMPROVADA)) {
+                    throw naoEncontrado();
+                }
+                if (sessao == null && fato.getAgendamento() == null
+                        && !AvaliacaoProvenienciaClinica.acaoLocalSemFonteRegistrada(fato)) {
+                    throw naoEncontrado();
+                }
             }
             case SESSAO_GRUPO -> {
                 SessaoGrupo fato = sessoes.findById(registroId).orElseThrow(
@@ -94,6 +105,10 @@ public class VerificacaoFatoRevisaoProvenienciaService {
                 // O vinculo do paciente sozinho nao autoriza leitura da sessao:
                 // o autorizador tambem exige participacao comprovada no grupo.
                 autorizacao.validarSessaoLocal(fato, paciente);
+                if (AvaliacaoProvenienciaClinica.origemSessao(fato)
+                        != AvaliacaoProvenienciaClinica.Situacao.COMPROVADA) {
+                    throw naoEncontrado();
+                }
             }
         }
         return new FatoLocalVerificado(tipoRegistro, registroId, paciente.getId(), unidade);

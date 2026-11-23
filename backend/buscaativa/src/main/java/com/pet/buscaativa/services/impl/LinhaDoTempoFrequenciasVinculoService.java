@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.pet.buscaativa.entities.Agendamento;
 import com.pet.buscaativa.entities.SessaoGrupoParticipante;
+import com.pet.buscaativa.entities.VinculoAssistencial;
 import com.pet.buscaativa.entities.enums.FrequenciaAssistencial;
 import com.pet.buscaativa.entities.enums.StatusPresencaGrupo;
 import com.pet.buscaativa.entities.enums.StatusSessaoGrupo;
@@ -47,7 +48,9 @@ public class LinhaDoTempoFrequenciasVinculoService {
      */
     public record Diagnostico(List<Evento> eventosComOrigemLocal,
             long agendamentosSemOrigemComFrequencia,
-            long presencasGrupoSemOrigem) {
+            long presencasGrupoSemOrigem,
+            long frequenciasInconsistentes,
+            long agendamentosLocaisPendentesDeEvidencia) {
         public boolean haEvidenciaHistoricaSemUnidadeComprovada() {
             return agendamentosSemOrigemComFrequencia > 0 || presencasGrupoSemOrigem > 0;
         }
@@ -55,19 +58,27 @@ public class LinhaDoTempoFrequenciasVinculoService {
 
     @Transactional(readOnly = true)
     public Diagnostico analisar(UUID pacienteId) {
-        // Autorizacao fail-closed. Nao aceitar unidade por parametro externo.
-        String unidade = autorizacao.exigirVinculoLocal(pacienteId).getUnidadeChave();
+        return analisar(autorizacao.exigirVinculoLocal(pacienteId));
+    }
+
+    // Usado pelo diagnóstico da unidade e pelo ensaio interno sobre vínculos persistidos.
+    Diagnostico analisar(VinculoAssistencial vinculo) {
+        Long pacienteId = vinculo.getPaciente().getId();
+        String unidade = vinculo.getUnidadeChave();
         List<Evento> eventos = new ArrayList<>();
+        long agendamentosSemOrigem = 0;
+        long gruposSemOrigem = 0;
+        long inconsistentes = 0;
+        long agendamentosLocaisPendentes = 0;
 
         var frequencias = List.of(FrequenciaAssistencial.PRESENTE, FrequenciaAssistencial.FALTOU);
         List<Agendamento> agendamentos = em.createQuery("""
                 select a from Agendamento a
-                where a.paciente.idPublico = :paciente
-                  and a.unidadeOrigemChave = :unidade
-                  and a.migracaoPendente = false
-                  and a.frequenciaAssistencial in :frequencias
-                  and a.dataAgendamento is not null
-                  and a.horaAtendimento is not null
+                where a.paciente.id = :paciente
+                  and (a.unidadeOrigemChave = :unidade or a.unidadeOrigemChave is null
+                       or trim(a.unidadeOrigemChave) = '')
+                  and (a.migracaoPendente = true or a.migracaoPendente is null or a.situacaoReserva is null
+                       or a.frequenciaAssistencial is null or a.frequenciaAssistencial in :frequencias)
                 """, Agendamento.class)
                 .setParameter("paciente", pacienteId)
                 .setParameter("unidade", unidade)
@@ -75,69 +86,59 @@ public class LinhaDoTempoFrequenciasVinculoService {
                 .getResultList();
 
         for (Agendamento a : agendamentos) {
-            eventos.add(new Evento(LocalDateTime.of(a.getDataAgendamento(), a.getHoraAtendimento()),
-                    a.getFrequenciaAssistencial() == FrequenciaAssistencial.PRESENTE,
-                    Fonte.ATENDIMENTO_INDIVIDUAL, a.getId()));
+            var origem = AvaliacaoProvenienciaClinica.cadeiaAgendamento(a, pacienteId, unidade);
+            boolean origemAusente = AvaliacaoProvenienciaClinica.origemAusente(a.getUnidadeOrigemChave());
+            if (origemAusente || origem == AvaliacaoProvenienciaClinica.Situacao.SEM_ORIGEM_COMPROVADA) {
+                agendamentosSemOrigem++;
+                if (!origemAusente) agendamentosLocaisPendentes++;
+            } else if (origem == AvaliacaoProvenienciaClinica.Situacao.INCONSISTENTE
+                    || !AvaliacaoProvenienciaClinica.frequenciaIndividualRegistrada(a)) {
+                agendamentosLocaisPendentes++;
+                inconsistentes++;
+            } else {
+                eventos.add(new Evento(LocalDateTime.of(a.getDataAgendamento(), a.getHoraAtendimento()),
+                        a.getFrequenciaAssistencial() == FrequenciaAssistencial.PRESENTE,
+                        Fonte.ATENDIMENTO_INDIVIDUAL, a.getId()));
+            }
         }
 
-        var frequenciasGrupo = List.of(StatusPresencaGrupo.PRESENTE, StatusPresencaGrupo.FALTOU);
-        List<SessaoGrupoParticipante> presencasGrupo = em.createQuery("""
+        List<SessaoGrupoParticipante> participacoes = em.createQuery("""
                 select p from SessaoGrupoParticipante p
                 join fetch p.sessaoGrupo s
                 join fetch s.grupo g
-                where p.paciente.idPublico = :paciente
-                  and s.unidadeOrigemChave = :unidade
-                  and g.unidadeOrigemChave = :unidade
-                  and s.status = :realizada
-                  and p.statusPresenca in :frequencias
-                  and s.dataSessao is not null
-                  and s.horario is not null
+                where p.paciente.id = :paciente
+                  and (s.unidadeOrigemChave = :unidade or g.unidadeOrigemChave = :unidade
+                       or s.unidadeOrigemChave is null or trim(s.unidadeOrigemChave) = ''
+                       or g.unidadeOrigemChave is null or trim(g.unidadeOrigemChave) = '')
+                  and (s.status = :realizada or s.status is null
+                       or p.statusPresenca is null or p.statusPresenca in :frequencias)
                 """, SessaoGrupoParticipante.class)
                 .setParameter("paciente", pacienteId)
                 .setParameter("unidade", unidade)
                 .setParameter("realizada", StatusSessaoGrupo.REALIZADA)
-                .setParameter("frequencias", frequenciasGrupo)
+                .setParameter("frequencias", List.of(StatusPresencaGrupo.PRESENTE, StatusPresencaGrupo.FALTOU))
                 .getResultList();
 
-        for (SessaoGrupoParticipante p : presencasGrupo) {
+        for (SessaoGrupoParticipante p : participacoes) {
             var sessao = p.getSessaoGrupo();
-            eventos.add(new Evento(LocalDateTime.of(sessao.getDataSessao(), sessao.getHorario()),
-                    p.getStatusPresenca() == StatusPresencaGrupo.PRESENTE,
-                    Fonte.SESSAO_GRUPO, p.getId()));
+            var origem = AvaliacaoProvenienciaClinica.origemSessao(sessao);
+            if (origem == AvaliacaoProvenienciaClinica.Situacao.SEM_ORIGEM_COMPROVADA) {
+                gruposSemOrigem++;
+            } else if (origem == AvaliacaoProvenienciaClinica.Situacao.INCONSISTENTE
+                    || sessao.getStatus() != StatusSessaoGrupo.REALIZADA
+                    || !AvaliacaoProvenienciaClinica.frequenciaRegistrada(p.getStatusPresenca())) {
+                inconsistentes++;
+            } else {
+                eventos.add(new Evento(LocalDateTime.of(sessao.getDataSessao(), sessao.getHorario()),
+                        p.getStatusPresenca() == StatusPresencaGrupo.PRESENTE,
+                        Fonte.SESSAO_GRUPO, p.getId()));
+            }
         }
 
         eventos.sort(Comparator.comparing(Evento::ocorridoEm)
                 .thenComparingInt(e -> e.fonte() == Fonte.ATENDIMENTO_INDIVIDUAL ? 0 : 1)
                 .thenComparing(Evento::registroId));
-
-        // Fatos antigos da mesma identidade sem unidade comprovada NAO entram
-        // na linha do tempo local, mas tambem NAO podem ser ignorados numa
-        // futura decisao clinica: relatar a pendencia sem escolher a unidade.
-        long agendamentosSemOrigem = em.createQuery("""
-                select count(a) from Agendamento a
-                where a.paciente.idPublico = :paciente
-                  and a.unidadeOrigemChave is null
-                  and (a.migracaoPendente = true
-                       or a.frequenciaAssistencial in :frequencias)
-                """, Long.class)
-                .setParameter("paciente", pacienteId)
-                .setParameter("frequencias", frequencias)
-                .getSingleResult();
-
-        long gruposSemOrigem = em.createQuery("""
-                select count(p) from SessaoGrupoParticipante p
-                join p.sessaoGrupo s
-                join s.grupo g
-                where p.paciente.idPublico = :paciente
-                  and s.status = :realizada
-                  and p.statusPresenca in :frequencias
-                  and (s.unidadeOrigemChave is null or g.unidadeOrigemChave is null)
-                """, Long.class)
-                .setParameter("paciente", pacienteId)
-                .setParameter("realizada", StatusSessaoGrupo.REALIZADA)
-                .setParameter("frequencias", frequenciasGrupo)
-                .getSingleResult();
-
-        return new Diagnostico(List.copyOf(eventos), agendamentosSemOrigem, gruposSemOrigem);
+        return new Diagnostico(List.copyOf(eventos), agendamentosSemOrigem, gruposSemOrigem,
+                inconsistentes, agendamentosLocaisPendentes);
     }
 }

@@ -28,15 +28,21 @@ public class DiagnosticoFaltasConsecutivasVinculoService {
     private final LinhaDoTempoFrequenciasVinculoService linhaDoTempo;
 
     public record Resultado(
-            OptionalInt faltasConsecutivasAnalisaveis,
+            OptionalInt faltasNaOrdemLegada,
             Optional<LocalDateTime> ultimaPresencaComprovada,
             int eventosLocaisComprovados,
             boolean revisaoHistoricaNecessaria,
             long agendamentosSemOrigemComFrequencia,
-            long presencasGrupoSemOrigem
+            long presencasGrupoSemOrigem,
+            long frequenciasInconsistentes,
+            boolean empateComFrequenciasDiferentes
     ) {
+        public OptionalInt faltasConsecutivasAnalisaveis() {
+            return revisaoHistoricaNecessaria ? OptionalInt.empty() : faltasNaOrdemLegada;
+        }
+
         public boolean podeAvaliarSequencia() {
-            return !revisaoHistoricaNecessaria;
+            return faltasConsecutivasAnalisaveis().isPresent();
         }
     }
 
@@ -64,7 +70,14 @@ public class DiagnosticoFaltasConsecutivasVinculoService {
 
         int faltas = 0;
         LocalDateTime ultimaPresenca = null;
+        boolean empateInconclusivo = false;
+        LinhaDoTempoFrequenciasVinculoService.Evento anterior = null;
         for (var evento : eventos) {
+            if (anterior != null && anterior.ocorridoEm().equals(evento.ocorridoEm())
+                    && anterior.presente() != evento.presente()) {
+                empateInconclusivo = true;
+            }
+            anterior = evento;
             if (evento.presente()) {
                 faltas = 0;
                 ultimaPresenca = evento.ocorridoEm();
@@ -72,10 +85,11 @@ public class DiagnosticoFaltasConsecutivasVinculoService {
                 faltas++;
             }
         }
-        boolean incerto = diagnostico.haEvidenciaHistoricaSemUnidadeComprovada();
+        boolean incerto = diagnostico.haEvidenciaHistoricaSemUnidadeComprovada()
+                || diagnostico.frequenciasInconsistentes() > 0;
         return new Resultado(incerto ? OptionalInt.empty() : OptionalInt.of(faltas),
-                Optional.ofNullable(ultimaPresenca), eventos.size(), incerto,
+                Optional.ofNullable(ultimaPresenca), eventos.size(), incerto || empateInconclusivo,
                 diagnostico.agendamentosSemOrigemComFrequencia(),
-                diagnostico.presencasGrupoSemOrigem());
+                diagnostico.presencasGrupoSemOrigem(), diagnostico.frequenciasInconsistentes(), empateInconclusivo);
     }
 }

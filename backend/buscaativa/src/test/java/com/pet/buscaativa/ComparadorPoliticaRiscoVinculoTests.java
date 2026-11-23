@@ -26,7 +26,7 @@ class ComparadorPoliticaRiscoVinculoTests {
         return new DiagnosticoFaltasConsecutivasVinculoService.Resultado(
                 incerto ? OptionalInt.empty() : OptionalInt.of(faltas),
                 Optional.ofNullable(ultima).map(d -> d.atStartOfDay()),
-                faltas, incerto, incerto ? 1 : 0, 0);
+                faltas, incerto, incerto ? 1 : 0, 0, 0, false);
     }
 
     private Optional<ClassificacaoRisco> risco(int faltas, LocalDate ultima,
@@ -100,9 +100,9 @@ class ComparadorPoliticaRiscoVinculoTests {
                 new LinhaDoTempoFrequenciasVinculoService.Evento(LocalDateTime.of(2026, 11, 11, 9, 0), true, individual, 2L),
                 antes.get(2));
         var a = DiagnosticoFaltasConsecutivasVinculoService.calcular(
-                new LinhaDoTempoFrequenciasVinculoService.Diagnostico(antes, 0, 0));
+                new LinhaDoTempoFrequenciasVinculoService.Diagnostico(antes, 0, 0, 0, 0));
         var b = DiagnosticoFaltasConsecutivasVinculoService.calcular(
-                new LinhaDoTempoFrequenciasVinculoService.Diagnostico(depois, 0, 0));
+                new LinhaDoTempoFrequenciasVinculoService.Diagnostico(depois, 0, 0, 0, 0));
         assertEquals(Optional.of(ClassificacaoRisco.VERMELHO),
                 ComparadorPoliticaRiscoVinculo.comparar(a, StatusPaciente.ATIVO,
                         TipoAcompanhamento.INDIVIDUAL, false, HOJE));

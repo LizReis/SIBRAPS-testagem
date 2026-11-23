@@ -60,7 +60,7 @@ class ComparadorPoliticaVisitaVinculoTests {
             LocalDateTime ultimaPresenca, boolean incerto) {
         return new DiagnosticoFaltasConsecutivasVinculoService.Resultado(
                 incerto ? OptionalInt.empty() : OptionalInt.of(2),
-                Optional.ofNullable(ultimaPresenca), 2, incerto, incerto ? 1 : 0, 0);
+                Optional.ofNullable(ultimaPresenca), 2, incerto, incerto ? 1 : 0, 0, 0, false);
     }
 
     private Optional<Boolean> avaliar(List<Agendamento> agenda,
@@ -127,6 +127,18 @@ class ComparadorPoliticaVisitaVinculoTests {
         Agendamento remarcacao = remarcacao(originalOutraPessoa, pessoa, ad, 12, true);
         assertEquals(Optional.empty(), avaliar(List.of(originalOutraPessoa, remarcacao),
                 diagnostico(null, false)));
+    }
+
+    @Test
+    void eloMaisAntigoDeOutroCapsImpedeGatilhoMesmoComDoisElosLocais() {
+        Paciente pessoa = pessoa(7);
+        Usuario ad = usuario(2, UnidadeAtuacao.CAPS_AD);
+        Usuario ii = usuario(3, UnidadeAtuacao.CAPS_II);
+        Agendamento origem = falta(pessoa, ii, 10, true);
+        Agendamento intermediario = remarcacao(origem, pessoa, ad, 11, true);
+        Agendamento ultimo = remarcacao(intermediario, pessoa, ad, 12, true);
+
+        assertEquals(Optional.empty(), avaliar(List.of(origem, intermediario, ultimo), diagnostico(null, false)));
     }
 
     @Test
