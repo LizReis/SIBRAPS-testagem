@@ -219,6 +219,8 @@ class DecisaoRevisaoProvenienciaJpaTests extends SecurityTestSupport {
         p.setCpf(UUID.randomUUID().toString());
         p.setCns(UUID.randomUUID().toString());
         p = pacientes.saveAndFlush(p);
+        // A identidade usada pelas lambdas precisa ser efetivamente final.
+        final UUID pacienteIdPublico = p.getIdPublico();
 
         UsfReferencia usfA = new UsfReferencia();
         usfA.setNomeUsf("USF A sintetica");
@@ -287,7 +289,7 @@ class DecisaoRevisaoProvenienciaJpaTests extends SecurityTestSupport {
         assertEquals(Set.of(idA1, idA2), idsA);
         assertEquals(idA1, consultaDecisoes.detalhar(p.getIdPublico(), ticketA1).id());
         assertThrows(ResourceNotFoundException.class,
-                () -> consultaDecisoes.detalhar(p.getIdPublico(), ticketB));
+                () -> consultaDecisoes.detalhar(pacienteIdPublico, ticketB));
 
         when(escopo.usuarioLogado()).thenReturn(adminB);
         var paginaB = consultaDecisoes.listar(p.getIdPublico(), PageRequest.of(0, 10));
@@ -295,13 +297,13 @@ class DecisaoRevisaoProvenienciaJpaTests extends SecurityTestSupport {
         assertEquals(idB, paginaB.getContent().get(0).id());
         assertEquals(idB, consultaDecisoes.detalhar(p.getIdPublico(), ticketB).id());
         assertThrows(ResourceNotFoundException.class,
-                () -> consultaDecisoes.detalhar(p.getIdPublico(), ticketA2));
+                () -> consultaDecisoes.detalhar(pacienteIdPublico, ticketA2));
 
         when(escopo.usuarioLogado()).thenReturn(adminSemVinculo);
         assertThrows(ResourceNotFoundException.class,
-                () -> consultaDecisoes.listar(p.getIdPublico(), PageRequest.of(0, 10)));
+                () -> consultaDecisoes.listar(pacienteIdPublico, PageRequest.of(0, 10)));
         assertThrows(ResourceNotFoundException.class,
-                () -> consultaDecisoes.detalhar(p.getIdPublico(), ticketB));
+                () -> consultaDecisoes.detalhar(pacienteIdPublico, ticketB));
 
         // Nem a leitura do historico nem a paginacao modificam registros V13.
         assertEquals(3, jdbc.queryForObject(
