@@ -357,6 +357,75 @@ class IsolamentoUnidadeTests extends SecurityTestSupport {
     }
 
     @Test
+    void sessaoDeOutraUnidadeNaoFicaAutorizadaAoMudarGrupo() throws Exception {
+        GrupoTerapeutico local = new GrupoTerapeutico();
+        local.setTema("Isolamento grupo novo CAPS AD");
+        local.setCoordenador(coordenadorAd);
+        local.setRecorrencia(RecorrenciaGrupo.SEMANAL);
+        local.setHorarioPadrao(LocalTime.of(11, 0));
+        local.registrarUnidadeDeOrigem(coordenadorAd);
+        local = grupos.saveAndFlush(local);
+
+        GrupoTerapeutico externo = new GrupoTerapeutico();
+        externo.setTema("Isolamento grupo novo CAPS I");
+        externo.setCoordenador(coordenadorI);
+        externo.setRecorrencia(RecorrenciaGrupo.UNICA);
+        externo.setHorarioPadrao(LocalTime.of(11, 0));
+        externo.registrarUnidadeDeOrigem(coordenadorI);
+        externo = grupos.saveAndFlush(externo);
+
+        SessaoGrupo propria = new SessaoGrupo();
+        propria.setGrupo(local);
+        propria.setDataSessao(LocalDate.now().plusDays(10));
+        propria.setHorario(LocalTime.of(11, 0));
+        propria.setStatus(StatusSessaoGrupo.AGENDADA);
+        propria.registrarUnidadeDeOrigemDoGrupo();
+        propria = sessoes.saveAndFlush(propria);
+
+        // Inconsistencia sintetica: trocar apenas grupo nao altera origem.
+        SessaoGrupo estrangeira = new SessaoGrupo();
+        estrangeira.setGrupo(externo);
+        estrangeira.setDataSessao(LocalDate.now().minusDays(1));
+        estrangeira.setHorario(LocalTime.of(11, 0));
+        estrangeira.setStatus(StatusSessaoGrupo.AGENDADA);
+        estrangeira.registrarUnidadeDeOrigemDoGrupo();
+        estrangeira = sessoes.saveAndFlush(estrangeira);
+        estrangeira.setGrupo(local);
+        sessoes.saveAndFlush(estrangeira);
+
+        Long grupoId = local.getId();
+        Long idLocal = propria.getId();
+        Long idExterno = estrangeira.getId();
+        assertEquals("CAPS_I", estrangeira.getUnidadeOrigemChave());
+        assertEquals("CAPS_AD", estrangeira.getGrupo().getUnidadeOrigemChave());
+
+        var grupoJson = ok(ad, "/api/grupos/" + grupoId);
+        assertEquals(LocalDate.now().plusDays(10).toString(),
+                grupoJson.get("dataPrimeiraSessao").asString());
+        assertFalse(grupoJson.get("iniciado").asBoolean());
+
+        String periodo = "/api/grupos/sessoes?dataInicio=" + LocalDate.now().minusDays(2)
+                + "&dataFim=" + LocalDate.now().plusDays(11);
+        var ids = ok(ad, periodo).valueStream().map(s -> s.get("id").asLong()).toList();
+        assertTrue(ids.contains(idLocal));
+        assertFalse(ids.contains(idExterno));
+
+        assertEquals(404, mvc.perform(patch("/api/grupos/sessoes/" + idExterno + "/status")
+                .param("novoStatus", "AGENDADA")
+                .header("Authorization", "Bearer " + tokens.gerarToken(ad)))
+                .andReturn().getResponse().getStatus());
+        assertEquals(404, postAs(ad, "/api/grupos/sessoes/" + idExterno + "/participantes",
+                "{\"pacienteId\":\"" + pAd.getIdPublico() + "\"}").getStatus());
+        assertEquals(StatusSessaoGrupo.AGENDADA,
+                sessoes.findById(idExterno).orElseThrow().getStatus());
+
+        var respostaData = getAs(ad, "/api/grupos/" + grupoId + "/proxima-data-sugerida");
+        assertEquals(200, respostaData.getStatus());
+        assertEquals(LocalDate.now().plusDays(17),
+                LocalDate.parse(respostaData.getContentAsString().replace("\"", "")));
+    }
+
+    @Test
     void gruposRejeitamIdsExternosEFiltramParticipantesLegados() throws Exception {
         assertEquals(404, postAs(ad, "/api/grupos/sessoes/" + futura.getId() + "/participantes",
                 "{\"pacienteId\":\"" + pI.getIdPublico() + "\"}").getStatus());

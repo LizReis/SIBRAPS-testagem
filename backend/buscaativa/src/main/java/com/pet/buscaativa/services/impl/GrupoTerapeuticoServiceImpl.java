@@ -235,8 +235,9 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         GrupoTerapeutico grupo = grupoRepository.findById(grupoId).filter(escopoUnidadeService::grupoPertenceAoEscopo)
                 .orElseThrow(() -> new ResourceNotFoundException("Grupo não encontrado."));
 
-        LocalDate base = sessaoRepository.findFirstByGrupoOrderByDataSessaoDesc(grupo)
-                .map(SessaoGrupo::getDataSessao).orElse(LocalDate.now(clock));
+        LocalDate base = sessaoRepository.findByGrupoOrderByDataSessaoDesc(grupo).stream()
+                .filter(escopoUnidadeService::sessaoPertenceAoEscopo)
+                .map(SessaoGrupo::getDataSessao).findFirst().orElse(LocalDate.now(clock));
 
         return switch (grupo.getRecorrencia()) {
             case SEMANAL -> base.plusWeeks(1);
@@ -278,7 +279,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         if (inicio.isAfter(fim))
             throw new ValidationException("A data inicial não pode ser posterior à data final.");
         return sessaoRepository.findByDataSessaoBetween(inicio, fim).stream()
-                .filter(s -> escopoUnidadeService.grupoPertenceAoEscopo(s.getGrupo())).map(this::toSessaoDTO).toList();
+                .filter(escopoUnidadeService::sessaoPertenceAoEscopo).map(this::toSessaoDTO).toList();
     }
 
     @Override
@@ -687,6 +688,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         var sessao = sessaoRepository.findByIdForUpdate(id).orElseThrow(()->new ResourceNotFoundException("Sessão não encontrada."));
         if (!groupId.equals(sessao.getGrupo().getId()))
             throw new ConflictException("A estrutura da sessão foi alterada; atualize antes de tentar novamente.");
+        escopoUnidadeService.validarSessao(sessao);
         if (descoberta != null && !descoberta.equals(responsabilidadeEscalar(id))) {
             autorizacaoClinica.validarSessao(sessao);
             throw new ConflictException("A responsabilidade da sessão foi alterada; atualize antes de tentar novamente.");
@@ -784,7 +786,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
 
     private SessaoGrupo buscarSessao(Long id) {
         return sessaoRepository.findById(id)
-                .filter(s -> escopoUnidadeService.grupoPertenceAoEscopo(s.getGrupo()))
+                .filter(escopoUnidadeService::sessaoPertenceAoEscopo)
                 .orElseThrow(() -> new ResourceNotFoundException("Sessão não encontrada."));
     }
 
@@ -801,7 +803,8 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
 
     private GrupoTerapeuticoDTO toGrupoDTO(GrupoTerapeutico g) {
         escopoUnidadeService.validarGrupo(g);
-        List<SessaoGrupo> sessoes = sessaoRepository.findByGrupoOrderByDataSessaoDesc(g);
+        List<SessaoGrupo> sessoes = sessaoRepository.findByGrupoOrderByDataSessaoDesc(g).stream()
+                .filter(escopoUnidadeService::sessaoPertenceAoEscopo).toList();
         LocalDate primeira = sessoes.stream().map(SessaoGrupo::getDataSessao).min(LocalDate::compareTo).orElse(null);
         LocalDateTime agora = LocalDateTime.now(clock);
         boolean iniciado = sessoes.stream().anyMatch(s -> s.getStatus() != StatusSessaoGrupo.AGENDADA || !LocalDateTime.of(s.getDataSessao(), s.getHorario()).isAfter(agora));
@@ -811,7 +814,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     }
 
     private SessaoGrupoDTO toSessaoDTO(SessaoGrupo s) {
-        escopoUnidadeService.validarGrupo(s.getGrupo());
+        escopoUnidadeService.validarSessao(s);
         List<ParticipanteSessaoDTO> ps = s.getParticipantes().stream()
                 .filter(p -> escopoUnidadeService.pacientePertenceAoEscopo(p.getPaciente()))
                 .map(p -> new ParticipanteSessaoDTO(p.getPaciente().getIdPublico(), p.getPaciente().getNome(),

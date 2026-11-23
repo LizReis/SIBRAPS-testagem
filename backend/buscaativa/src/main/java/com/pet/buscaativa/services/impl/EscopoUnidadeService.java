@@ -245,9 +245,29 @@ public class EscopoUnidadeService {
         if (!grupoPertenceAoEscopo(grupo)) throw new ResourceNotFoundException("Grupo não encontrado.");
     }
 
+    /**
+     * Barreira conservadora para sessoes das rotas legadas.
+     * Ambos os fatos sem origem continuam na regra anterior, sem backfill.
+     * Quando alguma proveniencia existe, grupo e sessao precisam ter a
+     * mesma origem local comprovada. A FK de grupo nao transfere origem.
+     */
+    public boolean sessaoPertenceAoEscopo(SessaoGrupo sessao) {
+        if (sessao == null || !grupoPertenceAoEscopo(sessao.getGrupo())) return false;
+        String origemGrupo = sessao.getGrupo().getUnidadeOrigemChave();
+        String origemSessao = sessao.getUnidadeOrigemChave();
+        if (origemGrupo == null && origemSessao == null) return true;
+        String local = ChaveUnidadeAssistencial.doUsuarioAtual(usuarioComUnidade());
+        return Objects.equals(origemGrupo, local) && Objects.equals(origemSessao, local);
+    }
+
+    public void validarSessao(SessaoGrupo sessao) {
+        if (!sessaoPertenceAoEscopo(sessao))
+            throw new ResourceNotFoundException("Sessão não encontrada.");
+    }
+
     /** Operações sobre a sessão inteira não podem alterar participantes de outra unidade. */
     public void validarSessaoCompleta(SessaoGrupo sessao) {
-        validarGrupo(sessao.getGrupo());
+        validarSessao(sessao);
         sessao.getParticipantes().forEach(p -> validarAcesso(p.getPaciente()));
     }
 
