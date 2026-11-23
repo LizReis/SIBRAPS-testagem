@@ -1,31 +1,37 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of, Subject, throwError } from 'rxjs';
 
-import { CadastroUnicoService } from '../../services/paciente/cadastro-unico-service';
+import {
+  CadastroUnicoService,
+  ConfirmacaoCadastroUnico,
+  DocumentosCadastroUnico,
+} from '../../services/paciente/cadastro-unico-service';
 import { CadastroExistente } from './cadastro-existente';
 
 describe('CadastroExistente', () => {
   let fixture: ComponentFixture<CadastroExistente>;
   let component: CadastroExistente;
-  let conferencia: ReturnType<typeof vi.fn>;
-  let vinculacao: ReturnType<typeof vi.fn>;
-
   const dados = {
     nome: 'Paciente Sintetico',
     nomeMae: 'Responsavel Sintetica',
     dataNascimento: '1995-02-03',
   };
 
+  // Os mocks preservam as assinaturas do contrato Angular. A tipagem
+  // generica de vi.fn sem parametros gera TS2348 no Angular compiler.
+  let conferencia = vi.fn((_documentos: DocumentosCadastroUnico) => of(dados));
+  let vinculacao = vi.fn((_dados: ConfirmacaoCadastroUnico) => of(void 0));
+
   beforeEach(async () => {
-    conferencia = vi.fn(() => of(dados));
-    vinculacao = vi.fn(() => of(void 0));
+    conferencia = vi.fn((_documentos: DocumentosCadastroUnico) => of(dados));
+    vinculacao = vi.fn((_dados: ConfirmacaoCadastroUnico) => of(void 0));
     await TestBed.configureTestingModule({
       imports: [CadastroExistente],
       providers: [{
         provide: CadastroUnicoService,
         useValue: {
-          conferirDocumentos: (...args: any[]) => conferencia(...args),
-          confirmarVinculo: (...args: any[]) => vinculacao(...args),
+          conferirDocumentos: (documentos: DocumentosCadastroUnico) => conferencia(documentos),
+          confirmarVinculo: (confirmacao: ConfirmacaoCadastroUnico) => vinculacao(confirmacao),
         },
       }],
     }).compileComponents();
