@@ -74,11 +74,19 @@ describe('CadastroPaciente', () => {
     });
   }
 
-  it('exibe a conferencia somente em novo cadastro', () => {
+  it('exibe a conferencia somente em novo cadastro', async () => {
     expect(fixture.nativeElement.querySelector('app-cadastro-existente')).not.toBeNull();
+
+    // O teste alterna manualmente o modo de tela apos a primeira renderizacao.
+    // No Angular zoneless, sinalizar o componente antes de aguardar a
+    // atualizacao evita NG0100 sem alterar a logica do cadastro.
     component.modoEdicao = true;
-    fixture.detectChanges();
+    fixture.changeDetectorRef.markForCheck();
+    await fixture.whenStable();
+
     expect(fixture.nativeElement.querySelector('app-cadastro-existente')).toBeNull();
+    expect((fixture.nativeElement.querySelector('h1') as HTMLElement).textContent)
+      .toContain('Editar paciente');
   });
 
   it('vinculo existente confirmado bloqueia o POST legado mesmo se tentar salvar', () => {
