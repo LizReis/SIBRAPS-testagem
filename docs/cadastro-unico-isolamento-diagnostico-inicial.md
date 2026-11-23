@@ -398,3 +398,10 @@
 - O fluxo real de uma decisao e os deltas dos contadores da unidade foram aprovados. Esta entrega amplia o **teste integrado de concorrencia ja existente** para conferir que duas tentativas simultaneas no mesmo ticket produzem exatamente uma alteracao de contagem: uma pendencia aberta a menos e uma decisao V13 a mais.
 - O mesmo teste garante que as contagens do CAPS II permanecem intactas durante a corrida do CAPS AD, preservando a solicitacao V12 imutavel e a unica trilha Envers. Os valores anteriores/posteriores sao comparados por delta, sem assumir banco vazio.
 - **CI deste ajuste ainda pendente.** Apenas teste e diario tecnico foram alterados, sem mudanca de codigo de producao, migracao, endpoint, dashboard, historico clinico, frequencia ou risco. Proximo marco recomendado apos validacao: revisar criterios de corte e dependencias da reconciliacao humana dos fatos antigos, em vez de ativar a interface prematuramente.
+
+## Checkpoint para conciliação humana do legado — 23/11/2026
+
+- CI #45264281787 do commit `1277c5483f0b358b74659fcd3e7c4f0f58ea89dd`: **SUCCESS**, backend 1.253/1.253, concorrência e Angular aprovados.
+- Ver documento [`etapa6-3-checkpoint-conciliacao-historicos-legados.md`](etapa6-3-checkpoint-conciliacao-historicos-legados.md), com bloqueios, critérios de prova e sequência para futura conciliação.
+- A V12/V13 atual somente aceita fatos de origem local comprovada; históricos legados de origem desconhecida ou conflitante exigem fluxo de revisão diferente e autorizado antes de qualquer backfill.
+- Esta entrega é **somente documentação**, sem alterações clínicas ou de schema. CI do novo commit pendente.
