@@ -492,7 +492,9 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Transactional(readOnly = true)
     public List<SessaoInscricaoRetroativaDTO> listarSessoesParaInscricaoRetroativa(Long grupoId) {
         GrupoTerapeutico g = grupoRepository.findById(grupoId).filter(escopoUnidadeService::grupoPertenceAoEscopo).orElseThrow(() -> new ResourceNotFoundException("Grupo não encontrado."));
-        return sessaoRepository.findByGrupoOrderByDataSessaoDesc(g).stream().map(s -> new SessaoInscricaoRetroativaDTO(
+        return sessaoRepository.findByGrupoOrderByDataSessaoDesc(g).stream()
+                .filter(escopoUnidadeService::sessaoPertenceAoEscopo)
+                .map(s -> new SessaoInscricaoRetroativaDTO(
                 s.getId(), s.getDataSessao(), s.getHorario(), s.getStatus(), statusExibicao(s), s.getStatus() == StatusSessaoGrupo.REALIZADA)).toList();
     }
 
@@ -538,7 +540,9 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     public List<ParticipanteGrupoDTO> listarParticipantesDoGrupo(Long grupoId) {
         GrupoTerapeutico grupo = grupoRepository.findById(grupoId).filter(escopoUnidadeService::grupoPertenceAoEscopo).orElseThrow(() -> new ResourceNotFoundException("Grupo não encontrado."));
         LocalDateTime agora = LocalDateTime.now(clock);
-        return sessaoRepository.findByGrupoOrderByDataSessaoDesc(grupo).stream().flatMap(s -> s.getParticipantes().stream())
+        return sessaoRepository.findByGrupoOrderByDataSessaoDesc(grupo).stream()
+                .filter(escopoUnidadeService::sessaoPertenceAoEscopo)
+                .flatMap(s -> s.getParticipantes().stream())
                 .filter(p -> escopoUnidadeService.pacientePertenceAoEscopo(p.getPaciente()))
                 .collect(java.util.stream.Collectors.groupingBy(p -> p.getPaciente().getIdPublico())).values().stream().map(lista -> {
                     var paciente = lista.get(0).getPaciente();

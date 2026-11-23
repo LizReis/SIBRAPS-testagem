@@ -123,7 +123,7 @@ public class RelatorioServiceImpl implements RelatorioService {
 
         List<SessaoGrupo> sessoes = sessaoGrupoRepository
                 .findRealizadasParaRelatorio(inicio, fim, StatusSessaoGrupo.REALIZADA, grupoId).stream()
-                .filter(s -> escopoUnidadeService.grupoPertenceAoEscopo(s.getGrupo())).toList();
+                .filter(escopoUnidadeService::sessaoPertenceAoEscopo).toList();
 
         List<FrequenciaGrupoRelatorioDTO> dados = sessoes.stream().map(this::paraFrequencia).toList();
         int presentes = sessoes.stream().mapToInt(s -> contarPresencas(s, StatusPresencaGrupo.PRESENTE)).sum();

@@ -423,6 +423,35 @@ class IsolamentoUnidadeTests extends SecurityTestSupport {
         assertEquals(200, respostaData.getStatus());
         assertEquals(LocalDate.now().plusDays(17),
                 LocalDate.parse(respostaData.getContentAsString().replace("\"", "")));
+
+        // Uma sessao estrangeira nao pode aparecer por consultas auxiliares
+        // nem contaminar os indicadores de frequencia exportados.
+        var idsRetroativos = ok(ad, "/api/grupos/" + grupoId
+                + "/sessoes-para-inscricao-retroativa").valueStream()
+                .map(s -> s.get("sessaoId").asLong()).toList();
+        assertTrue(idsRetroativos.contains(idLocal));
+        assertFalse(idsRetroativos.contains(idExterno));
+
+        participante(estrangeira, pAd, StatusPresencaGrupo.PRESENTE);
+        estrangeira.setStatus(StatusSessaoGrupo.REALIZADA);
+        sessoes.saveAndFlush(estrangeira);
+
+        var membros = ok(ad, "/api/grupos/" + grupoId + "/participantes");
+        assertFalse(membros.valueStream()
+                .anyMatch(p -> p.get("pacienteId").asString()
+                        .equals(pAd.getIdPublico().toString())));
+
+        for (String formato : List.of("pdf", "excel")) {
+            var exportacao = getAs(ad, "/api/relatorios/frequencia-grupos/"
+                    + formato + "?grupoId=" + grupoId);
+            assertEquals(200, exportacao.getStatus());
+            String conteudo = extrair(exportacao.getContentAsByteArray(), formato);
+            assertFalse(conteudo.contains(local.getTema()),
+                    "Frequencia de sessao estrangeira nao pode constar na exportacao " + formato);
+        }
+
+        assertEquals("CAPS_I", sessoes.findById(idExterno).orElseThrow()
+                .getUnidadeOrigemChave());
     }
 
     @Test
