@@ -17,14 +17,17 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.pet.buscaativa.entities.Paciente;
+import com.pet.buscaativa.entities.HistoricoPaciente;
 import com.pet.buscaativa.entities.UsfReferencia;
 import com.pet.buscaativa.entities.Usuario;
 import com.pet.buscaativa.entities.VinculoAssistencial;
 import com.pet.buscaativa.entities.enums.CapsEnum;
 import com.pet.buscaativa.entities.enums.StatusPaciente;
 import com.pet.buscaativa.entities.enums.TipoUsuario;
+import com.pet.buscaativa.entities.enums.TipoEventoHistoricoPaciente;
 import com.pet.buscaativa.entities.enums.UnidadeAtuacao;
 import com.pet.buscaativa.repositories.PacienteRepository;
+import com.pet.buscaativa.repositories.HistoricoPacienteRepository;
 import com.pet.buscaativa.repositories.UsuarioRepository;
 import com.pet.buscaativa.repositories.UsfReferenciaRepository;
 import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
@@ -54,6 +57,7 @@ class CadastroUnicoIsolamentoReferenciaHttpTests extends SecurityTestSupport {
     @Autowired PacienteRepository pacientes;
     @Autowired UsfReferenciaRepository usfs;
     @Autowired VinculoAssistencialRepository vinculos;
+    @Autowired HistoricoPacienteRepository historicos;
 
     private UsfReferencia usf() {
         UsfReferencia u = new UsfReferencia();
@@ -197,6 +201,55 @@ class CadastroUnicoIsolamentoReferenciaHttpTests extends SecurityTestSupport {
         verificarRotasClinicasNegadas(ator(UnidadeAtuacao.CAPS_AD, null), p);
         assertEquals(7, pacientes.findById(p.getId()).orElseThrow().getCountFaltas(),
                 "Verificacoes de leitura nao devem modificar indicadores globais.");
+    }
+
+    private HistoricoPaciente eventoSintetico(Paciente paciente, Usuario executor,
+            boolean origemComprovada) {
+        HistoricoPaciente evento = new HistoricoPaciente();
+        evento.setPaciente(paciente);
+        evento.setTipo(TipoEventoHistoricoPaciente.BUSCA_ATIVA);
+        evento.setProfissional(executor);
+        evento.setOcorridoEm(java.time.LocalDateTime.of(2026, 11, 1, 14, 0));
+        evento.setDescricao("Registro historico clinico sintetico de outra origem.");
+        if (origemComprovada) evento.registrarOrigemDeAcaoLocal(executor);
+        return historicos.saveAndFlush(evento);
+    }
+
+    @Test
+    void historicoNaoExibeEventoClinicoComOrigemComprovadaEmOutraUnidade()
+            throws Exception {
+        Paciente p = paciente(null, CapsEnum.CAPS_AD);
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+        Usuario deOutraUnidade = ator(UnidadeAtuacao.CAPS_II, null);
+        eventoSintetico(p, deOutraUnidade, true);
+
+        Usuario donoDoVinculo = ator(UnidadeAtuacao.CAPS_AD, null);
+        var resposta = consultar(donoDoVinculo,
+                "/api/pacientes/" + p.getIdPublico() + "/historico");
+        assertEquals(404, resposta.getStatus(),
+                "Um vinculo local nao autoriza historico de outro CAPS.");
+        assertFalse(resposta.getContentAsString().contains(
+                "Registro historico clinico sintetico de outra origem."));
+        assertEquals(1, historicos.findByPacienteIdPublicoOrderByOcorridoEmDesc(
+                p.getIdPublico()).size(), "A recusa de leitura nao deve apagar o fato original.");
+    }
+
+    @Test
+    void historicoComOrigemDesconhecidaContinuaPendenteSemBackfillAutomatico()
+            throws Exception {
+        Paciente p = paciente(null, CapsEnum.CAPS_AD);
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+        eventoSintetico(p, ator(UnidadeAtuacao.CAPS_AD, null), false);
+
+        var resposta = consultar(ator(UnidadeAtuacao.CAPS_AD, null),
+                "/api/pacientes/" + p.getIdPublico() + "/historico");
+        assertEquals(404, resposta.getStatus(),
+                "NULL de origem nao pode se tornar local pelo vinculo atual.");
+        var salvo = historicos.findByPacienteIdPublicoOrderByOcorridoEmDesc(
+                p.getIdPublico());
+        assertEquals(1, salvo.size());
+        assertEquals(null, salvo.getFirst().getUnidadeOrigemChave(),
+                "Origem historica original deve permanecer desconhecida.");
     }
 
     @Test

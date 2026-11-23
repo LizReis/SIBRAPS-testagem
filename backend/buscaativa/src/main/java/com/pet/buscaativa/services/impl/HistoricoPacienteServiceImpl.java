@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.pet.buscaativa.entities.Agendamento;
+import com.pet.buscaativa.entities.ChaveUnidadeAssistencial;
 import com.pet.buscaativa.entities.HistoricoPaciente;
 import com.pet.buscaativa.entities.Paciente;
 import com.pet.buscaativa.entities.Usuario;
@@ -23,6 +24,7 @@ import com.pet.buscaativa.entities.enums.SituacaoAtendimento;
 import com.pet.buscaativa.entities.enums.TipoAcompanhamento;
 import com.pet.buscaativa.entities.enums.TipoEventoHistoricoPaciente;
 import com.pet.buscaativa.repositories.HistoricoPacienteRepository;
+import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
 import com.pet.buscaativa.repositories.PacienteRepository;
 import com.pet.buscaativa.repositories.UsuarioRepository;
 import com.pet.buscaativa.services.HistoricoPacienteService;
@@ -41,6 +43,7 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
     private final PacienteRepository pacienteRepository;
     private final UsuarioRepository usuarioRepository;
     private final EscopoUnidadeService escopoUnidadeService;
+    private final VinculoAssistencialRepository vinculos;
 
     @Override
     @Transactional(readOnly = true)
@@ -49,9 +52,24 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
                 .filter(escopoUnidadeService::pacientePertenceAoEscopo)
                 .orElseThrow(() -> new ResourceNotFoundException(pacienteId));
 
-        List<HistoricoPacienteEventoDTO> eventos = historicoRepository
-                .findByPacienteIdPublicoOrderByOcorridoEmDesc(pacienteId)
-                .stream()
+        // Barreira de transicao: um vinculo local nao transfere fatos
+        // historicos que pertencem a outra unidade ou cuja origem e NULL.
+        // Sem comprovacao para TODOS os eventos, nao expor o resumo global
+        // nem os contadores derivados desses eventos pela rota legada.
+        //
+        // Pacientes sem vinculos explicitos continuam na operacao historica
+        // ate a migracao coordenada. Nenhum registro antigo e reatribuido.
+        var registros = historicoRepository.findByPacienteIdPublicoOrderByOcorridoEmDesc(pacienteId);
+        if (vinculos.existsByPacienteId(paciente.getId())) {
+            String unidadeLocal = ChaveUnidadeAssistencial.doUsuarioAtual(
+                    escopoUnidadeService.usuarioLogado());
+            if (registros.stream().anyMatch(h ->
+                    !unidadeLocal.equals(h.getUnidadeOrigemChave()))) {
+                throw new ResourceNotFoundException(pacienteId);
+            }
+        }
+
+        List<HistoricoPacienteEventoDTO> eventos = registros.stream()
                 .map(this::toEventoDTO)
                 .toList();
 
