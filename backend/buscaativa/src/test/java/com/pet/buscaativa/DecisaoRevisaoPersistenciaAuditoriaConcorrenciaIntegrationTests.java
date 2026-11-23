@@ -349,6 +349,13 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
     @Test
     void duasDecisoesSimultaneasGeramUmUnicoEventoEUmaUnicaAuditoria() throws Exception {
         Cenario c = criarCenario();
+        var antes = resumoUnidade.consultar();
+        // O outro CAPS nunca deve ser afetado pela disputa de um ticket AD.
+        Usuario outroCaps = administrador(UnidadeAtuacao.CAPS_II);
+        when(escopo.usuarioLogado()).thenReturn(outroCaps);
+        var antesOutroCaps = resumoUnidade.consultar();
+        when(escopo.usuarioLogado()).thenReturn(c.administrador());
+
         var prontas = new CountDownLatch(2);
         var partida = new CountDownLatch(1);
 
@@ -390,5 +397,12 @@ class DecisaoRevisaoPersistenciaAuditoriaConcorrenciaIntegrationTests
         // disponivel para outra deliberacao na fila aberta.
         assertThrows(ResourceNotFoundException.class,
                 () -> fila.detalharPendente(c.pendenciaId()));
+
+        // Uma corrida com duas deliberacoes nao pode contar duas decisoes.
+        var depois = resumoUnidade.consultar();
+        assertEquals(antes.pendenciasAbertas() - 1, depois.pendenciasAbertas());
+        assertEquals(antes.decisoesRegistradas() + 1, depois.decisoesRegistradas());
+        when(escopo.usuarioLogado()).thenReturn(outroCaps);
+        assertEquals(antesOutroCaps, resumoUnidade.consultar());
     }
 }
