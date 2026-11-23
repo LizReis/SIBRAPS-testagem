@@ -377,3 +377,10 @@
 - Diagnostico: o contrato reflexivo de metodos permitidos no repositorio somente de leitura nao incluiu `contarDecisoesDaUnidade`, metodo de contagem `@Query` da nova implementacao. O teste ainda esperava exatamente os tres metodos anteriores.
 - Ajustado somente o teste para incluir a nova consulta autorizada, mantendo a checagem de que o repositorio **nao** pode oferecer escrita, busca global sem escopo ou alteracao da entidade imutavel/auditada.
 - Nenhuma alteracao de producao, migracao, painel, endpoint, dado clinico ou indicador foi realizada neste ajuste. **Nova CI ainda pendente.**
+
+## Seguranca de entrada do resumo administrativo por unidade — 23/11/2026
+
+- GitHub Actions #45257190366, commit `3ded663ba2b29728364849ae460b83ed002bb9a1`: **SUCCESS**. Maven verify 1.247/1.247, 12 testes de concorrencia, 28 testes Angular direcionados e build de producao aprovados.
+- A nova contagem administrativa por unidade passou nos cenarios reais H2 para CAPS e USFs. Esta entrega acrescenta testes unitarios isolados de `ResumoUnidadeRevisaoProvenienciaService` para conferir que o papel de ADMINISTRADOR e a unidade configurada sao verificados antes de qualquer consulta ao repositorio.
+- Os cenarios cobrem administrador CAPS, administrador de USF com ID persistido, PROFISSIONAL, RECEPCAO, usuario ausente, unidade nao configurada, USF sem identificador e contrato `@Transactional(readOnly=true)`.
+- Nenhum endpoint, tela, dado clinico, algoritmo, migration ou componente de producao foi alterado. **CI da nova cobertura pendente.** Esta protecao nao substitui o corte coordenado do cadastro unico nem a reconciliacao humana de historicos antigos.
