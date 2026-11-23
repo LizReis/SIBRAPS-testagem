@@ -91,3 +91,5 @@ jobs:
       - run: npm ci
       - name: Teste de permissoes do cadastro
         run: npm test -- --watch=false --include=src/app/auth/permissoes.spec.ts
+      - name: Teste do contrato HTTP Angular do cadastro unico
+        run: npm test -- --watch=false --include=src/app/services/paciente/cadastro-unico-service.spec.ts
