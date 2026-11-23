@@ -139,6 +139,66 @@ class CadastroUnicoIsolamentoReferenciaHttpTests extends SecurityTestSupport {
                 "A restricao de leitura nao pode recalcular nem sobrescrever dados legados.");
     }
 
+    /**
+     * As rotas clinicas antigas nao podem contornar a mesma barreira por
+     * caminhos alternativos: UUID, documento, historico ou agendamentos.
+     * A identidade continua global; a resposta nao pode trazer o registro
+     * clinico nem referencias de outra unidade.
+     */
+    private void verificarRotasClinicasNegadas(Usuario ator, Paciente pessoa)
+            throws Exception {
+        String raiz = "/api/pacientes/" + pessoa.getIdPublico();
+        for (String caminho : java.util.List.of(
+                raiz,
+                raiz + "/detalhe",
+                raiz + "/historico",
+                raiz + "/agendamentos",
+                "/api/pacientes/busca/cpf/" + pessoa.getCpf(),
+                "/api/pacientes/busca/cns/" + pessoa.getCns())) {
+            var resposta = consultar(ator, caminho);
+            assertEquals(404, resposta.getStatus(),
+                    "Rota legada nao pode conceder acesso sem clinica local comprovada: " + caminho);
+            assertFalse(resposta.getContentAsString().contains(pessoa.getNome()),
+                    "Resposta nao pode incluir identidade de paciente fora do escopo: " + caminho);
+        }
+
+        for (String caminho : java.util.List.of(
+                "/api/pacientes",
+                "/api/pacientes/busca/nome?q=isolada",
+                "/api/pacientes/pesquisa?q=isolada")) {
+            var resposta = consultar(ator, caminho);
+            assertEquals(200, resposta.getStatus(),
+                    "Listagens autorizadas devem permanecer disponiveis: " + caminho);
+            assertFalse(resposta.getContentAsString().contains(pessoa.getNome()),
+                    "Busca nao pode revelar identidade por referencia territorial: " + caminho);
+        }
+    }
+
+    @Test
+    void rotasClinicasLegadasNaoVazamPacienteVinculadoSomenteAOutraUnidade()
+            throws Exception {
+        UsfReferencia a = usf();
+        Paciente p = paciente(a, CapsEnum.CAPS_II);
+        vinculos.saveAndFlush(VinculoAssistencial.paraUsf(p, a));
+
+        Usuario capsII = ator(UnidadeAtuacao.CAPS_II, null);
+        verificarRotasClinicasNegadas(capsII, p);
+    }
+
+    @Test
+    void rotasClinicasLegadasNaoVazamPacienteComVinculosMultiplos()
+            throws Exception {
+        UsfReferencia a = usf();
+        Paciente p = paciente(a, CapsEnum.CAPS_AD);
+        vinculos.saveAndFlush(VinculoAssistencial.paraUsf(p, a));
+        vinculos.saveAndFlush(VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+
+        verificarRotasClinicasNegadas(ator(UnidadeAtuacao.USF, a), p);
+        verificarRotasClinicasNegadas(ator(UnidadeAtuacao.CAPS_AD, null), p);
+        assertEquals(7, pacientes.findById(p.getId()).orElseThrow().getCountFaltas(),
+                "Verificacoes de leitura nao devem modificar indicadores globais.");
+    }
+
     @Test
     void referenciaUsfNaoAutorizaLeituraDoPacienteVinculadoSomenteACaps()
             throws Exception {
