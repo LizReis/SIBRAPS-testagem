@@ -30,4 +30,21 @@ public interface HistoricoPacienteRepository extends JpaRepository<HistoricoPaci
             order by h.ocorridoEm desc, h.id desc
             """)
     List<HistoricoPaciente> findByPacienteIdPublicoOrderByOcorridoEmDesc(@Param("pacienteId") UUID pacienteId);
+
+    /**
+     * Nunca inferir proveniencia do CAPS/USF de referencia ou do profissional
+     * atual. Buscar somente eventos marcados na criacao com a unidade local.
+     * A coerencia com a fonte do fato ainda sera validada no servico.
+     */
+    @Query("""
+            select h from HistoricoPaciente h
+            left join fetch h.profissional
+            left join fetch h.agendamento
+            left join fetch h.sessaoGrupo
+            where h.paciente.idPublico = :pacienteId
+              and h.unidadeOrigemChave = :unidade
+            order by h.ocorridoEm desc, h.id desc
+            """)
+    List<HistoricoPaciente> findLocaisComOrigemComprovada(
+            @Param("pacienteId") UUID pacienteId, @Param("unidade") String unidade);
 }
