@@ -23,6 +23,8 @@ import com.pet.buscaativa.entities.VinculoAssistencial;
 import com.pet.buscaativa.entities.enums.TipoUsuario;
 import com.pet.buscaativa.entities.enums.UnidadeAtuacao;
 import com.pet.buscaativa.repositories.PacienteRepository;
+import com.pet.buscaativa.repositories.PendenciaRevisaoProvenienciaRepository;
+import com.pet.buscaativa.entities.PendenciaRevisaoProveniencia.Estado;
 import com.pet.buscaativa.repositories.UsuarioRepository;
 import com.pet.buscaativa.repositories.UsfReferenciaRepository;
 import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
@@ -46,6 +48,7 @@ class FilaRevisaoProvenienciaIntegrationTests extends SecurityTestSupport {
     @Autowired VinculoAssistencialRepository vinculos;
     @Autowired FilaRevisaoProvenienciaService fila;
     @Autowired JdbcTemplate jdbc;
+    @Autowired PendenciaRevisaoProvenienciaRepository consultasPaciente;
 
     private Paciente pessoa() {
         Paciente p = new Paciente();
@@ -112,6 +115,68 @@ class FilaRevisaoProvenienciaIntegrationTests extends SecurityTestSupport {
         assertThrows(ResourceNotFoundException.class, () -> fila.detalharPendente(adId));
         assertEquals(iiId, fila.detalharPendente(iiId).id());
         assertThrows(ResourceNotFoundException.class, () -> fila.detalharPendente(null));
+    }
+
+    @Test
+    void decisaoImutavelRetiraTicketDaFilaAbertaSemAlterarSolicitacaoV12() {
+        Paciente p = pessoa();
+        Usuario ad = administrador(UnidadeAtuacao.CAPS_AD, null);
+        Usuario ii = administrador(UnidadeAtuacao.CAPS_II, null);
+        var vinculoAd = vinculos.saveAndFlush(
+                VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_AD));
+        var vinculoIi = vinculos.saveAndFlush(
+                VinculoAssistencial.paraCaps(p, UnidadeAtuacao.CAPS_II));
+        UUID abertaAd = UUID.randomUUID();
+        UUID decididaAd = UUID.randomUUID();
+        UUID abertaIi = UUID.randomUUID();
+        pendencia(abertaAd, vinculoAd, ad, 201L);
+        pendencia(decididaAd, vinculoAd, ad, 202L);
+        pendencia(abertaIi, vinculoIi, ii, 203L);
+
+        when(escopo.usuarioLogado()).thenReturn(ad);
+        assertEquals(2, fila.listarPendentes(PageRequest.of(0, 10)).getTotalElements());
+
+        // O evento de decisao V13 nao altera PENDENTE na solicitacao V12.
+        jdbc.update("""
+                insert into tb_decisao_revisao_proveniencia(
+                    id, pendencia_id, paciente_id, unidade_chave, decisao,
+                    justificativa, revisor_id, perfil_revisor, decidida_em)
+                values (?, ?, ?, 'CAPS_AD', 'REJEITAR',
+                    'Documentacao sintetica conferida pelo administrador local',
+                    ?, 'ADMINISTRADOR', CURRENT_TIMESTAMP)
+                """, UUID.randomUUID(), decididaAd, p.getId(), ad.getId());
+
+        var paginaAd = fila.listarPendentes(PageRequest.of(0, 10));
+        assertEquals(1, paginaAd.getTotalElements());
+        assertEquals(abertaAd, paginaAd.getContent().get(0).id());
+        assertThrows(ResourceNotFoundException.class,
+                () -> fila.detalharPendente(decididaAd));
+        assertEquals(abertaAd, fila.detalharPendente(abertaAd).id());
+
+        var porPaciente = consultasPaciente
+                .findByPacienteIdAndUnidadeChaveAndEstadoOrderBySolicitadoEmDesc(
+                        p.getId(), "CAPS_AD", Estado.PENDENTE, PageRequest.of(0, 10));
+        assertEquals(1, porPaciente.getTotalElements());
+        assertEquals(abertaAd, porPaciente.getContent().get(0).getId());
+        assertTrue(consultasPaciente
+                .findByIdAndPacienteIdAndUnidadeChave(decididaAd, p.getId(), "CAPS_AD")
+                .isEmpty());
+        assertTrue(consultasPaciente
+                .findByIdAndPacienteIdAndUnidadeChave(abertaAd, p.getId(), "CAPS_AD")
+                .isPresent());
+
+        // CAPS II continua com sua propria fila, independente da decisao AD.
+        when(escopo.usuarioLogado()).thenReturn(ii);
+        var paginaIi = fila.listarPendentes(PageRequest.of(0, 10));
+        assertEquals(1, paginaIi.getTotalElements());
+        assertEquals(abertaIi, paginaIi.getContent().get(0).id());
+        assertThrows(ResourceNotFoundException.class, () -> fila.detalharPendente(decididaAd));
+        assertEquals("PENDENTE", jdbc.queryForObject(
+                "select estado from tb_pendencia_revisao_proveniencia where id=?",
+                String.class, decididaAd));
+        assertEquals(1, jdbc.queryForObject(
+                "select count(*) from tb_decisao_revisao_proveniencia where pendencia_id=?",
+                Integer.class, decididaAd));
     }
 
     @Test

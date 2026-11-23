@@ -274,3 +274,11 @@
 - A falha foi exclusivamente no teste `HistoricoClinicoLocalHttpTests.historicoNaoContaFatoLocalComRaizDeRemarcacaoPendente`, que procurava o nome de campo inexistente `totalConsultas`; o contrato real de `HistoricoClinicoLocalDTO` define `totalConsultasAgendadas`.
 - Ajustado o teste para verificar o campo do DTO existente, preservando a validacao de um evento local legitimo e a exclusao da cadeia pendente.
 - Nenhum codigo de producao, dado clinico, migracao, indicador ou autorizacao foi alterado nesta correcao. A nova CI ainda precisa confirmar a aprovacao.
+ 
+## Fila interna de revisao: solicitacoes abertas versus decisoes V13 — 23/11/2026
+
+- Execucao #45230943664, commit `1c1c6aadb2641d7554b29b8b566fd8fdc60ffe0f`: **SUCCESS**, backend 1.235/1.235, concorrencia 12/12, build Angular e 28 testes direcionados aprovados. Corrigiu somente o nome do campo de um teste HTTP de historico local.
+- A estrutura V12 mantem a solicitacao em `PENDENTE` para sempre e V13 registra a deliberacao em evento append-only separado; por isso, consultar apenas `estado=PENDENTE` devolvia tambem solicitacoes ja decididas.
+- Nesta alteracao, leituras internas da fila geral e por paciente usam `NOT EXISTS` de decisao V13, sempre condicionadas a unidade e ao paciente local quando aplicavel. O detalhe administrativo da fila aberta usa consulta propria. A leitura original de ticket para o **comando de decisao** foi preservada, para manter a verificacao de duplicidade e a concorrencia existente.
+- Novo teste integrado H2 com paciente vinculado a CAPS AD e CAPS II verifica que registrar decisao **REJEITAR** em uma solicitacao AD retira somente esse ticket das filas de abertas, que outras pendencias ficam visiveis apenas na propria unidade, e que o registro original permanece imutavel com `estado=PENDENTE`. Aprovacao e rejeicao produzem igualmente eventos, nao correcoes clinicas automaticas.
+- **CI desta alteracao ainda nao validada.** Nenhuma rota HTTP, painel Angular, migration, reatribuicao de origem, alteracao de indicador ou exclusao foi ativada. Nao confundir fila de tickets abertos com historico completo das decisoes auditadas.

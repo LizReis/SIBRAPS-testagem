@@ -5,6 +5,8 @@ import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.data.repository.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,10 +29,36 @@ public interface PendenciaRevisaoProvenienciaRepository
         extends Repository<PendenciaRevisaoProveniencia, UUID> {
 
     /** Busca uma unica pendencia somente dentro do paciente e da unidade autorizados. */
+    @Query("""
+            select p from PendenciaRevisaoProveniencia p
+            where p.id = :id and p.pacienteId = :pacienteId
+              and p.unidadeChave = :unidadeChave
+              and not exists (
+                  select d.id from DecisaoRevisaoProveniencia d
+                  where d.pendencia = p)
+            """)
     Optional<PendenciaRevisaoProveniencia> findByIdAndPacienteIdAndUnidadeChave(
-            UUID id, Long pacienteId, String unidadeChave);
+            @Param("id") UUID id, @Param("pacienteId") Long pacienteId,
+            @Param("unidadeChave") String unidadeChave);
 
     /** Pagina as pendencias de um paciente na unidade, sem expor outras unidades. */
+    @Query(value = """
+            select p from PendenciaRevisaoProveniencia p
+            where p.pacienteId = :pacienteId and p.unidadeChave = :unidadeChave
+              and p.estado = :estado
+              and not exists (
+                  select d.id from DecisaoRevisaoProveniencia d
+                  where d.pendencia = p)
+            order by p.solicitadoEm desc, p.id desc
+            """, countQuery = """
+            select count(p) from PendenciaRevisaoProveniencia p
+            where p.pacienteId = :pacienteId and p.unidadeChave = :unidadeChave
+              and p.estado = :estado
+              and not exists (
+                  select d.id from DecisaoRevisaoProveniencia d
+                  where d.pendencia = p)
+            """)
     Page<PendenciaRevisaoProveniencia> findByPacienteIdAndUnidadeChaveAndEstadoOrderBySolicitadoEmDesc(
-            Long pacienteId, String unidadeChave, Estado estado, Pageable pagina);
+            @Param("pacienteId") Long pacienteId, @Param("unidadeChave") String unidadeChave,
+            @Param("estado") Estado estado, Pageable pagina);
 }

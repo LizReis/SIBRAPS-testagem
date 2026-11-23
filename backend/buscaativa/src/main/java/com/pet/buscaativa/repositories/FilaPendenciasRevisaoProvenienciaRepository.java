@@ -5,6 +5,8 @@ import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.data.repository.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,10 +22,45 @@ import com.pet.buscaativa.entities.PendenciaRevisaoProveniencia.Estado;
 public interface FilaPendenciasRevisaoProvenienciaRepository
         extends Repository<PendenciaRevisaoProveniencia, UUID> {
 
+    /**
+     * A solicitacao V12 fica PENDENTE para sempre (append-only); uma decisao
+     * V13 e outro evento. Na fila aberta, excluir somente as solicitacoes
+     * com decisao persistida, sem atualizar a solicitacao clinica original.
+     */
+    @Query(value = """
+            select p from PendenciaRevisaoProveniencia p
+            where p.unidadeChave = :unidadeChave and p.estado = :estado
+              and not exists (
+                  select d.id from DecisaoRevisaoProveniencia d
+                  where d.pendencia = p)
+            order by p.solicitadoEm desc, p.id desc
+            """, countQuery = """
+            select count(p) from PendenciaRevisaoProveniencia p
+            where p.unidadeChave = :unidadeChave and p.estado = :estado
+              and not exists (
+                  select d.id from DecisaoRevisaoProveniencia d
+                  where d.pendencia = p)
+            """)
     Page<PendenciaRevisaoProveniencia> findByUnidadeChaveAndEstadoOrderBySolicitadoEmDesc(
-            String unidadeChave, Estado estado, Pageable pagina);
+            @Param("unidadeChave") String unidadeChave, @Param("estado") Estado estado,
+            Pageable pagina);
 
     /** Detalhe apenas da propria unidade e somente enquanto PENDENTE. */
     Optional<PendenciaRevisaoProveniencia> findByIdAndUnidadeChaveAndEstado(
             UUID id, String unidadeChave, Estado estado);
+
+    /**
+     * Exclusivo para exibir o detalhe da fila aberta; NAO substituir o
+     * metodo acima, utilizado pelo comando para detectar decisao duplicada.
+     */
+    @Query("""
+            select p from PendenciaRevisaoProveniencia p
+            where p.id = :id and p.unidadeChave = :unidadeChave and p.estado = :estado
+              and not exists (
+                  select d.id from DecisaoRevisaoProveniencia d
+                  where d.pendencia = p)
+            """)
+    Optional<PendenciaRevisaoProveniencia> findAbertaByIdAndUnidadeChaveAndEstado(
+            @Param("id") UUID id, @Param("unidadeChave") String unidadeChave,
+            @Param("estado") Estado estado);
 }

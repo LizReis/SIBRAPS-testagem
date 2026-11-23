@@ -75,7 +75,7 @@ public class FilaRevisaoProvenienciaService {
         String unidade = unidadeDoAdministrador();
         if (id == null)
             throw new ResourceNotFoundException("Pendencia nao encontrada.");
-        return fila.findByIdAndUnidadeChaveAndEstado(id, unidade, Estado.PENDENTE)
+        return fila.findAbertaByIdAndUnidadeChaveAndEstado(id, unidade, Estado.PENDENTE)
                 .map(FilaRevisaoProvenienciaService::detalhar)
                 .orElseThrow(() -> new ResourceNotFoundException("Pendencia nao encontrada."));
     }
