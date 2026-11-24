@@ -75,6 +75,7 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
     @Autowired com.pet.buscaativa.services.impl.MonitoramentoVinculosEnsaioService monitorLocal;
     @Autowired com.pet.buscaativa.services.impl.RevisaoProvenienciaLocalEnsaioService revisaoLocal;
     @Autowired com.pet.buscaativa.services.UsuarioService usuariosService;
+    @Autowired com.pet.buscaativa.services.impl.ConsultasClinicasLocaisEnsaioService consultasLocais;
     @MockitoBean SusApiAdapter sus;
     @MockitoBean EmailService email;
 
@@ -917,6 +918,86 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
         var depois=LegacyMigrationFixture.snapshot(fonte,colunas);
         for (var tabela:List.of("TB_PACIENTE","TB_VINCULO_ASSISTENCIAL","TB_AGENDAMENTO","TB_HISTORICO_PACIENTE"))
             assertEquals(antes.get(tabela),depois.get(tabela),tabela);
+    }
+
+    @Test
+    void consultasLocaisNaoMisturamDuasUsfsECapsNemCacheGlobal() {
+        var a=novoLocal(UnidadeAtuacao.USF);
+        var b=iniciar(a.paciente(),tx.execute(t->usuario(UnidadeAtuacao.USF)));
+        var c=iniciar(a.paciente(),tx.execute(t->usuario(UnidadeAtuacao.CAPS_AD)));
+        var estranho=novoLocal(UnidadeAtuacao.CAPS_I);
+        String nome="Consulta sintética isolada "+UUID.randomUUID();
+        tx.executeWithoutResult(t->em.find(Paciente.class,a.paciente().getId()).setNome(nome));
+        for(int dias:List.of(5,4,3)) {
+            var ag=reserva(a,diasAtras(dias),9,SituacaoAtendimento.AGENDADO,true);
+            como(a.ator(),()->individual.registrar(ag.id(),ag.versao(),FrequenciaAssistencial.FALTOU));
+        }
+        var presente=reserva(b,diasAtras(2),10,SituacaoAtendimento.AGENDADO,true);
+        como(b.ator(),()->individual.registrar(presente.id(),presente.versao(),FrequenciaAssistencial.PRESENTE));
+        var s=sessao(c.ator(),List.of(c),diasAtras(1),11);
+        como(c.ator(),()->coletivo.confirmar(s.id(),s.versao(),Map.of()));
+        var colunas=LegacyMigrationFixture.columns(fonte);
+        var antes=LegacyMigrationFixture.snapshot(fonte,colunas);
+        var da=como(a.ator(),()->consultasLocais.detalhe(a.paciente().getIdPublico()));
+        var db=como(b.ator(),()->consultasLocais.detalhe(a.paciente().getIdPublico()));
+        var dc=como(c.ator(),()->consultasLocais.detalhe(a.paciente().getIdPublico()));
+        assertEquals(3,da.paciente().indicadores().countFaltas());
+        assertEquals(ClassificacaoRisco.VERMELHO,da.paciente().indicadores().classificacaoRisco());
+        assertEquals(0,db.paciente().indicadores().countFaltas());
+        assertEquals(ClassificacaoRisco.VERDE,db.paciente().indicadores().classificacaoRisco());
+        assertEquals(1,dc.paciente().indicadores().countFaltas());
+        var pa=como(a.ator(),()->consultasLocais.prontuario(a.paciente().getIdPublico()));
+        var pb=como(b.ator(),()->consultasLocais.prontuario(a.paciente().getIdPublico()));
+        var pc=como(c.ator(),()->consultasLocais.prontuario(a.paciente().getIdPublico()));
+        assertEquals(3,pa.atendimentos().size()); assertTrue(pa.sessoes().isEmpty());
+        assertEquals(1,pb.atendimentos().size()); assertEquals(presente.id(),pb.atendimentos().getFirst().id());
+        assertTrue(pc.atendimentos().isEmpty()); assertEquals(s.id(),pc.sessoes().getFirst().sessao());
+        assertEquals(3,pa.faltasComprovadas()); assertEquals(1,pb.presencasComprovadas());
+        assertEquals(1,pc.faltasComprovadas());
+        assertTrue(pa.historico().stream().allMatch(h->da.paciente().unidade().equals(h.unidadeOrigem())));
+        assertThrows(ResourceNotFoundException.class,()->como(estranho.ator(),()->consultasLocais.detalhe(a.paciente().getIdPublico())));
+        assertThrows(ResourceNotFoundException.class,()->como(estranho.ator(),()->consultasLocais.prontuario(a.paciente().getIdPublico())));
+        assertEquals(1,como(a.ator(),()->consultasLocais.pesquisar("Consulta sintética isolada",ClassificacaoRisco.VERMELHO,null,null,0,10)).totalRegistros());
+        assertEquals(0,como(b.ator(),()->consultasLocais.pesquisar("Consulta sintética isolada",ClassificacaoRisco.VERMELHO,null,null,0,10)).totalRegistros());
+        assertEquals(antes,LegacyMigrationFixture.snapshot(fonte,colunas));
+    }
+
+    @Test
+    void consultaInconclusivaNaoApresentaZeroVerdeOuNumeroHistoricoInventado() {
+        var a=novoLocal(UnidadeAtuacao.CAPS_AD);
+        var ag=reserva(a,diasAtras(2),9,SituacaoAtendimento.AGENDADO,true);
+        como(a.ator(),()->individual.registrar(ag.id(),ag.versao(),FrequenciaAssistencial.FALTOU));
+        var desconhecido=reserva(a,diasAtras(4),10,SituacaoAtendimento.FALTOU,false);
+        var colunas=LegacyMigrationFixture.columns(fonte);
+        var antes=LegacyMigrationFixture.snapshot(fonte,colunas);
+        var p=como(a.ator(),()->consultasLocais.prontuario(a.paciente().getIdPublico()));
+        var i=p.paciente().indicadores();
+        assertNull(i.countFaltas()); assertNull(i.classificacaoRisco()); assertNull(i.gatilhoVisitaAcionado());
+        assertTrue(i.revisaoNecessaria()); assertFalse(i.ultimaPresencaConclusiva());
+        assertEquals(1,p.faltasComprovadas());
+        assertTrue(p.atendimentos().stream().noneMatch(x->desconhecido.id().equals(x.id())));
+        assertTrue(p.historico().stream().filter(h->h.tipo()==TipoEventoHistoricoPaciente.FALTA)
+                .allMatch(h->h.numeroFaltaConsecutiva()==null));
+        assertEquals(antes,LegacyMigrationFixture.snapshot(fonte,colunas));
+    }
+
+    @Test
+    void pesquisaPorDocumentoEProximaReservaRespeitamVinculoERecepcao() {
+        var a=novoLocal(UnidadeAtuacao.CAPS_II);
+        var b=iniciar(a.paciente(),tx.execute(t->usuario(UnidadeAtuacao.CAPS_I)));
+        var estranho=novoLocal(UnidadeAtuacao.CAPS_AD);
+        var recepcao=tx.execute(t->{var u=usuario(UnidadeAtuacao.CAPS_II);u.setTipoUsuario(TipoUsuario.RECEPCAO);return u;});
+        String cpf="98765432109";
+        tx.executeWithoutResult(t->em.find(Paciente.class,a.paciente().getId()).setCpf(cpf));
+        var local=reserva(a,LocalDate.now(clock).plusDays(3),9,SituacaoAtendimento.AGENDADO,true);
+        reserva(b,LocalDate.now(clock).plusDays(1),9,SituacaoAtendimento.AGENDADO,true);
+        assertEquals(local.id(),como(recepcao,()->consultasLocais.detalhe(a.paciente().getIdPublico())).proximoAgendamento().id());
+        var busca=como(recepcao,()->consultasLocais.pesquisar("987.654.321-09",null,null,null,0,100));
+        assertEquals(1,busca.totalRegistros()); assertEquals(50,busca.tamanhoPagina());
+        assertEquals(a.paciente().getIdPublico(),busca.pacientes().getFirst().idPublico());
+        assertEquals(0,como(estranho.ator(),()->consultasLocais.pesquisar(cpf,null,null,null,0,10)).totalRegistros());
+        assertEquals(0,como(recepcao,()->consultasLocais.pesquisar(cpf,null,null,null,1,1)).pacientes().size());
+        assertThrows(ValidationException.class,()->como(recepcao,()->consultasLocais.pesquisar("12",null,null,null,0,10)));
     }
 
     private static <T> T apos(CountDownLatch partir, Supplier<T> comando) throws InterruptedException {
