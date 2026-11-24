@@ -16,3 +16,7 @@ Quatro testes integrados novos: renumeração mista e revisão anterior, resolu�
 
 ## Limites
 Não conclui a resolução de toda espécie de pendência: registros antigos de origem indeterminada, demais inconsistências, V12/V13 sem aplicação comprovada e causas desconhecidas precisam de mecanismo de revisão específico ou evidência adicional. Não declarar toda a etapa concluída nem ativar escritores. Próximo passo: validar CI e preparar integração coordenada dos atendimentos e grupos, incluindo prova de resolução para outras causas quando possível.
+
+## Resultado da primeira CI e ajuste de expectativa
+
+Actions #45485189042, commit `4669850`: 1.342 testes Java executados, 1.341 aprovados, uma falha e zero erros/ignorados. Os 16 testes de PersistenciaIndicadoresLocaisIntegrationTests e os dois de EventoEstadoClinicoVinculoMigrationTests passaram. Angular e build aprovados; matriz adicional de concorrência não executada devido à falha de verify. O diagnóstico consolidado de cópia restaurada V13 ainda esperava uma migration, mas recebeu duas (V14 e V15). Corrigido somente o nome, a expectativa e os identificadores locais desse cenário de versão mais recente, mantendo as verificações diagnósticas, snapshots e leitura exclusiva. Nova CI pendente; nenhuma alteração de código produtivo ou migrations nesta correção.

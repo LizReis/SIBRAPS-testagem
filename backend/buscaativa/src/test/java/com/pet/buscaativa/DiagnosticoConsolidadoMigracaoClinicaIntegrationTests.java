@@ -161,7 +161,7 @@ class DiagnosticoConsolidadoMigracaoClinicaIntegrationTests extends SecurityTest
     }
 
     @Test
-    void classificaLegadoRestauradoDeV13MigradoParaV14EmSomenteLeitura() throws Exception {
+    void classificaLegadoRestauradoDeV13MigradoParaV15EmSomenteLeitura() throws Exception {
         var base = LegacyMigrationFixture.legacy(temp.resolve("legado"));
         assertEquals(13, LegacyMigrationFixture.migrarAte(base, "13").migrationsExecuted);
         var colunas = LegacyMigrationFixture.columns(base);
@@ -171,9 +171,10 @@ class DiagnosticoConsolidadoMigracaoClinicaIntegrationTests extends SecurityTest
         var copia = LegacyMigrationFixture.restore(temp.resolve("legado-restaurado"), script);
         assertEquals(antes, LegacyMigrationFixture.snapshot(copia, colunas));
 
-        assertEquals(1, AgendaMigrationTool.migrar(copia).migrationsExecuted);
-        var colunasV14 = LegacyMigrationFixture.columns(copia);
-        var antesV14 = LegacyMigrationFixture.snapshot(copia, colunasV14);
+        // A base V13 recebe V14 (eventos de estado) e V15 (causa de pendência).
+        assertEquals(2, AgendaMigrationTool.migrar(copia).migrationsExecuted);
+        var colunasV15 = LegacyMigrationFixture.columns(copia);
+        var antesV15 = LegacyMigrationFixture.snapshot(copia, colunasV15);
         var somenteLeitura = new DriverManagerDataSource(copia.getUrl() + ";ACCESS_MODE_DATA=r",
                 copia.getUsername(), copia.getPassword());
         CorrectiveMigrationApplication.application(somenteLeitura)
@@ -188,7 +189,7 @@ class DiagnosticoConsolidadoMigracaoClinicaIntegrationTests extends SecurityTest
                     assertEquals(ProntidaoTecnica.REQUER_CONFERENCIA, relatorio.prontidaoTecnica());
                     assertFalse(relatorio.migracaoAutorizada());
                 });
-        assertEquals(antesV14, LegacyMigrationFixture.snapshot(copia, colunasV14));
+        assertEquals(antesV15, LegacyMigrationFixture.snapshot(copia, colunasV15));
         assertEquals(antes, LegacyMigrationFixture.snapshot(base, colunas));
     }
 
