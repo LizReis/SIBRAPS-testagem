@@ -49,6 +49,7 @@ public class FrequenciaColetivaLocalEnsaioService {
     private final EscopoUnidadeService escopo;
     private final EntityManager em;
     private final Clock clock;
+    private final EvidenciaStatusVinculo evidenciaEstado;
 
     record Sessao(Long id, Long grupo, UUID coordenador, UUID responsavel,
             Integer versaoGrupo, Integer versaoSessao, StatusSessaoGrupo status) {}
@@ -151,7 +152,104 @@ public class FrequenciaColetivaLocalEnsaioService {
         return sessao.getVersion();
     }
 
+    /** Operações de inscrição sem produzir fatos clínicos. */
+    @Transactional
+    public int adicionarParticipante(Long id, int versao, UUID paciente) {
+        return editarParticipante(id, versao, paciente, true);
+    }
+
+    @Transactional
+    public int removerParticipante(Long id, int versao, UUID paciente) {
+        return editarParticipante(id, versao, paciente, false);
+    }
+
+    private int editarParticipante(Long id, int versao, UUID paciente, boolean incluir) {
+        if (paciente == null) throw new ValidationException("Informe o paciente.");
+        var contexto = atores.autorizarOperacional();
+        var recursos = coordenacao.bloquear(() -> descobrir(id, contexto, paciente), contexto, null);
+        var sessao = recursos.sessoes().get(id);
+        conferirSessaoAgendada(sessao, contexto);
+        CoordenacaoEscritaClinicaEnsaio.validarVersao(versao, sessao.getVersion());
+        guardasGrupo.validarSessaoEditavel(sessao);
+        var existente = sessao.getParticipantes().stream()
+                .filter(p -> paciente.equals(p.getPaciente().getIdPublico())).findFirst();
+        if (incluir) {
+            if (existente.isPresent()) throw new ConflictException("Paciente já inscrito na sessão.");
+            var local = recursos.vinculos().get(paciente);
+            if (!evidenciaEstado.analisar(local).comprovada())
+                throw new ConflictException("Estado local do acompanhamento pendente de comprovação.");
+            guardasGrupo.validarNovaParticipacao(local.getPaciente(), sessao.getDataSessao(),
+                    sessao.getHorario(), sessao.getId(), local);
+            var p = new SessaoGrupoParticipante();
+            p.setPaciente(local.getPaciente());
+            p.setSessaoGrupo(sessao);
+            p.setStatusPresenca(NAO_REGISTRADA);
+            em.persist(p);
+            sessao.getParticipantes().add(p);
+        } else {
+            var p = existente.orElseThrow(() -> new ResourceNotFoundException("Participante não encontrado."));
+            sessao.getParticipantes().remove(p);
+            em.remove(p);
+        }
+        em.lock(sessao, LockModeType.PESSIMISTIC_FORCE_INCREMENT);
+        em.flush();
+        return sessao.getVersion();
+    }
+
+    @Transactional
+    public int registrarProvisoria(Long id, int versao, UUID paciente, StatusPresencaGrupo frequencia) {
+        if (paciente == null || frequencia == null) throw new ValidationException("Informe a frequência provisória.");
+        var contexto = atores.autorizar(false);
+        var recursos = coordenacao.bloquear(() -> descobrir(id, contexto, paciente), contexto, null);
+        var sessao = recursos.sessoes().get(id);
+        conferirSessaoAgendada(sessao, contexto);
+        exigirResponsavelDaSessao(sessao, recursos.atores().ator());
+        CoordenacaoEscritaClinicaEnsaio.validarVersao(versao, sessao.getVersion());
+        temporal.validarSessao(sessao, false);
+        var p = sessao.getParticipantes().stream().filter(x -> paciente.equals(x.getPaciente().getIdPublico()))
+                .findFirst().orElseThrow(() -> new ResourceNotFoundException("Participante não encontrado."));
+        if (p.getStatusPresenca() == frequencia) return sessao.getVersion();
+        p.setStatusPresenca(frequencia);
+        em.lock(sessao, LockModeType.PESSIMISTIC_FORCE_INCREMENT);
+        em.flush();
+        return sessao.getVersion();
+    }
+
+    @Transactional
+    public int cancelar(Long id, int versao, String motivo) {
+        if (motivo != null && motivo.length() > 1000) throw new ValidationException("Motivo de cancelamento excede o limite.");
+        var contexto = atores.autorizar(false);
+        var recursos = coordenacao.bloquear(() -> descobrir(id, contexto), contexto, null);
+        var sessao = recursos.sessoes().get(id);
+        conferirSessaoAgendada(sessao, contexto);
+        exigirResponsavelDaSessao(sessao, recursos.atores().ator());
+        CoordenacaoEscritaClinicaEnsaio.validarVersao(versao, sessao.getVersion());
+        sessao.getParticipantes().forEach(p -> p.setStatusPresenca(NAO_REGISTRADA));
+        sessao.setMotivoCancelamento(motivo);
+        sessao.setStatus(StatusSessaoGrupo.CANCELADA);
+        em.flush();
+        return sessao.getVersion();
+    }
+
+    private static void conferirSessaoAgendada(SessaoGrupo sessao, AtoresEstadoClinicoLocalEnsaio.Contexto contexto) {
+        if (sessao.getStatus() != StatusSessaoGrupo.AGENDADA
+                || !contexto.unidade().equals(sessao.getUnidadeOrigemChave())
+                || !contexto.unidade().equals(sessao.getGrupo().getUnidadeOrigemChave())
+                || !AtoresEstadoClinicoLocalEnsaio.elegivel(sessao.getGrupo().getCoordenador(), contexto.unidade(), false))
+            throw new ConflictException("Sessão não possui estado e origem compatíveis.");
+    }
+
+    private static void exigirResponsavelDaSessao(SessaoGrupo sessao, com.pet.buscaativa.entities.Usuario ator) {
+        if (ator.getTipoUsuario() != TipoUsuario.ADMINISTRADOR
+                && !ator.getId().equals(sessao.getGrupo().getCoordenador().getId()))
+            throw new AccessDeniedException("Usuário sem autorização para esta sessão.");
+    }
+
     private Descoberta<Composicao> descobrir(Long id, AtoresEstadoClinicoLocalEnsaio.Contexto contexto) {
+        return descobrir(id, contexto, null);
+    }
+
+    private Descoberta<Composicao> descobrir(Long id, AtoresEstadoClinicoLocalEnsaio.Contexto contexto, UUID adicional) {
         if (id == null) throw new ResourceNotFoundException("Sessão não encontrada.");
         var sessao = em.createQuery("""
                 select new com.pet.buscaativa.services.impl.FrequenciaColetivaLocalEnsaioService$Sessao(
@@ -165,10 +263,13 @@ public class FrequenciaColetivaLocalEnsaioService {
                     p.id, p.paciente.idPublico, p.statusPresenca)
                 from SessaoGrupoParticipante p where p.sessaoGrupo.id = :id order by p.id
                 """, Participante.class).setParameter("id", id).getResultList();
-        var pacientes = participantes.stream().map(Participante::paciente).toList();
+        var pacientes = new java.util.TreeSet<UUID>();
+        participantes.forEach(p -> pacientes.add(p.paciente()));
+        if (adicional != null) pacientes.add(adicional);
+        var idsPacientes = List.copyOf(pacientes);
         var locais = pacientes.isEmpty() ? List.<CoordenacaoEscritaClinicaEnsaio.IdentidadeVinculo>of()
-                : coordenacao.identificar(pacientes, contexto.unidade(), true);
-        return CoordenacaoEscritaClinicaEnsaio.descoberta(locais, pacientes, contexto, null,
+                : coordenacao.identificar(idsPacientes, contexto.unidade(), true);
+        return CoordenacaoEscritaClinicaEnsaio.descoberta(locais, idsPacientes, contexto, null,
                 sessao.responsavel() == null ? List.of(sessao.coordenador()) : List.of(sessao.coordenador(), sessao.responsavel()),
                 List.of(sessao.grupo()), List.of(sessao.id()), List.of(), new Composicao(sessao, List.copyOf(participantes)));
     }

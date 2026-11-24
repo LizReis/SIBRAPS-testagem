@@ -744,11 +744,17 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     }
 
     private void validarNovaParticipacao(Paciente paciente, LocalDate data, LocalTime hora, Long sessaoId) {
-        if (paciente.getStatusPaciente() != StatusPaciente.ATIVO)
+        validarNovaParticipacao(paciente, data, hora, sessaoId, null);
+    }
+
+    void validarNovaParticipacao(Paciente paciente, LocalDate data, LocalTime hora, Long sessaoId,
+            VinculoAssistencial local) {
+        if ((local == null ? paciente.getStatusPaciente() : local.getStatusPaciente()) != StatusPaciente.ATIVO)
             throw new ValidationException("Somente pacientes ativos podem participar de grupos.");
         var instante = new IntegridadeAgendaAssistencialService.Instante(data, hora);
-        var avaliacao = integridadeAgendaAssistencial.avaliarPaciente(paciente, instante,
-                new IntegridadeAgendaAssistencialService.Exclusao(null, sessaoId));
+        var exclusao = new IntegridadeAgendaAssistencialService.Exclusao(null, sessaoId);
+        var avaliacao = local == null ? integridadeAgendaAssistencial.avaliarPaciente(paciente, instante, exclusao)
+                : integridadeAgendaAssistencial.avaliarPaciente(local, instante, exclusao);
         // Preserva a guarda coletiva antiga, inclusive fatos não conclusivos em sessão realizada.
         if (avaliacao.temImpedimentoOperacional()
                 || avaliacao.tem(IntegridadeAgendaAssistencialService.Sinal.FALTA_GRUPO)
@@ -801,7 +807,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         return serie;
     }
 
-    private void validarSessaoEditavel(SessaoGrupo sessao) {
+    void validarSessaoEditavel(SessaoGrupo sessao) {
         if (sessao.getStatus() != StatusSessaoGrupo.AGENDADA)
             throw new ValidationException(
                     "Não é possível alterar participantes de uma sessão já realizada ou cancelada.");

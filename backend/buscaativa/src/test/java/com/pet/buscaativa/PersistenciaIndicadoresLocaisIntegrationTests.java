@@ -66,6 +66,8 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
     @Autowired FrequenciaIndividualLocalEnsaioService individual;
     @Autowired FrequenciaColetivaLocalEnsaioService coletivo;
     @Autowired PersistenciaIndicadoresVinculoEnsaioService indicadores;
+    @Autowired com.pet.buscaativa.services.impl.ReservaIndividualLocalEnsaioService reservasLocais;
+    @Autowired com.pet.buscaativa.services.impl.ComandosAssistenciaisLocaisEnsaioService comandosLocais;
     @MockitoBean SusApiAdapter sus;
     @MockitoBean EmailService email;
 
@@ -468,6 +470,110 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
         assertFalse(carregar(a).getGatilhoVisitaAcionado());
         como(a.ator(), () -> estado.reativar(a.paciente().getIdPublico(), a.vinculo(), carregar(a).getVersion(), JUSTIFICATIVA));
         assertEquals(ClassificacaoRisco.VERMELHO, carregar(a).getClassificacaoRisco());
+    }
+
+    @Test
+    void reservaLocalPelaRecepcaoNaoProduzFrequenciaNemAlteraOutroVinculo() {
+        var a = novoLocal(UnidadeAtuacao.CAPS_AD);
+        var externo = iniciar(a.paciente(), tx.execute(t -> usuario(UnidadeAtuacao.CAPS_I)));
+        var recepcao = tx.execute(t -> {
+            var u = usuario(UnidadeAtuacao.CAPS_AD);
+            u.setTipoUsuario(TipoUsuario.RECEPCAO);
+            return u;
+        });
+        var data = LocalDate.now(clock).plusDays(1);
+        tx.executeWithoutResult(t -> {
+            var oferta = new DisponibilidadeExcecao();
+            oferta.setUsuario(em.find(Usuario.class, a.ator().getId()));
+            oferta.setData(data);
+            oferta.setTurno(TurnoEnum.MANHA);
+            oferta.setCapacidade(10);
+            em.persist(oferta);
+        });
+        var dto = new com.pet.buscaativa.entities.dto.AgendamentoDTO(null, a.ator().getIdPublico(), null,
+                a.paciente().getIdPublico(), null, TipoAcompanhamento.AMBOS, data, TurnoEnum.MANHA,
+                LocalTime.of(9, 0), null, null, null);
+        var colunas = LegacyMigrationFixture.columns(fonte);
+        var antes = LegacyMigrationFixture.snapshot(fonte, colunas);
+        var criada = como(recepcao, () -> reservasLocais.criar(dto));
+        assertEquals(1L, total("select count(*) from tb_agendamento where id=? and unidade_origem_chave='CAPS_AD' and frequencia_assistencial='NAO_REGISTRADA'", criada.atendimento()));
+        assertEquals(1L, total("select count(*) from tb_historico_paciente where agendamento_id=?", criada.atendimento()));
+        assertEquals(0, carregar(a).getCountFaltas());
+        assertEquals(0, carregar(externo).getCountFaltas());
+        var depois = LegacyMigrationFixture.snapshot(fonte, colunas);
+        assertEquals(antes.get("TB_PACIENTE"), depois.get("TB_PACIENTE"));
+        assertEquals(antes.get("TB_VINCULO_ASSISTENCIAL"), depois.get("TB_VINCULO_ASSISTENCIAL"));
+        assertThrows(ConflictException.class, () -> como(recepcao, () -> reservasLocais.criar(dto)));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class, () -> como(recepcao,
+                () -> individual.registrar(criada.atendimento(), criada.versao(), FrequenciaAssistencial.FALTOU)));
+        assertEquals(depois, LegacyMigrationFixture.snapshot(fonte, colunas));
+    }
+
+    @Test
+    void inscricaoRemocaoEProvisoriaLocaisNaoProduzemFrequenciaAteConfirmacao() {
+        var a = novoLocal(UnidadeAtuacao.CAPS_I);
+        var b = iniciar(novoPaciente(), a.ator());
+        var externo = iniciar(a.paciente(), tx.execute(t -> usuario(UnidadeAtuacao.CAPS_II)));
+        var recepcao = tx.execute(t -> {
+            var u = usuario(UnidadeAtuacao.CAPS_I);
+            u.setTipoUsuario(TipoUsuario.RECEPCAO);
+            return u;
+        });
+        var futura = sessao(a.ator(), List.of(a), LocalDate.now(clock).plusDays(2), 10);
+        int v = como(recepcao, () -> coletivo.adicionarParticipante(futura.id(), futura.versao(), b.paciente().getIdPublico()));
+        assertThrows(ResourceNotFoundException.class, () -> como(externo.ator(),
+                () -> coletivo.adicionarParticipante(futura.id(), v, externo.paciente().getIdPublico())));
+        assertEquals(2L, total("select count(*) from tb_sessao_grupo_participante where sessao_grupo_id=?", futura.id()));
+        como(recepcao, () -> coletivo.removerParticipante(futura.id(), v, b.paciente().getIdPublico()));
+        assertEquals(1L, total("select count(*) from tb_sessao_grupo_participante where sessao_grupo_id=?", futura.id()));
+        var passada = sessao(a.ator(), List.of(a,b), diasAtras(2), 10);
+        int pv = como(a.ator(), () -> coletivo.registrarProvisoria(passada.id(), passada.versao(),
+                a.paciente().getIdPublico(), StatusPresencaGrupo.PRESENTE));
+        assertEquals(0, carregar(a).getCountFaltas());
+        assertNull(carregar(a).getDataUltimaPresenca());
+        assertEquals(0L, total("select count(*) from tb_historico_paciente where sessao_grupo_id=?", passada.id()));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class, () -> como(recepcao,
+                () -> coletivo.registrarProvisoria(passada.id(), pv, b.paciente().getIdPublico(), StatusPresencaGrupo.FALTOU)));
+        var f = new com.pet.buscaativa.entities.dto.FrequenciaParticipanteGrupoDTO(a.paciente().getIdPublico(), StatusPresencaGrupo.PRESENTE);
+        var duplicado = new com.pet.buscaativa.entities.dto.ConfirmarOcorrenciaGrupoDTO(true, List.of(f,f), null, pv);
+        assertThrows(ConflictException.class, () -> como(a.ator(), () -> comandosLocais.confirmarOcorrencia(passada.id(), duplicado)));
+        var dto = new com.pet.buscaativa.entities.dto.ConfirmarOcorrenciaGrupoDTO(true, List.of(f), null, pv);
+        como(a.ator(), () -> comandosLocais.confirmarOcorrencia(passada.id(), dto));
+        assertEquals(diasAtras(2), carregar(a).getDataUltimaPresenca());
+        assertEquals(1, carregar(b).getCountFaltas());
+        assertEquals(0, carregar(externo).getCountFaltas());
+        assertEquals(2L, total("select count(*) from tb_historico_paciente where sessao_grupo_id=?", passada.id()));
+    }
+
+    @Test
+    void cancelamentoColetivoDescartaSomenteProvisoriasSemCriarFaltas() {
+        var a = novoLocal(UnidadeAtuacao.CAPS_II);
+        var s = sessao(a.ator(), List.of(a), diasAtras(2), 10);
+        int v = como(a.ator(), () -> coletivo.registrarProvisoria(s.id(), s.versao(),
+                a.paciente().getIdPublico(), StatusPresencaGrupo.FALTOU));
+        var dto = new com.pet.buscaativa.entities.dto.ConfirmarOcorrenciaGrupoDTO(false, null, "Sessão não ocorreu.", v);
+        como(a.ator(), () -> comandosLocais.confirmarOcorrencia(s.id(), dto));
+        assertEquals(1L, total("select count(*) from tb_sessao_grupo where id=? and status='CANCELADA'", s.id()));
+        assertEquals(1L, total("select count(*) from tb_sessao_grupo_participante where sessao_grupo_id=? and status_presenca='NAO_REGISTRADA'", s.id()));
+        assertEquals(0, carregar(a).getCountFaltas());
+        assertEquals(0L, total("select count(*) from tb_historico_paciente where sessao_grupo_id=?", s.id()));
+    }
+
+    @Test
+    void correcaoDeEmpateNaoRemovePendenciaQuandoOutroFatoSegueSemOrigem() {
+        var a = novoLocal(UnidadeAtuacao.CAPS_AD);
+        var primeira = reserva(a, diasAtras(3), 9, SituacaoAtendimento.AGENDADO, true);
+        var presente = como(a.ator(), () -> individual.registrar(primeira.id(), primeira.versao(), FrequenciaAssistencial.PRESENTE));
+        var segunda = reserva(a, diasAtras(3), 9, SituacaoAtendimento.AGENDADO, true);
+        como(a.ator(), () -> individual.registrar(segunda.id(), segunda.versao(), FrequenciaAssistencial.FALTOU));
+        assertEquals(Boolean.TRUE, carregar(a).getPendenciaEmpateLocal());
+        reserva(a, diasAtras(4), 10, SituacaoAtendimento.FALTOU, false);
+        var dto = new com.pet.buscaativa.entities.dto.CorrigirFrequenciaDTO(FrequenciaAssistencial.FALTOU, presente.versaoFato(), JUSTIFICATIVA);
+        var resultado = como(a.ator(), () -> comandosLocais.corrigirIndividual(primeira.id(), dto));
+        assertEquals(Situacao.INCONCLUSIVO, resultado.indicadores().situacao());
+        assertTrue(carregar(a).getIndicadoresPendentes());
+        assertNull(carregar(a).getPendenciaEmpateLocal());
+        assertEquals(0, carregar(a).getCountFaltas());
     }
 
     private static <T> T apos(CountDownLatch partir, Supplier<T> comando) throws InterruptedException {

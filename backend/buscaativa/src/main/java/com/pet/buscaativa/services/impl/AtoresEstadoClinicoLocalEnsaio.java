@@ -26,12 +26,23 @@ class AtoresEstadoClinicoLocalEnsaio {
     record Atores(Usuario ator, Usuario referencia) {}
 
     Contexto autorizar(boolean somenteAdministrador) {
+        return autorizar(somenteAdministrador, false);
+    }
+
+    /** Recepção pode operar reservas/inscrições, nunca frequência clínica. */
+    Contexto autorizarOperacional() {
+        return autorizar(false, true);
+    }
+
+    private Contexto autorizar(boolean somenteAdministrador, boolean permiteRecepcao) {
         escopo.validarUnidadeConfigurada();
         var principal = escopo.usuarioLogado();
         if (principal.getId() == null || principal.getIdPublico() == null)
             throw new AccessDeniedException("Usuário não identificado.");
         var atual = usuarios.findById(principal.getId())
                 .orElseThrow(() -> new AccessDeniedException("Usuário não identificado."));
+        if (!permiteRecepcao && atual.getTipoUsuario() == TipoUsuario.RECEPCAO)
+            throw new AccessDeniedException("Perfil sem autorização clínica.");
         var contexto = new Contexto(principal.getIdPublico(), ChaveUnidadeAssistencial.doUsuarioAtual(principal),
                 somenteAdministrador, atual.getTipoUsuario());
         exigirAtor(contexto, atual);
@@ -50,8 +61,11 @@ class AtoresEstadoClinicoLocalEnsaio {
     }
 
     private static void exigirAtor(Contexto contexto, Usuario ator) {
+        boolean recepcaoOperacional = ator != null && contexto.perfil() == TipoUsuario.RECEPCAO
+                && ator.getTipoUsuario() == TipoUsuario.RECEPCAO && !contexto.somenteAdministrador()
+                && contexto.unidade().equals(ChaveUnidadeAssistencial.doUsuarioAtual(ator));
         if (ator == null || !contexto.ator().equals(ator.getIdPublico())
-                || !elegivel(ator, contexto.unidade(), contexto.somenteAdministrador())) {
+                || !(recepcaoOperacional || elegivel(ator, contexto.unidade(), contexto.somenteAdministrador()))) {
             throw new AccessDeniedException("Perfil ou unidade não autorizado.");
         }
     }
