@@ -34,6 +34,22 @@ public class AuditoriaBuscaAtiva {
     @Column(length=200) private String destino;
     @Column(length=1000) private String descricao;
 
+    /** Registro local: não ler classificação nem frequência do cadastro global.
+     * Namespace explícito separa chave canônica (ID USF) de CNES legado. */
+    public static AuditoriaBuscaAtiva local(VinculoAssistencial vinculo,Usuario ator,String unidadeCanonica,
+            TipoEventoBuscaAtiva tipo,UUID chave,Instant instante,String situacao,int quantidade,
+            String destino,String descricao,ClassificacaoRisco risco,boolean gatilhoConfirmado,boolean pendentes) {
+        if(!ChaveUnidadeAssistencial.doUsuarioAtual(ator).equals(unidadeCanonica)
+                || (vinculo!=null&&!unidadeCanonica.equals(vinculo.getUnidadeChave())))
+            throw new IllegalArgumentException("Evento fora da unidade local.");
+        var e=new AuditoriaBuscaAtiva(null,ator,"VINCULO:"+unidadeCanonica,tipo,chave,instante,situacao,quantidade,destino,descricao);
+        if(vinculo!=null) {
+            e.paciente=vinculo.getPaciente(); e.risco=risco; e.indicadoresPendentes=pendentes;
+            e.gatilhoConfirmado=!pendentes&&gatilhoConfirmado; e.situacaoRua=vinculo.getPaciente().isSituacaoRua();
+        }
+        return e;
+    }
+
     public AuditoriaBuscaAtiva(Paciente patient,Usuario actor,String unit,TipoEventoBuscaAtiva type,UUID requestKey,Instant when,
             String situation,int count,String destination,String description) {
         paciente=patient;ator=actor;perfil=actor.getTipoUsuario();unidade=unit;tipoEvento=type;chaveRequisicao=requestKey;ocorridoEm=when;

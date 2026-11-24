@@ -77,6 +77,10 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
     @Autowired com.pet.buscaativa.services.UsuarioService usuariosService;
     @Autowired com.pet.buscaativa.services.impl.ConsultasClinicasLocaisEnsaioService consultasLocais;
     @Autowired com.pet.buscaativa.services.impl.BuscaAtivaPainelLocalEnsaioService painelLocal;
+    @Autowired com.pet.buscaativa.services.impl.RelatoriosLocaisEnsaioService relatoriosLocais;
+    @Autowired com.pet.buscaativa.services.impl.PainelPendenciasLocalEnsaioService pendenciasPainel;
+    @Autowired com.pet.buscaativa.services.impl.NotificacoesLocaisEnsaioService notificacoesLocais;
+    @Autowired com.pet.buscaativa.services.impl.AuditoriaBuscaLocalEnsaioService auditoriaLocal;
     @MockitoBean SusApiAdapter sus;
     @MockitoBean EmailService email;
 
@@ -1095,6 +1099,100 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
         como(a.ator(),()->estado.encerrar(a.paciente().getIdPublico(),a.vinculo(),carregar(a).getVersion(),
                 new EncerramentoPacienteDTO(MotivoEncerramento.ALTA_TERAPEUTICA,StatusPaciente.ALTA_TERAPEUTICA,null)));
         assertTrue(como(a.ator(),painelLocal::buscaAtiva).alertas().isEmpty());
+    }
+
+    @Test
+    void relatoriosLocaisExportamSomenteFatosDaUnidadeEResponsavelHistorico() throws Exception {
+        var a=novoLocal(UnidadeAtuacao.USF);
+        var b=iniciar(a.paciente(),tx.execute(t->usuario(UnidadeAtuacao.USF)));
+        for(int d:List.of(5,4,3)) {
+            var ag=reserva(a,diasAtras(d),9,SituacaoAtendimento.AGENDADO,true);
+            como(a.ator(),()->individual.registrar(ag.id(),ag.versao(),FrequenciaAssistencial.FALTOU));
+        }
+        var s=sessao(a.ator(),List.of(a),diasAtras(2),10);
+        como(a.ator(),()->coletivo.confirmar(s.id(),s.versao(),Map.of()));
+        var colunas=LegacyMigrationFixture.columns(fonte);
+        var antes=LegacyMigrationFixture.snapshot(fonte,colunas);
+        var dados=como(a.ator(),()->relatoriosLocais.buscaAtiva(null,null,null,null));
+        assertEquals(1,dados.dados().size()); assertEquals(4,dados.dados().getFirst().getFaltasConsecutivas());
+        assertTrue(como(b.ator(),()->relatoriosLocais.buscaAtiva(null,null,null,null)).dados().isEmpty());
+        var grupos=como(a.ator(),()->relatoriosLocais.frequenciaGrupos(null,null,null));
+        assertEquals(1,grupos.grupos()); assertEquals(1,grupos.dados().size());
+        assertEquals(a.ator().getNome(),grupos.dados().getFirst().getCoordenador());
+        assertEquals(1,grupos.dados().getFirst().getQuantidadeAusentes());
+        assertTrue(como(b.ator(),()->relatoriosLocais.frequenciaGrupos(null,null,null)).dados().isEmpty());
+        var bytes=como(a.ator(),()->relatoriosLocais.exportarBusca(null,null,null,null,true));
+        try(var wb=new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(bytes))) {
+            assertEquals(4.0,wb.getSheetAt(0).getRow(8).getCell(3).getNumericCellValue());
+        }
+        var pdf=como(a.ator(),()->relatoriosLocais.exportarGrupos(null,null,null,false));
+        assertTrue(new String(pdf,0,4,java.nio.charset.StandardCharsets.US_ASCII).equals("%PDF"));
+        assertEquals(antes,LegacyMigrationFixture.snapshot(fonte,colunas));
+    }
+
+    @Test
+    void filaLocalSeparaDecisoesSemAplicarEProibeRecepcao() {
+        var a=novoLocal(UnidadeAtuacao.USF);
+        var b=iniciar(a.paciente(),tx.execute(t->usuario(UnidadeAtuacao.USF)));
+        var ag=reserva(a,diasAtras(2),9,SituacaoAtendimento.AGENDADO,true);
+        var v=carregar(a).getVersion();
+        var ticket=como(a.ator(),()->revisaoLocal.solicitar(a.paciente().getIdPublico(),a.vinculo(),v,
+                PendenciaRevisaoProveniencia.TipoRegistro.AGENDAMENTO,ag.id(),JUSTIFICATIVA));
+        var antes=como(a.ator(),()->pendenciasPainel.listar(null,0,10));
+        assertEquals(1,antes.pendentes());assertEquals(ticket,antes.itens().getFirst().ticket());
+        assertEquals(0,como(b.ator(),()->pendenciasPainel.listar(null,0,10)).total());
+        como(a.ator(),()->revisaoLocal.decidir(a.paciente().getIdPublico(),a.vinculo(),v,ticket,
+                DecisaoRevisaoProveniencia.Decisao.APROVAR,JUSTIFICATIVA));
+        var depois=como(a.ator(),()->pendenciasPainel.listar(null,0,10));
+        assertEquals(0,depois.pendentes());assertEquals(1,depois.aprovadas());assertEquals("APROVADA",depois.itens().getFirst().estado().name());
+        assertEquals(v,carregar(a).getVersion());
+        var recepcao=tx.execute(t->{var u=usuario(UnidadeAtuacao.USF);u.setTipoUsuario(TipoUsuario.RECEPCAO);
+            u.setUsfAtuacao(em.find(UsfReferencia.class,a.ator().getUsfAtuacao().getId()));return u;});
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,()->como(recepcao,()->pendenciasPainel.listar(null,0,10)));
+    }
+
+    @Test
+    void notificacaoTecnicaPlanejaVermelhoLocalSemSmtpENaoIncluiPendencia() {
+        var a=novoLocal(UnidadeAtuacao.USF);
+        var externo=iniciar(a.paciente(),tx.execute(t->usuario(UnidadeAtuacao.USF)));
+        for(int d:List.of(5,4,3)) {
+            var ag=reserva(a,diasAtras(d),9,SituacaoAtendimento.AGENDADO,true);
+            como(a.ator(),()->individual.registrar(ag.id(),ag.versao(),FrequenciaAssistencial.FALTOU));
+        }
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,()->como(a.ator(),notificacoesLocais::planejar));
+        var plano=notificacoesLocais.planejar();
+        var local=plano.stream().filter(e->e.chave().destinatario().equals(a.ator().getIdPublico())).findFirst().orElseThrow();
+        assertEquals(1,local.pacientes().size());assertEquals(3,local.pacientes().getFirst().countFaltas());
+        assertTrue(plano.stream().filter(e->e.chave().destinatario().equals(externo.ator().getIdPublico())).findFirst().orElseThrow().pacientes().isEmpty());
+        assertEquals(plano,notificacoesLocais.planejar());
+        tx.executeWithoutResult(t->vinculos.findByIdPublico(a.vinculo()).orElseThrow().sinalizarIndicadoresLocaisPendentes());
+        assertTrue(notificacoesLocais.planejar().stream().filter(e->e.chave().equals(local.chave())).findFirst().orElseThrow().pacientes().isEmpty());
+    }
+
+    @Test
+    void auditoriaBuscaLocalNaoCopiaRiscoGlobalERejeitaRequisicaoExterna() {
+        var a=novoLocal(UnidadeAtuacao.USF);
+        var b=iniciar(a.paciente(),tx.execute(t->usuario(UnidadeAtuacao.USF)));
+        for(int d:List.of(5,4,3)) {
+            var ag=reserva(a,diasAtras(d),9,SituacaoAtendimento.AGENDADO,true);
+            como(a.ator(),()->individual.registrar(ag.id(),ag.versao(),FrequenciaAssistencial.FALTOU));
+        }
+        var versao=carregar(a).getVersion();
+        var req=UUID.randomUUID();
+        var resultado=como(a.ator(),()->auditoriaLocal.visualizar(a.paciente().getIdPublico(),a.vinculo(),versao,req));
+        assertTrue(resultado.criado());assertEquals(ClassificacaoRisco.VERMELHO,resultado.evento().risco());
+        assertFalse(resultado.evento().indicadoresPendentes());assertFalse(resultado.evento().gatilhoConfirmado());
+        assertFalse(como(a.ator(),()->auditoriaLocal.visualizar(a.paciente().getIdPublico(),a.vinculo(),versao,req)).criado());
+        assertThrows(ResourceNotFoundException.class,()->como(b.ator(),()->auditoriaLocal.visualizar(a.paciente().getIdPublico(),a.vinculo(),versao,req)));
+        assertEquals(0,como(b.ator(),()->auditoriaLocal.listarPaciente(a.paciente().getIdPublico(),0,10)).getTotalElements());
+        assertEquals(1,como(a.ator(),()->auditoriaLocal.listarPaciente(a.paciente().getIdPublico(),0,10)).getTotalElements());
+        var encaminhamento=como(a.ator(),()->auditoriaLocal.encaminhar(a.paciente().getIdPublico(),a.vinculo(),versao,UUID.randomUUID(),"Equipe local",JUSTIFICATIVA));
+        assertTrue(encaminhamento.criado());
+        como(a.ator(),auditoriaLocal::consultarLista);
+        assertEquals(versao,carregar(a).getVersion());
+        tx.executeWithoutResult(t->vinculos.findByIdPublico(a.vinculo()).orElseThrow().sinalizarIndicadoresLocaisPendentes());
+        assertThrows(ConflictException.class,()->como(a.ator(),()->auditoriaLocal.encaminhar(a.paciente().getIdPublico(),a.vinculo(),
+                carregar(a).getVersion(),UUID.randomUUID(),"Equipe local",JUSTIFICATIVA)));
     }
 
     private static <T> T apos(CountDownLatch partir, Supplier<T> comando) throws InterruptedException {
