@@ -73,6 +73,8 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
     @Autowired com.pet.buscaativa.services.impl.ComandosEstadoLocalEnsaioService comandosEstado;
     @Autowired com.pet.buscaativa.services.impl.HistoricoManualLocalEnsaioService historicoManual;
     @Autowired com.pet.buscaativa.services.impl.MonitoramentoVinculosEnsaioService monitorLocal;
+    @Autowired com.pet.buscaativa.services.impl.RevisaoProvenienciaLocalEnsaioService revisaoLocal;
+    @Autowired com.pet.buscaativa.services.UsuarioService usuariosService;
     @MockitoBean SusApiAdapter sus;
     @MockitoBean EmailService email;
 
@@ -809,6 +811,112 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
         assertEquals(0,repetido.atualizados());
         assertEquals(0,repetido.falhas());
         assertEquals(depois,LegacyMigrationFixture.snapshot(fonte,colunas));
+    }
+
+    @Test
+    void monitoramentoEmLotesIsolaFalhaRealDePersistenciaEContinua() {
+        var a=novoLocal(UnidadeAtuacao.CAPS_AD);
+        var b=novoLocal(UnidadeAtuacao.CAPS_I);
+        for (var local:List.of(a,b)) {
+            var ag=reserva(local,diasAtras(40),9,SituacaoAtendimento.AGENDADO,true);
+            como(local.ator(),() -> individual.registrar(ag.id(),ag.versao(),FrequenciaAssistencial.PRESENTE));
+            tx.executeWithoutResult(t -> vinculos.findByIdPublico(local.vinculo()).orElseThrow()
+                    .aplicarIndicadoresLocais(0,diasAtras(40),ClassificacaoRisco.VERDE,false));
+        }
+        var id=carregar(a).getId();
+        var versao=carregar(a).getVersion();
+        var jdbc=new JdbcTemplate(fonte);
+        jdbc.execute("alter table tb_vinculo_assistencial add constraint falha_monitor_ensaio check (id <> "+id+" or classificacao_risco=1)");
+        try {
+            var res=monitorLocal.executar(1);
+            assertEquals(1,res.falhas());
+            assertTrue(res.atualizados()>=1);
+            assertEquals(res.examinados(),res.atualizados()+res.inalterados()+res.inconclusivos()+res.ignorados()+res.falhas());
+            assertEquals(versao,carregar(a).getVersion());
+            assertEquals(ClassificacaoRisco.VERDE,carregar(a).getClassificacaoRisco());
+            assertEquals(ClassificacaoRisco.VERMELHO,carregar(b).getClassificacaoRisco());
+        } finally {
+            jdbc.execute("alter table tb_vinculo_assistencial drop constraint falha_monitor_ensaio");
+        }
+        assertEquals(0,monitorLocal.executar(2).falhas());
+        assertEquals(ClassificacaoRisco.VERMELHO,carregar(a).getClassificacaoRisco());
+    }
+
+    @Test
+    void monitoramentoEsperaCorrecaoERecusaSegundaExecucaoSimultanea() throws Exception {
+        var a=novoLocal(UnidadeAtuacao.CAPS_AD);
+        var ag=reserva(a,diasAtras(2),9,SituacaoAtendimento.AGENDADO,true);
+        var falta=como(a.ator(),() -> individual.registrar(ag.id(),ag.versao(),FrequenciaAssistencial.FALTOU));
+        try (var executor=Executors.newSingleThreadExecutor()) {
+            var futuro=tx.execute(t -> {
+                pacientes.findByIdPublicoForUpdate(a.paciente().getIdPublico()).orElseThrow();
+                var f=executor.submit(() -> monitorLocal.executar(2));
+                aguardarBloqueio();
+                assertFalse(f.isDone());
+                assertThrows(IllegalStateException.class,() -> {
+                    // Contexto independente em outra thread, para testar exclusão
+                    // do executor e não a proibição de transação do chamador.
+                    try (var outro=Executors.newSingleThreadExecutor()) {
+                        try { outro.submit(() -> monitorLocal.executar(2)).get(5,TimeUnit.SECONDS); }
+                        catch (java.util.concurrent.ExecutionException e) {
+                            if (e.getCause() instanceof IllegalStateException erro) throw erro;
+                            throw new AssertionError(e);
+                        } catch (Exception e) { throw new AssertionError(e); }
+                    }
+                });
+                como(a.ator(),() -> individual.corrigir(ag.id(),falta.versaoFato(),
+                        FrequenciaAssistencial.PRESENTE,JUSTIFICATIVA));
+                return f;
+            });
+            assertEquals(0,futuro.get(20,TimeUnit.SECONDS).falhas());
+        }
+        assertEquals(0,carregar(a).getCountFaltas());
+        assertEquals(diasAtras(2),carregar(a).getDataUltimaPresenca());
+        assertEquals(ClassificacaoRisco.VERDE,carregar(a).getClassificacaoRisco());
+    }
+
+    @Test
+    void referenciaLocalImpedeRemocaoOuPerfilIncompativelSemReatribuirHistorico() {
+        var a=novoLocal(UnidadeAtuacao.CAPS_AD);
+        var profissional=tx.execute(t -> {
+            var u=usuario(UnidadeAtuacao.CAPS_AD);
+            u.setTipoUsuario(TipoUsuario.PROFISSIONAL);
+            return u;
+        });
+        como(a.ator(),() -> estado.configurar(a.paciente().getIdPublico(),a.vinculo(),carregar(a).getVersion(),
+                TipoAcompanhamento.AMBOS,profissional.getIdPublico()));
+        var dto=new com.pet.buscaativa.entities.dto.UsuarioDTO(profissional.getIdPublico(),profissional.getNome(),
+                profissional.getEmail(),TipoUsuario.RECEPCAO,UnidadeAtuacao.CAPS_AD,null,null,null);
+        assertThrows(ValidationException.class,() -> como(a.ator(),() -> usuariosService.save(dto)));
+        assertThrows(ValidationException.class,() -> como(a.ator(),() -> {
+            usuariosService.removerUsuario(profissional.getIdPublico()); return null;
+        }));
+        assertEquals(profissional.getId(),tx.execute(t -> vinculos.findByIdPublico(a.vinculo()).orElseThrow()
+                .getProfissionalReferencia().getId()));
+    }
+
+    @Test
+    void revisaoCoordenadaRegistraDecisaoSemAplicarFatoOuLimparPendencia() {
+        var a=novoLocal(UnidadeAtuacao.CAPS_AD);
+        var externo=iniciar(a.paciente(),tx.execute(t -> usuario(UnidadeAtuacao.CAPS_I)));
+        var ag=reserva(a,diasAtras(2),9,SituacaoAtendimento.AGENDADO,true);
+        como(a.ator(),() -> individual.registrar(ag.id(),ag.versao(),FrequenciaAssistencial.FALTOU));
+        tx.executeWithoutResult(t -> vinculos.findByIdPublico(a.vinculo()).orElseThrow().sinalizarIndicadoresLocaisPendentes());
+        var v=carregar(a).getVersion();
+        var colunas=LegacyMigrationFixture.columns(fonte);
+        var antes=LegacyMigrationFixture.snapshot(fonte,colunas);
+        var tipo=PendenciaRevisaoProveniencia.TipoRegistro.AGENDAMENTO;
+        assertThrows(ResourceNotFoundException.class,() -> como(externo.ator(),() -> revisaoLocal.solicitar(
+                a.paciente().getIdPublico(),a.vinculo(),v,tipo,ag.id(),JUSTIFICATIVA)));
+        var ticket=como(a.ator(),() -> revisaoLocal.solicitar(a.paciente().getIdPublico(),a.vinculo(),v,tipo,ag.id(),JUSTIFICATIVA));
+        var decisao=como(a.ator(),() -> revisaoLocal.decidir(a.paciente().getIdPublico(),a.vinculo(),v,ticket,
+                DecisaoRevisaoProveniencia.Decisao.APROVAR,JUSTIFICATIVA));
+        assertNotNull(decisao);
+        assertTrue(carregar(a).getIndicadoresPendentes());
+        assertEquals(1,carregar(a).getCountFaltas());
+        var depois=LegacyMigrationFixture.snapshot(fonte,colunas);
+        for (var tabela:List.of("TB_PACIENTE","TB_VINCULO_ASSISTENCIAL","TB_AGENDAMENTO","TB_HISTORICO_PACIENTE"))
+            assertEquals(antes.get(tabela),depois.get(tabela),tabela);
     }
 
     private static <T> T apos(CountDownLatch partir, Supplier<T> comando) throws InterruptedException {

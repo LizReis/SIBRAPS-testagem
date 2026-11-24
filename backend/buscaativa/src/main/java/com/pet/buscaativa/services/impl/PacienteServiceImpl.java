@@ -62,6 +62,8 @@ public class PacienteServiceImpl implements PacienteService{
     private final EscopoUnidadeService escopoUnidadeService;
     private final VinculoAssistencialService vinculoAssistencialService;
     private final com.pet.buscaativa.services.AuditoriaBuscaAtivaService auditoriaBuscaAtiva;
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager em;
 
 
     @Override
@@ -503,11 +505,20 @@ public class PacienteServiceImpl implements PacienteService{
     @Transactional
     public List<AlertaBuscaAtivaDTO> listarPacientesEmBuscaAtiva() {
         // Reclassificação sob demanda impede que a consulta dependa exclusivamente do scheduler.
-        pacienteRepository.findAll(escopoUnidadeService.<Paciente>specificationPaciente()
-                .and((r,q,cb)->cb.equal(r.get("statusPaciente"),StatusPaciente.ATIVO))).forEach(p -> {
+        // Compatibilidade da consulta legada: manter a política e auditoria
+        // atuais, mas serializar a reclassificação com todos os escritores
+        // que bloqueiam identidade. Ordem igual à agenda (UUID).
+        var ids = pacienteRepository.findAll(escopoUnidadeService.<Paciente>specificationPaciente()
+                .and((r,q,cb)->cb.equal(r.get("statusPaciente"),StatusPaciente.ATIVO)))
+                .stream().map(Paciente::getIdPublico).distinct().sorted().toList();
+        for (var id : ids) {
+            var p = pacienteRepository.findByIdPublicoForUpdate(id).orElse(null);
+            if (p == null) continue;
+            em.refresh(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            if (p.getStatusPaciente() != StatusPaciente.ATIVO || !escopoUnidadeService.pacientePertenceAoEscopo(p)) continue;
             calcularEAtualizarRisco(p);
-            pacienteRepository.save(p);
-        });
+        }
+        em.flush();
         var alertas = pacienteRepository
                 .findAll(escopoUnidadeService.<Paciente>specificationPaciente().and((r,q,cb)->cb.and(
                         cb.equal(r.get("statusPaciente"),StatusPaciente.ATIVO),

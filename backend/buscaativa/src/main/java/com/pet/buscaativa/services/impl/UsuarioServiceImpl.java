@@ -36,6 +36,8 @@ public class UsuarioServiceImpl implements UsuarioService {
     private final PacienteRepository pacienteRepository;
     private final UsfReferenciaRepository usfReferenciaRepository;
     private final EscopoUnidadeService escopoUnidadeService;
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager em;
 
     @Override
     @org.springframework.transaction.annotation.Transactional
@@ -59,6 +61,9 @@ public class UsuarioServiceImpl implements UsuarioService {
         }
 
         if (usuarioSalvar != null) {
+            // O lock de usuário serializa esta conferência com novos vínculos
+            // e alterações de referência. Não reatribuir registros históricos.
+            validarReferenciasLocais(usuarioSalvar, usuarioDTO, usfAtuacao);
             usuarioSalvar.setNome(usuarioDTO.nome());
             usuarioSalvar.setEmail(usuarioDTO.email());
             usuarioSalvar.setTipoUsuario(usuarioDTO.tipoUsuario());
@@ -80,6 +85,27 @@ public class UsuarioServiceImpl implements UsuarioService {
         usuarioSalvar = usuarioRepository.save(usuarioSalvar);
 
         return usuarioMapper.toUsuarioDTO(usuarioSalvar);
+    }
+
+    private java.util.List<String> unidadesReferenciadas(Usuario usuario) {
+        return em.createQuery("""
+                select distinct v.unidadeChave from VinculoAssistencial v
+                where v.profissionalReferencia.id = :id
+                """, String.class).setParameter("id", usuario.getId()).getResultList();
+    }
+
+    private void validarReferenciasLocais(Usuario usuario, UsuarioDTO dto, UsfReferencia usf) {
+        var usfAnterior = usuario.getUsfAtuacao() == null ? null : usuario.getUsfAtuacao().getId();
+        var usfNova = usf == null ? null : usf.getId();
+        if (usuario.getTipoUsuario() == dto.tipoUsuario() && usuario.getUnidadeAtuacao() == dto.unidadeAtuacao()
+                && Objects.equals(usfAnterior, usfNova)) return;
+        var unidades = unidadesReferenciadas(usuario);
+        if (unidades.isEmpty()) return;
+        if (dto.tipoUsuario() != TipoUsuario.ADMINISTRADOR && dto.tipoUsuario() != TipoUsuario.PROFISSIONAL)
+            throw new ValidationException("Há referências assistenciais locais incompatíveis com o perfil solicitado.");
+        var destino = com.pet.buscaativa.entities.ChaveUnidadeAssistencial.doVinculo(dto.unidadeAtuacao(), usf);
+        if (unidades.stream().anyMatch(u -> !destino.equals(u)))
+            throw new ValidationException("Há referências assistenciais locais incompatíveis com a lotação solicitada.");
     }
 
     private void validarUnidadeDestino(UsuarioDTO dto) {
@@ -165,7 +191,8 @@ public class UsuarioServiceImpl implements UsuarioService {
         var usuarioEntity = usuarioRepository.findByIdPublicoForUpdate(idPublico)
                 .filter(escopoUnidadeService::usuarioPertenceAoEscopo)
                 .orElseThrow(() -> new ResourceNotFoundException(idPublico));
-        if (pacienteRepository.existsByProfissionalReferenciaId(usuarioEntity.getId())) {
+        if (pacienteRepository.existsByProfissionalReferenciaId(usuarioEntity.getId())
+                || !unidadesReferenciadas(usuarioEntity).isEmpty()) {
             throw new ValidationException("Usuário vinculado como profissional de referência não pode ser removido."); 
         }else {
             usuarioRepository.deleteById(usuarioEntity.getId());

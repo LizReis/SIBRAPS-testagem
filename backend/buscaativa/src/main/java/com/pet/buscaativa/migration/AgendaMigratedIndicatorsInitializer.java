@@ -20,6 +20,8 @@ public class AgendaMigratedIndicatorsInitializer implements ApplicationRunner {
     private final PacienteRepository patients;
     private final PacienteService clinical;
     private final PlatformTransactionManager transactions;
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager em;
 
     @Override public void run(ApplicationArguments args) throws Exception {
         try (var connection = source.getConnection()) {
@@ -34,7 +36,10 @@ public class AgendaMigratedIndicatorsInitializer implements ApplicationRunner {
         }
         for (var id : patients.findIdsComIndicadoresPendentes()) {
             new TransactionTemplate(transactions).executeWithoutResult(status -> {
-                var patient = patients.findByIdPublicoForUpdate(id).orElseThrow();
+                var patient = patients.findByIdPublicoForUpdate(id).orElse(null);
+                if (patient == null) return;
+                em.refresh(patient, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+                if (!Boolean.TRUE.equals(patient.getIndicadoresPendentes())) return;
                 // Technical refresh: Envers/SISTEMA records cache changes, not a new clinical fact.
                 clinical.recalcularAssiduidadePaciente(patient, false);
             });

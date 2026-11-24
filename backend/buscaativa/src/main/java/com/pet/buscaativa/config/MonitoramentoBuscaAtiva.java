@@ -1,49 +1,52 @@
 package com.pet.buscaativa.config;
 
-import java.util.List;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-
-import com.pet.buscaativa.entities.Paciente;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import com.pet.buscaativa.entities.enums.StatusPaciente;
 import com.pet.buscaativa.repositories.PacienteRepository;
 import com.pet.buscaativa.services.PacienteService;
-
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 
+/** Compatibilidade legada até o corte coordenado; não executa o modelo local. */
 @Component
 @RequiredArgsConstructor
 public class MonitoramentoBuscaAtiva {
     private static final Logger log = LoggerFactory.getLogger(MonitoramentoBuscaAtiva.class);
-
     private final PacienteRepository pacienteRepository;
     private final PacienteService pacienteService;
+    private final PlatformTransactionManager transactions;
+    private final EntityManager em;
 
-    //Verificara todo dia à 1h da manhã (segundos, minutos, horas, dia, mes, ano)
-    @Scheduled(cron = "0 0 1 * * ?") 
+    @Scheduled(cron = "0 0 1 * * ?")
     public void atualizarRiscosDiariamente() {
-        // Busca todos os ativos
-        List<Paciente> pacientesAtivos = pacienteRepository.findByStatusPaciente(StatusPaciente.ATIVO);
-
+        var tx = new TransactionTemplate(transactions);
+        tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        var ids = tx.execute(s -> pacienteRepository.findIdsPorStatus(StatusPaciente.ATIVO));
         int falhas = 0;
-        
-        for (Paciente p : pacientesAtivos) {
+        for (var id : ids) {
             try {
-                pacienteService.calcularEAtualizarRisco(p);
-                pacienteRepository.save(p);
+                tx.executeWithoutResult(s -> {
+                    var p = pacienteRepository.findByIdPublicoForUpdate(id).orElse(null);
+                    if (p == null) return;
+                    em.refresh(p, LockModeType.PESSIMISTIC_WRITE);
+                    if (p.getStatusPaciente() != StatusPaciente.ATIVO) return;
+                    pacienteService.calcularEAtualizarRisco(p);
+                    // Entidade gerenciada: não salvar novamente a lista desatualizada.
+                    em.flush();
+                });
             } catch (RuntimeException ex) {
                 falhas++;
-                // O identificador técnico permite suporte sem registrar nome, CPF ou CNS.
-                log.error("Falha ao classificar paciente id={}", p.getId(), ex);
+                log.error("Falha técnica ao classificar paciente: {}", ex.getClass().getSimpleName());
             }
         }
-        if (falhas > 0) {
+        if (falhas > 0)
             throw new IllegalStateException("Classificação de risco concluída com " + falhas + " falha(s).");
-        }
-        
-        pacienteRepository.saveAll(pacientesAtivos);
     }
 }

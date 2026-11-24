@@ -27,38 +27,67 @@ public class MonitoramentoVinculosEnsaioService {
     private final PersistenciaIndicadoresVinculoEnsaioService indicadores;
     private final EntityManager em;
 
+    private final java.util.concurrent.locks.ReentrantLock execucao = new java.util.concurrent.locks.ReentrantLock();
+
     record Alvo(Long id, UUID paciente, UUID vinculo, String unidade) {}
     public record Resumo(int examinados, int atualizados, int inalterados, int inconclusivos,
             int ignorados, int falhas) {}
     private enum Resultado { ATUALIZADO, INALTERADO, INCONCLUSIVO, IGNORADO }
 
     public Resumo executar() {
+        return executar(100);
+    }
+
+    /** Keyset pagination with a bounded upper ID; no long-lived read transaction. */
+    public Resumo executar(int lote) {
         if (SecurityContextHolder.getContext().getAuthentication() != null
                 || TransactionSynchronizationManager.isActualTransactionActive())
             throw new AccessDeniedException("Monitoramento exige contexto técnico independente.");
+        if (lote < 1 || lote > 1000) throw new IllegalArgumentException("Tamanho de lote inválido.");
+        // Exclusão apenas nesta instância JVM; locks do banco continuam
+        // protegendo cada vínculo. Não é uma garantia distribuída.
+        if (!execucao.tryLock()) throw new IllegalStateException("Monitoramento já em execução.");
+        try {
+            return processar(lote);
+        } finally {
+            execucao.unlock();
+        }
+    }
+
+    private Resumo processar(int lote) {
         var tx = new TransactionTemplate(transactions);
         tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-        List<Alvo> alvos = tx.execute(s -> em.createQuery("""
-                select new com.pet.buscaativa.services.impl.MonitoramentoVinculosEnsaioService$Alvo(
-                    v.id, v.paciente.idPublico, v.idPublico, v.unidadeChave)
-                from VinculoAssistencial v where v.statusPaciente=:ativo order by v.id
-                """, Alvo.class).setParameter("ativo", StatusPaciente.ATIVO).getResultList());
-        int atualizados=0, inalterados=0, inconclusivos=0, ignorados=0, falhas=0;
-        for (var alvo : alvos) {
-            try {
-                var resultado = tx.execute(s -> recalcular(alvo));
-                switch (resultado) {
-                    case ATUALIZADO -> atualizados++;
-                    case INALTERADO -> inalterados++;
-                    case INCONCLUSIVO -> inconclusivos++;
-                    case IGNORADO -> ignorados++;
+        Long teto = tx.execute(s -> em.createQuery("select max(v.id) from VinculoAssistencial v", Long.class).getSingleResult());
+        if (teto == null) return new Resumo(0,0,0,0,0,0);
+        long cursor = 0;
+        int examinados=0, atualizados=0, inalterados=0, inconclusivos=0, ignorados=0, falhas=0;
+        while (cursor < teto) {
+            final long anterior = cursor;
+            List<Alvo> alvos = tx.execute(s -> em.createQuery("""
+                    select new com.pet.buscaativa.services.impl.MonitoramentoVinculosEnsaioService$Alvo(
+                        v.id, v.paciente.idPublico, v.idPublico, v.unidadeChave)
+                    from VinculoAssistencial v where v.statusPaciente=:ativo and v.id>:cursor and v.id<=:teto order by v.id
+                    """, Alvo.class).setParameter("ativo", StatusPaciente.ATIVO)
+                    .setParameter("cursor", anterior).setParameter("teto", teto).setMaxResults(lote).getResultList());
+            if (alvos.isEmpty()) break;
+            for (var alvo : alvos) {
+                examinados++;
+                try {
+                    var resultado = tx.execute(s -> recalcular(alvo));
+                    switch (resultado) {
+                        case ATUALIZADO -> atualizados++;
+                        case INALTERADO -> inalterados++;
+                        case INCONCLUSIVO -> inconclusivos++;
+                        case IGNORADO -> ignorados++;
+                    }
+                } catch (RuntimeException ex) {
+                    falhas++;
+                    org.slf4j.LoggerFactory.getLogger(getClass()).warn("Falha no recálculo técnico: {}", ex.getClass().getSimpleName());
                 }
-            } catch (RuntimeException ex) {
-                falhas++;
-                org.slf4j.LoggerFactory.getLogger(getClass()).warn("Falha no recálculo técnico: {}", ex.getClass().getSimpleName());
             }
+            cursor = alvos.getLast().id();
         }
-        return new Resumo(alvos.size(),atualizados,inalterados,inconclusivos,ignorados,falhas);
+        return new Resumo(examinados,atualizados,inalterados,inconclusivos,ignorados,falhas);
     }
 
     private Resultado recalcular(Alvo alvo) {

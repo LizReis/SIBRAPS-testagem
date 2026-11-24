@@ -50,6 +50,9 @@ public interface PacienteRepository extends JpaRepository<Paciente, Long>, JpaSp
     List<Paciente> findByNomeIgnoreCaseAndNomeMaeIgnoreCaseAndDataNascimento(
     String nome, String nomeMae, LocalDate dataNascimento);
 
+    @Query("select p.idPublico from Paciente p where p.statusPaciente = :status order by p.idPublico")
+    List<UUID> findIdsPorStatus(@org.springframework.data.repository.query.Param("status") StatusPaciente status);
+
     List<Paciente> findByStatusPaciente(StatusPaciente statusPaciente);
 
     List<Paciente> findByStatusPacienteAndClassificacaoRisco(StatusPaciente statusPaciente, ClassificacaoRisco classificacaoRisco);
