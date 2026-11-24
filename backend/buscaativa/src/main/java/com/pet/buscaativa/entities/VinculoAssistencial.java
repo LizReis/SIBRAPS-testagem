@@ -92,6 +92,11 @@ public class VinculoAssistencial extends AbstractEntities {
     @Column(name = "indicadores_pendentes")
     private Boolean indicadoresPendentes;
 
+    /** V15: causa conhecida exclusivamente de empate de frequências locais.
+     * NULL preserva desconhecimento ou ausência de causa rastreável. */
+    @Column(name = "pendencia_empate_local")
+    private Boolean pendenciaEmpateLocal;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "profissional_referencia_id")
     private Usuario profissionalReferencia;
@@ -171,9 +176,28 @@ public class VinculoAssistencial extends AbstractEntities {
     }
 
     public boolean sinalizarIndicadoresLocaisPendentes() {
-        if (Boolean.TRUE.equals(indicadoresPendentes)) return false;
+        boolean mudou = !Boolean.TRUE.equals(indicadoresPendentes) || pendenciaEmpateLocal != null;
         indicadoresPendentes = true;
+        // Causa não identificada (ou adicional) impede a limpeza automática.
+        pendenciaEmpateLocal = null;
+        return mudou;
+    }
+
+    /** Não promove pendência preexistente desconhecida a causa conhecida. */
+    public boolean sinalizarPendenciaDeEmpateLocal() {
+        if (Boolean.TRUE.equals(indicadoresPendentes)) return false;
+        boolean causaConhecida = Boolean.FALSE.equals(indicadoresPendentes);
+        indicadoresPendentes = true;
+        pendenciaEmpateLocal = causaConhecida ? Boolean.TRUE : null;
         return true;
+    }
+
+    /** Chamador comprova, sob locks, empate anterior e correção efetiva. */
+    public void resolverPendenciaDeEmpateLocal() {
+        if (!Boolean.TRUE.equals(indicadoresPendentes) || !Boolean.TRUE.equals(pendenciaEmpateLocal))
+            throw new IllegalStateException("Pendência sem causa conhecida.");
+        indicadoresPendentes = false;
+        pendenciaEmpateLocal = null;
     }
 
     /** Efeitos explícitos do encerramento vigente, sem apagar frequência ou pendência. */
@@ -182,8 +206,17 @@ public class VinculoAssistencial extends AbstractEntities {
         if (destino == StatusPaciente.ATIVO || destino == statusPaciente)
             throw new IllegalArgumentException("Encerramento local inválido.");
         statusPaciente = destino;
+        preservarEfeitosEncerramentoLocal();
+    }
+
+    /** Estado comprovado pelo serviço; não altera a sequência ou pendência. */
+    public boolean preservarEfeitosEncerramentoLocal() {
+        if (statusPaciente == null || statusPaciente == StatusPaciente.ATIVO)
+            throw new IllegalStateException("Acompanhamento não encerrado.");
+        boolean mudou = classificacaoRisco != ClassificacaoRisco.VERDE || !Boolean.FALSE.equals(gatilhoVisitaAcionado);
         classificacaoRisco = ClassificacaoRisco.VERDE;
         gatilhoVisitaAcionado = false;
+        return mudou;
     }
 
     /** Transição local explícita; autorização e trilha cabem ao serviço transacional. */

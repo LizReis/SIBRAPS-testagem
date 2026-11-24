@@ -25,6 +25,44 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 class HistoricoFrequenciaLocalEnsaio {
     private final HistoricoPacienteRepository historicos;
+    private final LinhaDoTempoFrequenciasVinculoService linha;
+    private final jakarta.persistence.EntityManager em;
+
+    /**
+     * Recalcula somente a numeração derivada, sem criar fatos ou corrigir a
+     * origem. Históricos ausentes, divergentes ou duplicados não são escritos.
+     * Empate entre faltas impede atribuição do número a cada fato.
+     */
+    void renumerar(VinculoAssistencial local) {
+        var diagnostico = linha.analisar(local);
+        if (!DiagnosticoFaltasConsecutivasVinculoService.calcular(diagnostico).podeAvaliarSequencia()) return;
+        var eventos = diagnostico.eventosComOrigemLocal();
+        for (int i = 1; i < eventos.size(); i++) {
+            var anterior = eventos.get(i - 1);
+            var atual = eventos.get(i);
+            if (!anterior.presente() && !atual.presente() && anterior.ocorridoEm().equals(atual.ocorridoEm())) return;
+        }
+        int faltas = 0;
+        for (var evento : eventos) {
+            faltas = evento.presente() ? 0 : faltas + 1;
+            var frequencia = evento.presente() ? FrequenciaAssistencial.PRESENTE : FrequenciaAssistencial.FALTOU;
+            HistoricoPaciente h;
+            try {
+                if (evento.fonte() == LinhaDoTempoFrequenciasVinculoService.Fonte.ATENDIMENTO_INDIVIDUAL) {
+                    var a = em.find(Agendamento.class, evento.registroId());
+                    h = individual(a, local, frequencia);
+                } else {
+                    var p = em.find(SessaoGrupoParticipante.class, evento.registroId());
+                    h = coletivo(p, local, frequencia);
+                }
+            } catch (ConflictException inconclusivo) {
+                continue;
+            }
+            if (h == null || !evento.ocorridoEm().equals(h.getOcorridoEm())) continue;
+            Integer numero = evento.presente() ? null : faltas;
+            if (!Objects.equals(h.getNumeroFaltaConsecutiva(), numero)) h.setNumeroFaltaConsecutiva(numero);
+        }
+    }
 
     HistoricoPaciente individual(Agendamento a, VinculoAssistencial local, FrequenciaAssistencial antes) {
         var eventos = historicos.findByAgendamento(a).stream().filter(h -> h.getTipo() == TipoEventoHistoricoPaciente.FALTA

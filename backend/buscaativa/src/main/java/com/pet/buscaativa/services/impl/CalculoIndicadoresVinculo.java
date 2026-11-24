@@ -59,8 +59,9 @@ class CalculoIndicadoresVinculo {
 
         var causasRisco = EnumSet.copyOf(causasStatus);
         Optional<ClassificacaoRisco> risco;
-        if (status == StatusPaciente.INATIVO) {
-            // A regra legada encerra a avaliação de risco pelo estado inativo.
+        boolean encerradoComprovado = status != null && status != StatusPaciente.ATIVO;
+        if (encerradoComprovado) {
+            // Efeitos do encerramento explícito, não uma conclusão sobre faltas.
             risco = Optional.of(ClassificacaoRisco.VERDE);
         } else {
             causasRisco.addAll(causasVisita);
@@ -70,9 +71,15 @@ class CalculoIndicadoresVinculo {
                     : Optional.empty();
         }
         if (evidencias.agendaLocalInconclusiva()) causasVisita.add(Motivo.CADEIA_LOCAL_INCONCLUSIVA);
-        var visita = causasVisita.isEmpty()
-                ? ComparadorPoliticaVisitaVinculo.compararAgendaComprovada(evidencias.agenda(), calculo, politicaVisita)
-                : Optional.<Boolean>empty();
+        Optional<Boolean> visita;
+        if (encerradoComprovado) {
+            causasVisita.clear();
+            visita = Optional.of(false);
+        } else {
+            visita = causasVisita.isEmpty()
+                    ? ComparadorPoliticaVisitaVinculo.compararAgendaComprovada(evidencias.agenda(), calculo, politicaVisita)
+                    : Optional.empty();
+        }
 
         var busca = ComparadorSelecaoBuscaAtivaVinculo.comparar(status, risco, pendencia, visita);
         var causasBusca = EnumSet.noneOf(Motivo.class);

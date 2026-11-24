@@ -131,10 +131,11 @@ public class FrequenciaIndividualLocalEnsaioService {
             throw new ConflictException("Conflito assistencial no horário informado.");
         }
 
+        boolean empateAnterior = correcao && indicadores.empateConhecidoAntesDaCorrecao(local);
         if (regularizacao) fato.registrarFatoEmReservaCancelada(destino);
         else fato.setSituacaoAtendimento(SituacaoAtendimento.valueOf(destino.name()));
         em.flush();
-        var resultado = indicadores.aplicar(indicadores.avaliar(local), ator);
+        var resultado = indicadores.aplicar(indicadores.avaliarAposCorrecao(local, empateAnterior), ator);
         historico.registrarIndividual(fato, evento, switch (operacao) {
                     case REGISTRAR -> "Frequência individual registrada no ensaio.";
                     case CORRIGIR -> "Frequência individual corrigida no ensaio.";
@@ -148,6 +149,8 @@ public class FrequenciaIndividualLocalEnsaioService {
         if (regularizacao)
             em.persist(new AuditoriaRegularizacaoCancelamento(fato, ator, unidadeAuditoria,
                     "REGISTRO_FATO_ASSISTENCIAL", motivo, agora, versao));
+        em.flush();
+        historico.renumerar(local);
         return new Resultado(id, fato.getVersion(), resultado);
     }
 

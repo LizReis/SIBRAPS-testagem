@@ -117,10 +117,18 @@ public class FrequenciaColetivaLocalEnsaioService {
             sessao.setMotivoCancelamento(null);
             sessao.confirmarRealizacao(responsavel);
         }
+        var empatesAnteriores = new java.util.HashSet<UUID>();
+        if (correcao) for (var m : mudancas) {
+            var paciente = m.participante().getPaciente().getIdPublico();
+            if (indicadores.empateConhecidoAntesDaCorrecao(recursos.vinculos().get(paciente)))
+                empatesAnteriores.add(paciente);
+        }
         mudancas.forEach(m -> m.participante().setStatusPresenca(m.depois()));
         em.flush();
-        var avaliacoes = mudancas.stream().map(m -> indicadores.avaliar(
-                recursos.vinculos().get(m.participante().getPaciente().getIdPublico()))).toList();
+        var avaliacoes = mudancas.stream().map(m -> {
+            var paciente = m.participante().getPaciente().getIdPublico();
+            return indicadores.avaliarAposCorrecao(recursos.vinculos().get(paciente), empatesAnteriores.contains(paciente));
+        }).toList();
         // Fatos válidos não dependem da conclusão dos indicadores: o mesmo
         // contrato conservador da frequência individual preserva o cache
         // inconclusivo e sinaliza pendência quando cabível. Falha de validação
@@ -138,6 +146,8 @@ public class FrequenciaColetivaLocalEnsaioService {
                         FrequenciaAssistencial.valueOf(m.antes().name()), FrequenciaAssistencial.valueOf(m.depois().name()),
                         motivo, instante, versao, sessao.getVersion()));
         }
+        em.flush();
+        avaliacoes.forEach(a -> historico.renumerar(a.vinculo()));
         return sessao.getVersion();
     }
 

@@ -399,6 +399,77 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
             assertEquals(antes.get(tabela), depois.get(tabela), tabela);
     }
 
+    @Test
+    void renumeraFaltasIndividuaisEColetivasAposCorrecaoRetroativa() {
+        var a = novoLocal(UnidadeAtuacao.CAPS_AD);
+        var externa = iniciar(a.paciente(), tx.execute(t -> usuario(UnidadeAtuacao.CAPS_I)));
+        var primeira = reserva(a, diasAtras(5), 9, SituacaoAtendimento.AGENDADO, true);
+        var segunda = reserva(a, diasAtras(4), 9, SituacaoAtendimento.AGENDADO, true);
+        var s = sessao(a.ator(), List.of(a), diasAtras(3), 10);
+        como(a.ator(), () -> individual.registrar(primeira.id(), primeira.versao(), FrequenciaAssistencial.FALTOU));
+        var falta = como(a.ator(), () -> individual.registrar(segunda.id(), segunda.versao(), FrequenciaAssistencial.FALTOU));
+        como(a.ator(), () -> coletivo.confirmar(s.id(), s.versao(), Map.of()));
+        assertEquals(3L, total("select numero_falta_consecutiva from tb_historico_paciente where sessao_grupo_id=?", s.id()));
+        como(a.ator(), () -> individual.corrigir(segunda.id(), falta.versaoFato(), FrequenciaAssistencial.PRESENTE, JUSTIFICATIVA));
+        assertEquals(1L, total("select numero_falta_consecutiva from tb_historico_paciente where agendamento_id=?", primeira.id()));
+        assertEquals(1L, total("select count(*) from tb_historico_paciente where agendamento_id=? and numero_falta_consecutiva is null", segunda.id()));
+        assertEquals(1L, total("select numero_falta_consecutiva from tb_historico_paciente where sessao_grupo_id=?", s.id()));
+        assertEquals(1L, total("select count(*) from tb_historico_paciente_aud where sessao_grupo_id=? and numero_falta_consecutiva=3", s.id()));
+        assertEquals(1, carregar(a).getCountFaltas());
+        assertEquals(0, carregar(externa).getCountFaltas());
+    }
+
+    @Test
+    void resolveSomenteEmpateLocalComprovadoPelaCorrecao() {
+        var a = novoLocal(UnidadeAtuacao.CAPS_AD);
+        var primeira = reserva(a, diasAtras(3), 9, SituacaoAtendimento.AGENDADO, true);
+        var presente = como(a.ator(), () -> individual.registrar(primeira.id(), primeira.versao(), FrequenciaAssistencial.PRESENTE));
+        var segunda = reserva(a, diasAtras(3), 9, SituacaoAtendimento.AGENDADO, true);
+        como(a.ator(), () -> individual.registrar(segunda.id(), segunda.versao(), FrequenciaAssistencial.FALTOU));
+        assertTrue(carregar(a).getIndicadoresPendentes());
+        assertEquals(Boolean.TRUE, carregar(a).getPendenciaEmpateLocal());
+        assertEquals(Situacao.INCONCLUSIVO, como(a.ator(), () -> indicadores.recalcular(
+                a.paciente().getIdPublico(), a.vinculo(), carregar(a).getVersion())).situacao());
+        var resultado = como(a.ator(), () -> individual.corrigir(primeira.id(), presente.versaoFato(),
+                FrequenciaAssistencial.FALTOU, JUSTIFICATIVA));
+        assertEquals(Situacao.ATUALIZADO, resultado.indicadores().situacao());
+        assertTrue(resultado.indicadores().indicacaoDePendenciaAlterada());
+        assertFalse(carregar(a).getIndicadoresPendentes());
+        assertNull(carregar(a).getPendenciaEmpateLocal());
+        assertEquals(2, carregar(a).getCountFaltas());
+    }
+
+    @Test
+    void recalculoNaoLimpaPendenciaDesconhecidaNemReativaAlertasDeAlta() {
+        var a = novoLocal(UnidadeAtuacao.CAPS_II);
+        tx.executeWithoutResult(t -> vinculos.findByIdPublico(a.vinculo()).orElseThrow().sinalizarIndicadoresLocaisPendentes());
+        var fechado = como(a.ator(), () -> estado.encerrar(a.paciente().getIdPublico(), a.vinculo(), carregar(a).getVersion(),
+                new EncerramentoPacienteDTO(MotivoEncerramento.ALTA_TERAPEUTICA, StatusPaciente.ALTA_TERAPEUTICA, null)));
+        var res = como(a.ator(), () -> indicadores.recalcular(a.paciente().getIdPublico(), a.vinculo(), fechado.versao()));
+        assertEquals(Situacao.INCONCLUSIVO, res.situacao());
+        assertTrue(carregar(a).getIndicadoresPendentes());
+        assertNull(carregar(a).getPendenciaEmpateLocal());
+        assertEquals(ClassificacaoRisco.VERDE, carregar(a).getClassificacaoRisco());
+        assertFalse(carregar(a).getGatilhoVisitaAcionado());
+    }
+
+    @Test
+    void recalculoDeAltaComFaltasConclusivasMantemRiscoVerde() {
+        var a = novoLocal(UnidadeAtuacao.CAPS_AD);
+        for (int dias : List.of(5, 4, 3)) {
+            var ag = reserva(a, diasAtras(dias), 9, SituacaoAtendimento.AGENDADO, true);
+            como(a.ator(), () -> individual.registrar(ag.id(), ag.versao(), FrequenciaAssistencial.FALTOU));
+        }
+        var fechado = como(a.ator(), () -> estado.encerrar(a.paciente().getIdPublico(), a.vinculo(), carregar(a).getVersion(),
+                new EncerramentoPacienteDTO(MotivoEncerramento.ALTA_TERAPEUTICA, StatusPaciente.ALTA_TERAPEUTICA, null)));
+        como(a.ator(), () -> indicadores.recalcular(a.paciente().getIdPublico(), a.vinculo(), fechado.versao()));
+        assertEquals(3, carregar(a).getCountFaltas());
+        assertEquals(ClassificacaoRisco.VERDE, carregar(a).getClassificacaoRisco());
+        assertFalse(carregar(a).getGatilhoVisitaAcionado());
+        como(a.ator(), () -> estado.reativar(a.paciente().getIdPublico(), a.vinculo(), carregar(a).getVersion(), JUSTIFICATIVA));
+        assertEquals(ClassificacaoRisco.VERMELHO, carregar(a).getClassificacaoRisco());
+    }
+
     private static <T> T apos(CountDownLatch partir, Supplier<T> comando) throws InterruptedException {
         assertTrue(partir.await(10, TimeUnit.SECONDS));
         return comando.get();
