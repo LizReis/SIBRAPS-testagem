@@ -67,7 +67,7 @@ public class ConsultasClinicasLocaisEnsaioService {
             List<Evento> historico, long presencasComprovadas, long faltasComprovadas,
             boolean historicoLocalRequerConferencia) {}
 
-    private record Leitura(VinculoAssistencial local, CalculoIndicadoresVinculo.Resultado calculo, Item item) {}
+    record Leitura(VinculoAssistencial local, CalculoIndicadoresVinculo.Resultado calculo, Item item) {}
     private record ChaveFato(LinhaDoTempoFrequenciasVinculoService.Fonte fonte, Long id) {}
 
     public Pagina pesquisar(String q, ClassificacaoRisco risco, StatusPaciente status,
@@ -217,6 +217,17 @@ public class ConsultasClinicasLocaisEnsaioService {
         var v=autorizacao.exigirVinculoLocal(paciente);
         if (!ProjecaoClinicaVinculoService.chaveCanonica(v)) throw new ResourceNotFoundException("Paciente não encontrado.");
         return v;
+    }
+
+    /** Uso interno na mesma transação de leitura do painel/alertas.
+     * Unidade exclusivamente derivada do ator; nunca aceita unidade do cliente.
+     * Entidades deste resultado não atravessam o contrato público. */
+    @Transactional(readOnly=true,propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    List<Leitura> lerUnidade() {
+        var contexto=atores.autorizarOperacional();
+        return em.createQuery("select v from VinculoAssistencial v join fetch v.paciente where v.unidadeChave=:unidade order by v.id",
+                VinculoAssistencial.class).setParameter("unidade",contexto.unidade()).getResultList().stream()
+                .filter(ProjecaoClinicaVinculoService::chaveCanonica).map(this::ler).toList();
     }
 
     private Leitura ler(VinculoAssistencial v) {

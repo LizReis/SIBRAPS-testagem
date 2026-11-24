@@ -76,6 +76,7 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
     @Autowired com.pet.buscaativa.services.impl.RevisaoProvenienciaLocalEnsaioService revisaoLocal;
     @Autowired com.pet.buscaativa.services.UsuarioService usuariosService;
     @Autowired com.pet.buscaativa.services.impl.ConsultasClinicasLocaisEnsaioService consultasLocais;
+    @Autowired com.pet.buscaativa.services.impl.BuscaAtivaPainelLocalEnsaioService painelLocal;
     @MockitoBean SusApiAdapter sus;
     @MockitoBean EmailService email;
 
@@ -998,6 +999,102 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
         assertEquals(0,como(estranho.ator(),()->consultasLocais.pesquisar(cpf,null,null,null,0,10)).totalRegistros());
         assertEquals(0,como(recepcao,()->consultasLocais.pesquisar(cpf,null,null,null,1,1)).pacientes().size());
         assertThrows(ValidationException.class,()->como(recepcao,()->consultasLocais.pesquisar("12",null,null,null,0,10)));
+    }
+
+    @Test
+    void buscaLocalPreservaVermelhoSemRf22ETrataRuaSemExporOutroVinculo() {
+        var a=novoLocal(UnidadeAtuacao.USF);
+        var externo=iniciar(a.paciente(),tx.execute(t->usuario(UnidadeAtuacao.USF)));
+        for (int d:List.of(5,4,3)) {
+            var ag=reserva(a,diasAtras(d),9,SituacaoAtendimento.AGENDADO,true);
+            como(a.ator(),()->individual.registrar(ag.id(),ag.versao(),FrequenciaAssistencial.FALTOU));
+        }
+        tx.executeWithoutResult(t->{
+            var p=em.find(Paciente.class,a.paciente().getId());
+            var e=new Endereco(); e.setLogradouro("Rua sintética"); e.setNumero("10");
+            p.setEndereco(e); em.persist(e);
+        });
+        var colunas=LegacyMigrationFixture.columns(fonte);
+        var antes=LegacyMigrationFixture.snapshot(fonte,colunas);
+        var alerta=como(a.ator(),painelLocal::buscaAtiva).alertas().getFirst();
+        assertEquals(ClassificacaoRisco.VERMELHO,alerta.classificacaoRisco());
+        assertFalse(alerta.gatilhoVisitaAcionado());
+        assertEquals("VISITA_DOMICILIAR",alerta.acao().name());
+        assertEquals("Rua sintética, 10",alerta.localBusca());
+        assertTrue(como(externo.ator(),painelLocal::buscaAtiva).alertas().isEmpty());
+        assertEquals(antes,LegacyMigrationFixture.snapshot(fonte,colunas));
+        tx.executeWithoutResult(t->{
+            var p=em.find(Paciente.class,a.paciente().getId());
+            p.setSituacaoRua(true); p.getEndereco().setComplemento("Ponto sintético");
+        });
+        var rua=como(a.ator(),painelLocal::buscaAtiva).alertas().getFirst();
+        assertEquals("PONTO_REFERENCIA",rua.acao().name());
+        assertEquals("Ponto sintético",rua.localBusca());
+        tx.executeWithoutResult(t->em.find(Paciente.class,a.paciente().getId()).getEndereco().setComplemento(null));
+        var sem=como(a.ator(),painelLocal::buscaAtiva).alertas().getFirst();
+        assertEquals("CONFERIR_REFERENCIA",sem.acao().name()); assertNull(sem.localBusca());
+        assertNotNull(sem.avisoAdicional());
+    }
+
+    @Test
+    void painelLocalDistinguePendenciaStatusInconclusivoEContagemDeSessoes() {
+        var a=novoLocal(UnidadeAtuacao.USF);
+        var b=iniciar(novoPaciente(),a.ator());
+        var c=iniciar(novoPaciente(),a.ator());
+        var externo=iniciar(a.paciente(),tx.execute(t->usuario(UnidadeAtuacao.USF)));
+        var s=sessao(a.ator(),List.of(a,b),diasAtras(3),10);
+        como(a.ator(),()->coletivo.confirmar(s.id(),s.versao(),Map.of()));
+        tx.executeWithoutResult(t->vinculos.findByIdPublico(c.vinculo()).orElseThrow().sinalizarIndicadoresLocaisPendentes());
+        var semProva=novoPaciente();
+        tx.executeWithoutResult(t->em.persist(VinculoAssistencial.paraUsf(em.find(Paciente.class,semProva.getId()),
+                em.find(UsfReferencia.class,a.ator().getUsfAtuacao().getId()))));
+        var colunas=LegacyMigrationFixture.columns(fonte);
+        var antes=LegacyMigrationFixture.snapshot(fonte,colunas);
+        var painel=como(a.ator(),()->painelLocal.painel(3,null,null,null));
+        assertEquals(3,painel.totalPacientesAtivos()); assertEquals(1,painel.estadoNaoConfirmado());
+        assertEquals(2,painel.distribuicaoClassificacao().verdes());
+        assertEquals(1,painel.distribuicaoClassificacao().naoConfirmados());
+        assertEquals(1,painel.atividade().sessoesDistintasComprovadas());
+        assertEquals(2,painel.atividade().faltasComprovadas());
+        assertFalse(painel.historicoDisponivel()); assertEquals(3,painel.evolucao().size());
+        assertTrue(painel.evolucao().stream().allMatch(m->!m.disponivel()&&m.verdes()==null));
+        var busca=como(a.ator(),painelLocal::buscaAtiva);
+        assertEquals(1,busca.estadoNaoConfirmado()); assertEquals(1,busca.alertas().size());
+        assertEquals("REVISAO_HISTORICA",busca.alertas().getFirst().acao().name());
+        assertNull(busca.alertas().getFirst().localBusca());
+        var fora=como(externo.ator(),()->painelLocal.painel(3,null,null,null));
+        assertEquals(1,fora.totalPacientesAtivos()); assertEquals(0,fora.atividade().faltasComprovadas());
+        assertThrows(ResourceNotFoundException.class,()->como(externo.ator(),()->painelLocal.painel(3,
+                painel.unidadesDisponiveis().getFirst().valor(),null,null)));
+        assertEquals(antes,LegacyMigrationFixture.snapshot(fonte,colunas));
+    }
+
+    @Test
+    void buscaLocalIncluiAmareloComRf22EExcluiAcompanhamentoEncerrado() {
+        var a=novoLocal(UnidadeAtuacao.USF);
+        var b=iniciar(novoPaciente(),a.ator());
+        var data=diasAtras(0);
+        tx.executeWithoutResult(t->{
+            var oferta=new DisponibilidadeExcecao();
+            oferta.setUsuario(em.find(Usuario.class,a.ator().getId()));
+            oferta.setData(data); oferta.setTurno(TurnoEnum.MANHA); oferta.setCapacidade(10);
+            em.persist(oferta);
+        });
+        var original=reserva(a,diasAtras(5),9,SituacaoAtendimento.AGENDADO,true);
+        var falta=como(a.ator(),()->individual.registrar(original.id(),original.versao(),FrequenciaAssistencial.FALTOU));
+        var nova=como(a.ator(),()->individual.remarcar(original.id(),falta.versaoFato(),data,LocalTime.of(9,0),TurnoEnum.MANHA));
+        como(a.ator(),()->individual.registrar(nova.atendimento(),nova.versaoFato(),FrequenciaAssistencial.FALTOU));
+        for(int d:List.of(4,3)) {
+            var ag=reserva(b,diasAtras(d),10,SituacaoAtendimento.AGENDADO,true);
+            como(b.ator(),()->individual.registrar(ag.id(),ag.versao(),FrequenciaAssistencial.FALTOU));
+        }
+        var alertas=como(a.ator(),painelLocal::buscaAtiva).alertas();
+        assertEquals(1,alertas.size()); assertEquals(a.vinculo(),alertas.getFirst().vinculo());
+        assertEquals(ClassificacaoRisco.AMARELO,alertas.getFirst().classificacaoRisco());
+        assertTrue(alertas.getFirst().gatilhoVisitaAcionado());
+        como(a.ator(),()->estado.encerrar(a.paciente().getIdPublico(),a.vinculo(),carregar(a).getVersion(),
+                new EncerramentoPacienteDTO(MotivoEncerramento.ALTA_TERAPEUTICA,StatusPaciente.ALTA_TERAPEUTICA,null)));
+        assertTrue(como(a.ator(),painelLocal::buscaAtiva).alertas().isEmpty());
     }
 
     private static <T> T apos(CountDownLatch partir, Supplier<T> comando) throws InterruptedException {

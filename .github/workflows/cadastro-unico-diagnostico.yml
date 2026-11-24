@@ -97,3 +97,5 @@ jobs:
         run: |
           npm test -- --watch=false --include=src/app/pages/cadastro-paciente/cadastro-existente.spec.ts
           npm test -- --watch=false --include=src/app/pages/cadastro-paciente/cadastro-paciente.spec.ts
+      - name: Teste dos contratos clinicos locais experimentais
+        run: npm test -- --watch=false --include=src/app/services/contrato-clinico-local.spec.ts
