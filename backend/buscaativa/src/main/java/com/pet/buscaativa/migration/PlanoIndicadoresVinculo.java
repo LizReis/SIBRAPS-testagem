@@ -40,25 +40,34 @@ public final class PlanoIndicadoresVinculo {
 
     public static Plano preparar(Projecao projecao) {
         Objects.requireNonNull(projecao, "Projeção local obrigatória.");
-        var bloqueios = new EnumMap<Campo, Bloqueio>(Campo.class);
-        conferir(bloqueios, Campo.STATUS, projecao.status(), true);
-        conferir(bloqueios, Campo.ACOMPANHAMENTO, projecao.acompanhamento(), true);
-        conferir(bloqueios, Campo.PENDENCIAS, projecao.pendencias(), true);
-        conferir(bloqueios, Campo.FALTAS, projecao.faltas(), true);
-        conferir(bloqueios, Campo.ULTIMA_PRESENCA, projecao.ultimaPresenca(), false);
-        conferir(bloqueios, Campo.RISCO, projecao.risco(), true);
-        conferir(bloqueios, Campo.VISITA, projecao.visita(), true);
+        return preparar(projecao.vinculo(), projecao.unidade(), projecao.dataReferencia(),
+                projecao.status(), projecao.acompanhamento(), projecao.pendencias(), projecao.faltas(),
+                projecao.ultimaPresenca(), projecao.risco(), projecao.visita());
+    }
 
-        if (projecao.pendencias().conclusiva() && projecao.pendencias().valor().orElse(false)) {
+    public static Plano preparar(UUID vinculo, String unidade, LocalDate data,
+            Avaliacao<?> status, Avaliacao<?> acompanhamento, Avaliacao<Boolean> pendencia,
+            Avaliacao<Integer> faltas, Avaliacao<LocalDate> ultimaPresenca,
+            Avaliacao<ClassificacaoRisco> risco, Avaliacao<Boolean> visita) {
+        var bloqueios = new EnumMap<Campo, Bloqueio>(Campo.class);
+        conferir(bloqueios, Campo.STATUS, status, true);
+        conferir(bloqueios, Campo.ACOMPANHAMENTO, acompanhamento, true);
+        conferir(bloqueios, Campo.PENDENCIAS, pendencia, true);
+        conferir(bloqueios, Campo.FALTAS, faltas, true);
+        conferir(bloqueios, Campo.ULTIMA_PRESENCA, ultimaPresenca, false);
+        conferir(bloqueios, Campo.RISCO, risco, true);
+        conferir(bloqueios, Campo.VISITA, visita, true);
+
+        if (pendencia.conclusiva() && pendencia.valor().orElse(false)) {
             bloqueios.put(Campo.PENDENCIAS, new Bloqueio(Set.of(Motivo.INDICADORES_PENDENTES), false));
         }
 
         Optional<Indicadores> candidato = bloqueios.isEmpty()
-                ? Optional.of(new Indicadores(projecao.faltas().valor().orElseThrow(),
-                        projecao.ultimaPresenca().valor(), projecao.risco().valor().orElseThrow(),
-                        projecao.visita().valor().orElseThrow()))
+                ? Optional.of(new Indicadores(faltas.valor().orElseThrow(),
+                        ultimaPresenca.valor(), risco.valor().orElseThrow(),
+                        visita.valor().orElseThrow()))
                 : Optional.empty();
-        return new Plano(projecao.vinculo(), projecao.unidade(), projecao.dataReferencia(),
+        return new Plano(vinculo, unidade, data,
                 candidato, Map.copyOf(bloqueios));
     }
 

@@ -25,6 +25,7 @@ import com.pet.buscaativa.entities.dto.AgendamentoDTO;
 import com.pet.buscaativa.entities.dto.HorariosDisponiveisDTO;
 import com.pet.buscaativa.entities.dto.HorariosDisponiveisDTO.HorarioDisponivelDTO;
 import com.pet.buscaativa.config.AgendaHorarioProperties;
+import com.pet.buscaativa.entities.VinculoAssistencial;
 import com.pet.buscaativa.entities.enums.SituacaoAtendimento;
 import com.pet.buscaativa.entities.enums.StatusPaciente;
 import com.pet.buscaativa.entities.enums.TipoAcompanhamento;
@@ -240,11 +241,17 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     /** Operações de reserva; o caminho factual legado fica intacto até 6.2D. */
     private void validarVagaOperacional(Usuario usuario, Paciente paciente, LocalDate data, TurnoEnum turno,
             LocalTime hora, Long recuperacao) {
+        validarVagaOperacional(usuario, paciente, data, turno, hora, recuperacao, null);
+    }
+
+    void validarVagaOperacional(Usuario usuario, Paciente paciente, LocalDate data, TurnoEnum turno,
+            LocalTime hora, Long recuperacao, VinculoAssistencial local) {
         validarHorario(turno, hora);
         var instante = new IntegridadeAgendaAssistencialService.Instante(data, hora);
         var exclusao = new IntegridadeAgendaAssistencialService.Exclusao(recuperacao, null);
         var profissional = integridadeAgendaAssistencial.avaliarProfissional(usuario, instante, exclusao);
-        var pessoa = integridadeAgendaAssistencial.avaliarPaciente(paciente, instante, exclusao);
+        var pessoa = local == null ? integridadeAgendaAssistencial.avaliarPaciente(paciente, instante, exclusao)
+                : integridadeAgendaAssistencial.avaliarPaciente(local, instante, exclusao);
         validarSinaisDeReserva(profissional, pessoa, recuperacao);
         validarOferta(usuario, data, turno);
     }
@@ -302,11 +309,16 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     }
 
     private void validarPresencaIndividual(Agendamento atendimento) {
+        validarPresencaIndividual(atendimento, null);
+    }
+
+    void validarPresencaIndividual(Agendamento atendimento, VinculoAssistencial local) {
         var instante = new IntegridadeAgendaAssistencialService.Instante(
                 atendimento.getDataAgendamento(), atendimento.getHoraAtendimento());
         var exclusao = new IntegridadeAgendaAssistencialService.Exclusao(atendimento.getId(), null);
         var profissional = integridadeAgendaAssistencial.avaliarProfissional(atendimento.getUsuario(), instante, exclusao);
-        var paciente = integridadeAgendaAssistencial.avaliarPaciente(atendimento.getPaciente(), instante, exclusao);
+        var paciente = local == null ? integridadeAgendaAssistencial.avaliarPaciente(atendimento.getPaciente(), instante, exclusao)
+                : integridadeAgendaAssistencial.avaliarPaciente(local, instante, exclusao);
         if (profissional.tem(IntegridadeAgendaAssistencialService.Sinal.OCUPACAO_INDIVIDUAL))
             throw conflitoAssistencial(atendimento.getId(), "PROFISSIONAL");
         if (paciente.tem(IntegridadeAgendaAssistencialService.Sinal.OCUPACAO_INDIVIDUAL))
@@ -325,7 +337,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
         // conservadoras de correção e regularização permanecem nos chamadores.
     }
 
-    private void validarConflitosDeHorario(Usuario usuario, Paciente paciente, LocalDate data, LocalTime hora,
+    void validarConflitosDeHorario(Usuario usuario, Paciente paciente, LocalDate data, LocalTime hora,
             Long atendimentoEmCorrecao) {
         boolean correcaoFrequencia = atendimentoEmCorrecao != null;
         boolean horarioJaOcupado = agendamentoRepository.existsAgendamentoAtivoNoMesmoHorario(

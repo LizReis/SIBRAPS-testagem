@@ -22,7 +22,6 @@ import com.pet.buscaativa.entities.enums.TipoAcompanhamento;
 import com.pet.buscaativa.entities.enums.TipoEventoHistoricoPaciente;
 import com.pet.buscaativa.entities.enums.UnidadeAtuacao;
 import com.pet.buscaativa.repositories.HistoricoPacienteRepository;
-import com.pet.buscaativa.repositories.PacienteRepository;
 import com.pet.buscaativa.repositories.AgendamentoRepository;
 import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
@@ -43,7 +42,7 @@ import lombok.RequiredArgsConstructor;
 public class InicioAcompanhamentoLocalEnsaioService {
     private final AtoresEstadoClinicoLocalEnsaio atores;
     private final AgendamentoRepository agendamentos;
-    private final PacienteRepository pacientes;
+    private final CoordenacaoEscritaClinicaEnsaio coordenacao;
     private final VinculoAssistencialRepository vinculos;
     private final HistoricoPacienteRepository historicos;
     private final EntityManager em;
@@ -58,14 +57,12 @@ public class InicioAcompanhamentoLocalEnsaioService {
         String unidade = contexto.unidade();
         if (pacienteId == null) throw new ResourceNotFoundException("Paciente não encontrado.");
         if (tipo == null) throw new ValidationException("Tipo de acompanhamento obrigatório.");
-        var pessoa = pacientes.findByIdPublicoForUpdate(pacienteId)
-                .orElseThrow(() -> new ResourceNotFoundException("Paciente não encontrado."));
+        var inicio = coordenacao.paraInicio(contexto, pacienteId, referenciaId);
+        if (inicio.existente() != null)
+            return new Resultado(inicio.existente().getIdPublico(), Situacao.JA_EXISTENTE_NAO_MODIFICADO);
 
-        var existente = vinculos.findByPacienteIdAndUnidadeChave(pessoa.getId(), unidade);
-        var autorizados = atores.bloquear(contexto, existente.isPresent() ? null : referenciaId);
-        if (existente.isPresent())
-            return new Resultado(existente.get().getIdPublico(), Situacao.JA_EXISTENTE_NAO_MODIFICADO);
-
+        var pessoa = inicio.paciente();
+        var autorizados = inicio.atores();
         var ator = autorizados.ator();
         // Mais conservador que contar frequências: até reservas e históricos
         // sem origem podem indicar acompanhamento anterior. Não expor os fatos.

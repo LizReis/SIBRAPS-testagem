@@ -4,7 +4,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Comparator;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -33,7 +32,6 @@ import com.pet.buscaativa.entities.enums.StatusSessaoGrupo;
 import com.pet.buscaativa.entities.enums.TipoAcompanhamento;
 import com.pet.buscaativa.entities.enums.TipoEventoHistoricoPaciente;
 import com.pet.buscaativa.repositories.HistoricoPacienteRepository;
-import com.pet.buscaativa.services.PoliticaVisitaDomiciliar;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
 
 import lombok.RequiredArgsConstructor;
@@ -44,9 +42,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ProjecaoClinicaVinculoService {
     private final AutorizacaoVinculoAssistencialService autorizacao;
-    private final LinhaDoTempoFrequenciasVinculoService linhaDoTempo;
+    private final CalculoIndicadoresVinculo calculoLocal;
     private final HistoricoPacienteRepository historicos;
-    private final PoliticaVisitaDomiciliar politicaVisita;
     private final EvidenciaStatusVinculo evidenciaStatus;
 
     public enum Motivo {
@@ -95,61 +92,18 @@ public class ProjecaoClinicaVinculoService {
             throw new ResourceNotFoundException("Vínculo não encontrado.");
         }
 
-        var evidencias = linhaDoTempo.examinar(vinculo, true);
-        var frequencias = evidencias.diagnostico();
-        var calculo = DiagnosticoFaltasConsecutivasVinculoService.calcular(frequencias);
-        var causasSequencia = motivosSequencia(calculo);
-        var causasStatus = EnumSet.noneOf(Motivo.class);
         var provaStatus = evidenciaStatus.analisar(vinculo);
-        switch (provaStatus) {
-            case AUSENTE -> causasStatus.add(Motivo.STATUS_AUSENTE);
-            case SEM_COMPROVACAO -> causasStatus.add(Motivo.STATUS_SEM_TRANSICAO_AUDITADA);
-            case CONFLITANTE -> causasStatus.add(Motivo.STATUS_EVIDENCIA_CONFLITANTE);
-            case INICIALIZACAO_AUDITADA, TRANSICAO_AUDITADA -> { }
-        }
-        StatusPaciente status = causasStatus.isEmpty() ? vinculo.getStatusPaciente() : null;
-        var tipo = vinculo.getTipoAcompanhamento();
-        Boolean pendencia = vinculo.getIndicadoresPendentes();
-        var causasTipo = tipo == null ? EnumSet.of(Motivo.TIPO_AUSENTE) : EnumSet.noneOf(Motivo.class);
-        var causasPendencia = pendencia == null
-                ? EnumSet.of(Motivo.PENDENCIA_AUSENTE) : EnumSet.noneOf(Motivo.class);
-        var causasVisita = EnumSet.copyOf(causasSequencia);
-        causasVisita.addAll(causasPendencia);
-        if (Boolean.TRUE.equals(pendencia)) causasVisita.add(Motivo.INDICADORES_PENDENTES);
-
-        var causasRisco = EnumSet.copyOf(causasStatus);
-        Optional<ClassificacaoRisco> risco;
-        if (status == StatusPaciente.INATIVO) {
-            // A regra legada encerra a avaliação de risco pelo estado inativo.
-            risco = Optional.of(ClassificacaoRisco.VERDE);
-        } else {
-            causasRisco.addAll(causasVisita);
-            causasRisco.addAll(causasTipo);
-            risco = causasRisco.isEmpty()
-                    ? ComparadorPoliticaRiscoVinculo.comparar(calculo, status, tipo, pendencia, dataReferencia)
-                    : Optional.empty();
-        }
-        if (evidencias.agendaLocalInconclusiva()) causasVisita.add(Motivo.CADEIA_LOCAL_INCONCLUSIVA);
-        var visita = causasVisita.isEmpty()
-                ? ComparadorPoliticaVisitaVinculo.compararAgendaComprovada(evidencias.agenda(), calculo, politicaVisita)
-                : Optional.<Boolean>empty();
-
-        var busca = ComparadorSelecaoBuscaAtivaVinculo.comparar(status, risco, pendencia, visita);
-        var causasBusca = EnumSet.noneOf(Motivo.class);
-        if (busca.decisao() == ComparadorSelecaoBuscaAtivaVinculo.Decisao.INDETERMINADA) {
-            causasBusca.addAll(causasRisco);
-            causasBusca.addAll(causasVisita);
-        }
-
+        var indicadores = calculoLocal.calcular(vinculo, dataReferencia, provaStatus, vinculo.getIndicadoresPendentes());
+        var evidencias = indicadores.evidencias();
+        var calculo = indicadores.frequencias();
+        var frequencias = evidencias.diagnostico();
+        var busca = indicadores.busca();
         var agenda = evidencias.agenda().stream().map(a -> new Reserva(a.getId(), a.getDataAgendamento(),
                 a.getHoraAtendimento(), a.getSituacaoReserva(), a.getFrequenciaAssistencial()))
                 .sorted(ordem(Reserva::data, Reserva::hora, Reserva::id)).toList();
         var grupos = evidencias.participacoes().stream().map(ProjecaoClinicaVinculoService::projetarParticipacao)
                 .sorted(ordem(Participacao::data, Participacao::hora, Participacao::id)).toList();
         var historico = projetarHistorico(pacienteId, unidade, evidencias);
-        Integer faltas = calculo.faltasConsecutivasAnalisaveis().isPresent()
-                ? calculo.faltasConsecutivasAnalisaveis().getAsInt() : null;
-        var ultima = calculo.ultimaPresencaComprovada().map(LocalDateTime::toLocalDate).orElse(null);
 
         // A comparação é posterior à composição. Apenas o sinal da comparação sai do vínculo.
         var global = vinculo.getPaciente();
@@ -157,25 +111,25 @@ public class ProjecaoClinicaVinculoService {
                 && (global.getClassificacaoRisco() == ClassificacaoRisco.VERMELHO
                     || Boolean.TRUE.equals(global.getIndicadoresPendentes())
                     || Boolean.TRUE.equals(global.getGatilhoVisitaAcionado()));
-        var buscaComparada = new Avaliacao<>(Optional.of(busca), Set.copyOf(causasBusca), Comparacao.SEM_REFERENCIA,
+        var buscaComparada = new Avaliacao<>(Optional.of(busca), Set.copyOf(indicadores.causasBusca()), Comparacao.SEM_REFERENCIA,
                 comparar(busca.decisao() == ComparadorSelecaoBuscaAtivaVinculo.Decisao.INCLUIR,
-                        global.getStatusPaciente() == null ? null : globalElegivel, causasBusca));
+                        global.getStatusPaciente() == null ? null : globalElegivel, indicadores.causasBusca()));
 
         return new Projecao(vinculoId, unidade, dataReferencia, agenda, grupos, historico, frequencias,
                 InventarioFrequenciasVinculoService.inventariar(frequencias),
                 DiagnosticoProntidaoEstadoVinculoService.avaliar(vinculo, calculo, provaStatus.comprovada()),
                 provaStatus,
-                avaliar(status, causasStatus, vinculo.getStatusPaciente(), global.getStatusPaciente()),
-                avaliar(tipo, causasTipo, tipo, global.getTipoAcompanhamento()),
-                avaliar(pendencia, causasPendencia, pendencia, global.getIndicadoresPendentes()),
-                avaliar(faltas, causasSequencia, vinculo.getCountFaltas(), global.getCountFaltas()),
-                avaliar(ultima, causasSequencia, vinculo.getDataUltimaPresenca(), global.getDataUltimaPresenca()),
-                avaliar(risco.orElse(null), causasRisco, vinculo.getClassificacaoRisco(), global.getClassificacaoRisco()),
-                avaliar(visita.orElse(null), causasVisita, vinculo.getGatilhoVisitaAcionado(), global.getGatilhoVisitaAcionado()),
+                comparar(indicadores.status(), vinculo.getStatusPaciente(), global.getStatusPaciente()),
+                comparar(indicadores.tipo(), indicadores.tipo().valor().orElse(null), global.getTipoAcompanhamento()),
+                comparar(indicadores.pendencia(), indicadores.pendencia().valor().orElse(null), global.getIndicadoresPendentes()),
+                comparar(indicadores.faltas(), vinculo.getCountFaltas(), global.getCountFaltas()),
+                comparar(indicadores.ultimaPresenca(), vinculo.getDataUltimaPresenca(), global.getDataUltimaPresenca()),
+                comparar(indicadores.risco(), vinculo.getClassificacaoRisco(), global.getClassificacaoRisco()),
+                comparar(indicadores.visita(), vinculo.getGatilhoVisitaAcionado(), global.getGatilhoVisitaAcionado()),
                 buscaComparada);
     }
 
-    private static boolean chaveCanonica(VinculoAssistencial vinculo) {
+    static boolean chaveCanonica(VinculoAssistencial vinculo) {
         if (vinculo.getUnidadeAtuacao() == null) return false;
         try {
             return Objects.equals(vinculo.getUnidadeChave(),
@@ -183,15 +137,6 @@ public class ProjecaoClinicaVinculoService {
         } catch (IllegalArgumentException incoerente) {
             return false;
         }
-    }
-
-    private static EnumSet<Motivo> motivosSequencia(DiagnosticoFaltasConsecutivasVinculoService.Resultado resultado) {
-        var motivos = EnumSet.noneOf(Motivo.class);
-        if (resultado.agendamentosSemOrigemComFrequencia() > 0 || resultado.presencasGrupoSemOrigem() > 0)
-            motivos.add(Motivo.ORIGEM_HISTORICA_INDETERMINADA);
-        if (resultado.frequenciasInconsistentes() > 0) motivos.add(Motivo.FREQUENCIA_INCONSISTENTE);
-        if (resultado.empateComFrequenciasDiferentes()) motivos.add(Motivo.ORDEM_DE_FREQUENCIAS_INDETERMINADA);
-        return motivos;
     }
 
     private List<EventoHistorico> projetarHistorico(UUID paciente, String unidade,
@@ -241,9 +186,10 @@ public class ProjecaoClinicaVinculoService {
                 .thenComparing(hora, Comparator.nullsLast(Comparator.naturalOrder())).thenComparing(id);
     }
 
-    private static <T> Avaliacao<T> avaliar(T valor, Set<Motivo> motivos, T local, T global) {
-        return new Avaliacao<>(motivos.isEmpty() ? Optional.ofNullable(valor) : Optional.empty(),
-                Set.copyOf(motivos), comparar(valor, local, motivos), comparar(valor, global, motivos));
+    private static <T> Avaliacao<T> comparar(Avaliacao<T> avaliacao, T local, T global) {
+        var valor = avaliacao.valor().orElse(null);
+        return new Avaliacao<>(avaliacao.valor(), avaliacao.motivos(),
+                comparar(valor, local, avaliacao.motivos()), comparar(valor, global, avaliacao.motivos()));
     }
 
     private static Comparacao comparar(Object valor, Object referencia, Set<Motivo> motivos) {

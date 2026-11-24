@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import com.pet.buscaativa.entities.Paciente;
 import com.pet.buscaativa.entities.Usuario;
+import com.pet.buscaativa.entities.VinculoAssistencial;
 import com.pet.buscaativa.entities.enums.StatusPresencaGrupo;
 import com.pet.buscaativa.entities.enums.FrequenciaAssistencial;
 import com.pet.buscaativa.repositories.AgendamentoRepository;
@@ -25,6 +26,7 @@ public class IntegridadeAgendaAssistencialService {
     private final ConflitosAgendaAssistencialRepository conflitos;
     private final AgendamentoRepository atendimentos;
     private final EscopoUnidadeService escopo;
+    private final AutorizacaoVinculoAssistencialService autorizacaoLocal;
     private final EntityManager em;
 
     public enum Sinal {
@@ -65,6 +67,18 @@ public class IntegridadeAgendaAssistencialService {
     public Avaliacao avaliarPaciente(Paciente p, Instante quando, Exclusao excluir) {
         exigirLock(p);
         escopo.validarAcesso(p);
+        return sinaisPaciente(p, quando, excluir);
+    }
+
+    Avaliacao avaliarPaciente(VinculoAssistencial local, Instante quando, Exclusao excluir) {
+        var paciente = local.getPaciente();
+        exigirLock(paciente);
+        exigirLock(local);
+        autorizacaoLocal.exigirVinculoIdentificado(paciente.getIdPublico(), local.getIdPublico());
+        return sinaisPaciente(paciente, quando, excluir);
+    }
+
+    private Avaliacao sinaisPaciente(Paciente p, Instante quando, Exclusao excluir) {
         var d = quando.data(); var h = quando.hora(); var a = excluir.atendimento(); var s = excluir.sessao();
         var resultado = EnumSet.noneOf(Sinal.class);
         incluir(resultado, Sinal.OCUPACAO_INDIVIDUAL, conflitos.ocupacaoPaciente(p,d,h,a));

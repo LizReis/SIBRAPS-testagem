@@ -34,8 +34,13 @@ public class AuditoriaRegularizacaoService {
     @Transactional(propagation=Propagation.MANDATORY,readOnly=true)
     public boolean origemFactualConfiavel(Agendamento a) {
         authorization.validarAgendamento(a,true);
+        return cadeiaFactualCoerente(a, scope.unidadePainel().valor());
+    }
+
+    /** Verificador de leitura após autorização e bloqueio pelo chamador. */
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true)
+    public boolean cadeiaFactualCoerente(Agendamento a, String unit) {
         if(records.countByAgendamento_IdAndTipoRegularizacao(a.getId(),"REGISTRO_FATO_ASSISTENCIAL")!=1)return false;
-        var unit=scope.unidadePainel().valor();
         var origins=records.findByAgendamento_IdAndUnidade(a.getId(),unit,Pageable.unpaged()).stream()
             .filter(r->r.getTipoRegularizacao().equals("REGISTRO_FATO_ASSISTENCIAL")).toList();
         if(origins.size()!=1)return false;

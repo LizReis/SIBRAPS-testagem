@@ -34,6 +34,10 @@ public interface VinculoAssistencialRepository extends JpaRepository<VinculoAssi
     Optional<VinculoAssistencial> findLocalForEstadoUpdate(@Param("vinculo") UUID vinculo,
             @Param("paciente") UUID paciente, @Param("unidade") String unidade);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select v from VinculoAssistencial v where v.idPublico = :id and v.unidadeChave = :unidade")
+    Optional<VinculoAssistencial> findByIdPublicoForUpdate(@Param("id") UUID id, @Param("unidade") String unidade);
+
     List<VinculoAssistencial> findByPacienteId(Long pacienteId);
     boolean existsByPacienteIdAndUnidadeChave(Long pacienteId, String unidadeChave);
     boolean existsByPacienteId(Long pacienteId);

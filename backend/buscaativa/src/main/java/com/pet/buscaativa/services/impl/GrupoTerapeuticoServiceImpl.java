@@ -712,7 +712,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         return new PendenciaFrequenciaException("CONFLITO_ASSISTENCIAL_PENDENTE_RECONCILIACAO", tipo, null, sessao.getId());
     }
 
-    private void validarRealizacaoColetiva(SessaoGrupo sessao) {
+    void validarRealizacaoColetiva(SessaoGrupo sessao) {
         var quando = new IntegridadeAgendaAssistencialService.Instante(sessao.getDataSessao(), sessao.getHorario());
         var exclusao = new IntegridadeAgendaAssistencialService.Exclusao(null, sessao.getId());
         var avaliacao = integridadeAgendaAssistencial.avaliarProfissional(sessao.getGrupo().getCoordenador(), quando, exclusao);
@@ -721,9 +721,14 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     }
 
     private void validarPresencaColetiva(Paciente paciente, SessaoGrupo sessao) {
+        validarPresencaColetiva(paciente, sessao, null);
+    }
+
+    void validarPresencaColetiva(Paciente paciente, SessaoGrupo sessao, VinculoAssistencial local) {
         var quando = new IntegridadeAgendaAssistencialService.Instante(sessao.getDataSessao(), sessao.getHorario());
         var exclusao = new IntegridadeAgendaAssistencialService.Exclusao(null, sessao.getId());
-        var avaliacao = integridadeAgendaAssistencial.avaliarPaciente(paciente, quando, exclusao);
+        var avaliacao = local == null ? integridadeAgendaAssistencial.avaliarPaciente(paciente, quando, exclusao)
+                : integridadeAgendaAssistencial.avaliarPaciente(local, quando, exclusao);
         if (avaliacao.temImpedimentoOperacional())
             throw conflitoFactualGrupo(sessao, "HISTORICO_PACIENTE");
         // FALTOU não representa presença física. Não resolver empates de indicadores aqui.

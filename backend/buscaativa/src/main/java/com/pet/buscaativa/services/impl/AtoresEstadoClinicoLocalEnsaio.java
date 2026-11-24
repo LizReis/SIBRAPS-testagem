@@ -1,6 +1,6 @@
 package com.pet.buscaativa.services.impl;
 
-import java.util.TreeSet;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.context.annotation.Profile;
@@ -13,8 +13,6 @@ import com.pet.buscaativa.entities.enums.TipoUsuario;
 import com.pet.buscaativa.repositories.UsuarioRepository;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
 
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 
 @Component
@@ -23,9 +21,8 @@ import lombok.RequiredArgsConstructor;
 class AtoresEstadoClinicoLocalEnsaio {
     private final EscopoUnidadeService escopo;
     private final UsuarioRepository usuarios;
-    private final EntityManager em;
 
-    record Contexto(UUID ator, String unidade, boolean somenteAdministrador) {}
+    record Contexto(UUID ator, String unidade, boolean somenteAdministrador, TipoUsuario perfil) {}
     record Atores(Usuario ator, Usuario referencia) {}
 
     Contexto autorizar(boolean somenteAdministrador) {
@@ -33,25 +30,19 @@ class AtoresEstadoClinicoLocalEnsaio {
         var principal = escopo.usuarioLogado();
         if (principal.getId() == null || principal.getIdPublico() == null)
             throw new AccessDeniedException("Usuário não identificado.");
+        var atual = usuarios.findById(principal.getId())
+                .orElseThrow(() -> new AccessDeniedException("Usuário não identificado."));
         var contexto = new Contexto(principal.getIdPublico(), ChaveUnidadeAssistencial.doUsuarioAtual(principal),
-                somenteAdministrador);
-        exigirAtor(contexto, usuarios.findById(principal.getId()).orElse(null));
+                somenteAdministrador, atual.getTipoUsuario());
+        exigirAtor(contexto, atual);
         return contexto;
     }
 
-    Atores bloquear(Contexto contexto, UUID referenciaId) {
-        var ids = new TreeSet<UUID>();
-        ids.add(contexto.ator());
-        if (referenciaId != null) ids.add(referenciaId);
-        Usuario ator = null;
-        Usuario referencia = null;
-        for (var id : ids) {
-            var usuario = usuarios.findByIdPublicoForUpdate(id).orElse(null);
-            if (usuario != null) em.refresh(usuario, LockModeType.PESSIMISTIC_WRITE);
-            if (id.equals(contexto.ator())) ator = usuario;
-            if (id.equals(referenciaId)) referencia = usuario;
-        }
+    Atores validar(Contexto contexto, UUID referenciaId, Map<UUID, Usuario> bloqueados) {
+        var ator = bloqueados.get(contexto.ator());
+        var referencia = referenciaId == null ? null : bloqueados.get(referenciaId);
         exigirAtor(contexto, ator);
+        if (contexto.perfil() != ator.getTipoUsuario()) throw CoordenacaoEscritaClinicaEnsaio.mudou();
         if (referenciaId != null && !elegivel(referencia, contexto.unidade(), false)) {
             throw new ResourceNotFoundException("Profissional de referência não encontrado.");
         }
@@ -65,7 +56,7 @@ class AtoresEstadoClinicoLocalEnsaio {
         }
     }
 
-    private static boolean elegivel(Usuario usuario, String unidade, boolean somenteAdministrador) {
+    static boolean elegivel(Usuario usuario, String unidade, boolean somenteAdministrador) {
         if (usuario == null || (usuario.getTipoUsuario() != TipoUsuario.ADMINISTRADOR
                 && (somenteAdministrador || usuario.getTipoUsuario() != TipoUsuario.PROFISSIONAL))) {
             return false;

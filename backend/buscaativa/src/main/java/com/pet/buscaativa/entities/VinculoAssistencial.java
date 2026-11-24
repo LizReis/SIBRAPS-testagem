@@ -155,6 +155,27 @@ public class VinculoAssistencial extends AbstractEntities {
         indicadoresPendentes = false;
     }
 
+    /** Aplicação de um conjunto conclusivo, derivado internamente dos fatos do vínculo. */
+    public boolean aplicarIndicadoresLocais(int faltas, LocalDate ultimaPresenca,
+            ClassificacaoRisco risco, boolean visita) {
+        Objects.requireNonNull(risco, "Risco calculado obrigatório.");
+        if (!Boolean.FALSE.equals(indicadoresPendentes))
+            throw new IllegalStateException("Indicadores locais exigem pendência conhecida e desativada.");
+        if (Objects.equals(countFaltas, faltas) && Objects.equals(dataUltimaPresenca, ultimaPresenca)
+                && classificacaoRisco == risco && Objects.equals(gatilhoVisitaAcionado, visita)) return false;
+        countFaltas = faltas;
+        dataUltimaPresenca = ultimaPresenca;
+        classificacaoRisco = risco;
+        gatilhoVisitaAcionado = visita;
+        return true;
+    }
+
+    public boolean sinalizarIndicadoresLocaisPendentes() {
+        if (Boolean.TRUE.equals(indicadoresPendentes)) return false;
+        indicadoresPendentes = true;
+        return true;
+    }
+
     /** Transição local explícita; autorização e trilha cabem ao serviço transacional. */
     public void alterarStatusLocal(StatusPaciente novoStatus) {
         this.statusPaciente = Objects.requireNonNull(novoStatus, "Status local obrigatório.");

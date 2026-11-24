@@ -55,16 +55,12 @@ public class AgendaAssistencialLocks {
         var ps = new LinkedHashMap<UUID, Paciente>();
         var us = new LinkedHashMap<UUID, Usuario>();
         for (UUID id : ordemPacientes) {
-            var p = pacientes.findByIdPublicoForUpdate(id)
-                    .orElseThrow(() -> new ResourceNotFoundException("Paciente não encontrado."));
-            em.refresh(p, LockModeType.PESSIMISTIC_WRITE);
+            var p = travarPaciente(id);
             escopo.validarAcesso(p);
             ps.put(id, p);
         }
         for (UUID id : ordemProfissionais) {
-            var u = usuarios.findByIdPublicoForUpdate(id)
-                    .orElseThrow(() -> new ResourceNotFoundException("Profissional não encontrado."));
-            em.refresh(u, LockModeType.PESSIMISTIC_WRITE);
+            var u = travarUsuario(id);
             escopo.validarUsuario(u);
             us.put(id, u);
         }
@@ -79,11 +75,7 @@ public class AgendaAssistencialLocks {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     void bloquearPacientesParaTransferencia(Collection<UUID> ids) {
-        for (UUID id : ordenar(ids)) {
-            var p = pacientes.findByIdPublicoForUpdate(id)
-                    .orElseThrow(() -> new ResourceNotFoundException("Paciente não encontrado."));
-            em.refresh(p, LockModeType.PESSIMISTIC_WRITE);
-        }
+        for (UUID id : ordenar(ids)) travarPaciente(id);
     }
 
     /**
@@ -97,11 +89,23 @@ public class AgendaAssistencialLocks {
         var ordem = ordenar(atuais);
         ordem.addAll(ordenar(historicos));
         for (UUID id : ordem) {
-            var u = usuarios.findByIdPublicoForUpdate(id)
-                    .orElseThrow(() -> new ResourceNotFoundException("Profissional não encontrado."));
-            em.refresh(u, LockModeType.PESSIMISTIC_WRITE);
+            var u = travarUsuario(id);
             if (atuais.contains(id)) escopo.validarUsuario(u);
         }
+    }
+
+    Paciente travarPaciente(UUID id) {
+        var p = pacientes.findByIdPublicoForUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Paciente não encontrado."));
+        em.refresh(p, LockModeType.PESSIMISTIC_WRITE);
+        return p;
+    }
+
+    Usuario travarUsuario(UUID id) {
+        var u = usuarios.findByIdPublicoForUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Profissional não encontrado."));
+        em.refresh(u, LockModeType.PESSIMISTIC_WRITE);
+        return u;
     }
 
     private TreeSet<UUID> ordenar(Collection<UUID> ids) {

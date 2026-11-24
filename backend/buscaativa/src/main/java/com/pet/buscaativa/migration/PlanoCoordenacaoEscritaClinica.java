@@ -7,7 +7,7 @@ import java.util.TreeSet;
 import java.util.UUID;
 
 /**
- * Contrato puro PROPOSTO de descoberta de recursos antes de qualquer escrita.
+ * Contrato de ordenação da descoberta de recursos antes de qualquer escrita.
  * Não adquire locks, não autoriza acesso, não executa comandos clínicos.
  * As listas vêm exclusivamente de descoberta interna no servidor. A igualdade
  * do conjunto é necessária, mas não substitui revalidação de origem, perfil,
@@ -24,6 +24,13 @@ public record PlanoCoordenacaoEscritaClinica(
         grupos = ordenarIds(grupos);
         sessoes = ordenarIds(sessoes);
         agendamentos = ordenarIds(agendamentos);
+    }
+
+    public record Descoberta<T>(PlanoCoordenacaoEscritaClinica plano, T relacoes) {
+        public Descoberta {
+            Objects.requireNonNull(plano);
+            Objects.requireNonNull(relacoes);
+        }
     }
 
     public enum Fase { PACIENTES, USUARIOS, VINCULOS, GRUPOS, SESSOES, AGENDAMENTOS }
