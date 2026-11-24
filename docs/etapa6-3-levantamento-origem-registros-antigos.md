@@ -53,7 +53,7 @@ Em cada fixture SQL, três revisões de usuário registram a inclusão de três 
 
 Em um caso real, uma revisão de lotação só seria candidata a avaliação se identificasse o responsável daquele fato, cobrisse a data e determinasse a unidade com série íntegra e sem versões incompatíveis. Os conjuntos inspecionados contêm zero documentos históricos reais. As revisões e trilhas das fixtures são evidências técnicas sintéticas.
 
-Os preflights V8 contam referências, vínculos e pistas. O diagnóstico V13 verifica também os campos de origem, as relações clínicas, a cadeia de remarcação e as frequências excluídas. As cópias V13 foram abertas com `ACCESS_MODE_DATA=r`. Os snapshots do mesmo esquema foram iguais antes e depois das consultas nos ensaios V8, V13 e na demonstração corrigida, incluindo relações, versões, revisões Envers e as tabelas V12/V13 onde presentes. A comparação V8 → V13 conservou todos os valores das colunas clínicas preexistentes. O histórico Flyway ganhou as cinco migrações previstas. Nas duas fixtures, as tabelas V12 e V13 e suas auditorias ficaram vazias. O ensaio existente de projeção também cobre restauração com solicitação e decisão preexistentes.
+Os preflights V8 contam referências, vínculos e pistas. O diagnóstico V13 verifica também os campos de origem, as relações clínicas, a cadeia de remarcação e as frequências excluídas. As cópias V13 foram abertas com `ACCESS_MODE_DATA=r`. Os snapshots do mesmo esquema foram iguais antes e depois das consultas nos ensaios V8, V13 e nas duas inicializações da demonstração, incluindo relações, versões, revisões Envers e as tabelas V12/V13 onde presentes. A comparação V8 → V13 conservou todos os valores das colunas clínicas preexistentes. O histórico Flyway ganhou as cinco migrações previstas. Nas duas fixtures, as tabelas V12 e V13 e suas auditorias ficaram vazias. O ensaio existente de projeção também cobre restauração com solicitação e decisão preexistentes.
 
 ## Causa e correção da demonstração
 
@@ -86,7 +86,7 @@ O próximo passo é aprovar a matriz de prova, papéis e estados com a equipe e 
 
 ## Reprodução e validação
 
-No diretório `backend/buscaativa`, com Java 21:
+Execute os comandos no diretório `backend/buscaativa` com Java 21.
 
 ```bash
 bash ./mvnw -B -ntp -Dtest=DevDemonstracaoIntegrationTests,LevantamentoOrigemLegadaTests,CadastroUnicoPreflightTests,OrigemClinicaPreflightTests,DiagnosticoConsolidadoMigracaoClinicaIntegrationTests,ProjecaoClinicaVinculoIntegrationTests,ComparadorSelecaoBuscaAtivaVinculoTests test
@@ -97,6 +97,20 @@ git diff --check
 
 `LevantamentoOrigemLegadaTests` usa diretórios temporários do JUnit e H2 `SCRIPT`/restore, e executa `CadastroUnicoPreflight` e `OrigemClinicaPreflight` na cópia V8. Após a migração explícita à V13 pela ferramenta offline, `CorrectiveMigrationApplication` inicia o diagnóstico somente leitura sobre a nova cópia. O perfil `dev` do teste usa uma instância em memória com URL exclusiva.
 
-A execução de código e testes desta entrega será identificada nesta seção após a validação do workflow. A referência do workflow consta no início do relatório.
+A caracterização original foi executada sobre `52df37cfd3994ee8d38f803534a70e9b1fa69d80` em checkout temporário. Uma inicialização limpa confirmou 26 frequências excluídas, um alerta de visita ativo sem remarcação associada, duas reservas originais de remarcações ainda ativas e dois históricos sem fonte nem ator. A consulta preservou todo o snapshot.
+
+O código e os testes desta entrega foram validados no SHA `52bbd9499f61cbdbbff9c686545b030807ee6986`. Os três jobs do workflow de cadastro da branch concluíram com sucesso. [Código validado](https://github.com/LizReis/SIBRAPS-testagem/commit/52bbd9499f61cbdbbff9c686545b030807ee6986) · [GitHub Actions #45456784647](https://github.com/LizReis/SIBRAPS-testagem/actions/runs/45456784647) · [Artefato do backend](https://github.com/LizReis/SIBRAPS-testagem/actions/runs/45456784647/artifacts/14950997209)
+
+| Validação | Local | GitHub Actions no SHA validado |
+| --- | --- | --- |
+| Maven Java 21 | `clean verify` aprovou 1.303 testes em 114 suítes e empacotou o JAR. | `verify` aprovou 1.303 testes. |
+| Matriz `ReconciliationConcurrency61Characterization` | 12 testes aprovados. | 12 testes aprovados. |
+| Testes Angular do cadastro | 28 aprovados (4, 5, 8 e 11) com Node 22.23.5 e npm 11.6.2. | 28 aprovados nos quatro arquivos do workflow. |
+| Build de produção Angular | Aprovado. | Aprovado. |
+| `git diff --check` | Aprovado. | Verificação local. |
+
+Os testes finais tiveram zero falhas, erros ou casos ignorados. O `clean verify` incluiu 27 testes nos sete arquivos do comando direcionado, mais os cenários de agenda, RF22, responsabilidade histórica e V12/V13. O build Angular manteve o aviso de orçamento inicial de 858,72 kB frente ao limite de 500 kB. A árvore do frontend usada localmente (`f0686ca37fb337dfc5dd9784028c7d6161217d22`) é a mesma na referência e no SHA validado.
+
+Durante o desenvolvimento, a primeira compilação local falhou com `release version 21 not supported` porque o Java padrão do ambiente trazia apenas o runtime. O compilador do JDK 21 resolveu a falha. Uma rodada inicial da demonstração falhou ao comparar proxies Hibernate e outra ao testar uma recusa de acesso dentro da própria transação de inspeção. A comparação passou a usar IDs e as recusas passaram a executar fora dessa transação. Uma rodada direcionada intermediária aprovou 289 de 290 casos. O caso restante detectou compartilhamento do H2 entre um teste novo e outro que exige a base limpa. O contexto foi isolado e o `clean verify` posterior aprovou ambos. Essas rodadas intermediárias foram executadas na árvore de trabalho, antes do SHA validado.
 
 [Checkpoint de conciliação](etapa6-3-checkpoint-conciliacao-historicos-legados.md) · [Contrato do legado inconclusivo](etapa6-3-contrato-revisao-legado-inconclusivo.md) · [Diagnóstico consolidado](etapa6-3-consolidacao-diagnosticos-prontidao.md) · [Projeção clínica](etapa6-3-projecao-clinica-diagnostica-por-vinculo.md)
