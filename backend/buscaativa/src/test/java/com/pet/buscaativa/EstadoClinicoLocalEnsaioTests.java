@@ -52,6 +52,7 @@ class EstadoClinicoLocalEnsaioTests extends SecurityTestSupport {
     @Autowired EstadoClinicoLocalEnsaioService servico;
     @Autowired InicioAcompanhamentoLocalEnsaioService inicioLocal;
     @Autowired VinculoAssistencialRepository vinculos;
+    @Autowired com.pet.buscaativa.repositories.PacienteRepository pacientes;
     @Autowired HistoricoPacienteRepository historicos;
     @MockitoBean SusApiAdapter sus;
     @MockitoBean EmailService email;
@@ -441,6 +442,53 @@ class EstadoClinicoLocalEnsaioTests extends SecurityTestSupport {
             assertEquals(1, projetado.faltas().valor().orElseThrow());
             assertEquals(ProjecaoClinicaVinculoService.Comparacao.DIVERGE, projetado.faltas().estadoLocalArmazenado());
         }
+    }
+
+    @Test
+    void escritorCoordenadoAnteriorAoInicioImpedeInicializacaoComZeroFaltas() throws Exception {
+        var ator = tx.execute(t -> usuario(UnidadeAtuacao.CAPS_AD, null, TipoUsuario.ADMINISTRADOR));
+        var escritor = tx.execute(t -> usuario(UnidadeAtuacao.CAPS_AD, null, TipoUsuario.PROFISSIONAL));
+        var pessoa = tx.execute(t -> pessoa());
+        var travaObtida = new CountDownLatch(1);
+        var inicioSolicitado = new CountDownLatch(1);
+        var liberarEscritor = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var fato = executor.submit(() -> tx.execute(t -> {
+                var p = pacientes.findByIdPublicoForUpdate(pessoa.getIdPublico()).orElseThrow();
+                travaObtida.countDown();
+                try {
+                    assertTrue(liberarEscritor.await(10, TimeUnit.SECONDS));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(e);
+                }
+                return agenda(p, escritor, true).getId();
+            }));
+            try {
+                assertTrue(travaObtida.await(10, TimeUnit.SECONDS));
+                var inicializacao = executor.submit(() -> {
+                    inicioSolicitado.countDown();
+                    return assertThrows(ValidationException.class, () -> como(ator,
+                            () -> inicioLocal.iniciar(pessoa.getIdPublico(), TipoAcompanhamento.AMBOS, null)));
+                });
+                assertTrue(inicioSolicitado.await(10, TimeUnit.SECONDS));
+                // O início não deve concluir enquanto a identidade está bloqueada.
+                assertThrows(java.util.concurrent.TimeoutException.class,
+                        () -> inicializacao.get(200, TimeUnit.MILLISECONDS));
+                liberarEscritor.countDown();
+                assertNotNull(fato.get(10, TimeUnit.SECONDS));
+                assertEquals("Não foi possível comprovar acompanhamento novo.",
+                        inicializacao.get(10, TimeUnit.SECONDS).getMessage());
+            } finally {
+                liberarEscritor.countDown();
+            }
+        }
+        tx.executeWithoutResult(t -> {
+            assertTrue(vinculos.findByPacienteId(pessoa.getId()).isEmpty());
+            assertEquals(1L, em.createQuery("select count(a) from Agendamento a where a.paciente.id = :id",
+                    Long.class).setParameter("id", pessoa.getId()).getSingleResult());
+            assertTrue(historicos.findLocaisComOrigemComprovada(pessoa.getIdPublico(), "CAPS_AD").isEmpty());
+        });
     }
 
     @Test
