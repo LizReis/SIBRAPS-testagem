@@ -25,6 +25,7 @@ import lombok.RequiredArgsConstructor;
 public class DiagnosticoProntidaoEstadoVinculoService {
     private final AutorizacaoVinculoAssistencialService autorizacao;
     private final DiagnosticoFaltasConsecutivasVinculoService faltas;
+    private final EvidenciaStatusVinculo evidenciaStatus;
 
     public enum Situacao {
         REVISAR_PROVENIENCIA_HISTORICA,
@@ -42,6 +43,7 @@ public class DiagnosticoProntidaoEstadoVinculoService {
             boolean temFatosSemUnidadeComprovada,
             boolean faltaTipoAcompanhamentoLocal,
             boolean faltaStatusLocal,
+            boolean statusLocalComprovado,
             boolean faltaIndicadorDePendenciaLocal,
             boolean faltaContagemLocal,
             boolean faltaRiscoLocal,
@@ -65,13 +67,12 @@ public class DiagnosticoProntidaoEstadoVinculoService {
         // autenticado, por meio de um vinculo explicito.
         VinculoAssistencial vinculo = autorizacao.exigirVinculoLocal(pacienteId);
         var diagnostico = faltas.analisar(pacienteId);
-        return avaliar(vinculo, diagnostico);
+        return avaliar(vinculo, diagnostico, evidenciaStatus.analisar(vinculo).comprovada());
     }
 
-    /** Funcao pura, sem consultar o cadastro clinico global do Paciente. */
-    public static Relatorio avaliar(
-            VinculoAssistencial vinculo,
-            DiagnosticoFaltasConsecutivasVinculoService.Resultado diagnostico) {
+    /** Função pura sobre os campos locais e a comprovação obtida pelo chamador. */
+    public static Relatorio avaliar(VinculoAssistencial vinculo,
+            DiagnosticoFaltasConsecutivasVinculoService.Resultado diagnostico, boolean statusComprovado) {
         Objects.requireNonNull(vinculo, "Vinculo explicito obrigatorio.");
         Objects.requireNonNull(diagnostico, "Diagnostico local obrigatorio.");
 
@@ -91,14 +92,14 @@ public class DiagnosticoProntidaoEstadoVinculoService {
                 && !Objects.equals(vinculo.getDataUltimaPresenca(),
                         diagnostico.ultimaPresencaComprovada().map(LocalDateTime::toLocalDate).orElse(null));
 
-        boolean estadoIncompleto = tipoAusente || statusAusente || pendenciaAusente
+        boolean estadoIncompleto = tipoAusente || statusAusente || !statusComprovado || pendenciaAusente
                 || contadorAusente || riscoAusente || gatilhoAusente;
         Situacao situacao = classificar(origemIncerta, sequenciaBloqueada, diagnostico.empateComFrequenciasDiferentes(),
                 estadoIncompleto,
                 Boolean.TRUE.equals(vinculo.getIndicadoresPendentes()), divergencia, presencaDivergente);
 
         return new Relatorio(
-                situacao, origemIncerta, tipoAusente, statusAusente,
+                situacao, origemIncerta, tipoAusente, statusAusente, statusComprovado,
                 pendenciaAusente, contadorAusente, riscoAusente, gatilhoAusente, divergencia, diagnostico.eventosLocaisComprovados(),
                 diagnostico.agendamentosSemOrigemComFrequencia(),
                 diagnostico.presencasGrupoSemOrigem(), diagnostico.frequenciasInconsistentes(),

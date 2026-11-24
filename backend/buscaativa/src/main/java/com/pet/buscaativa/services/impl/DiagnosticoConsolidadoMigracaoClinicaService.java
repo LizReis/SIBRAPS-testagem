@@ -46,6 +46,7 @@ public class DiagnosticoConsolidadoMigracaoClinicaService {
     private final DataSource fonte;
     private final AgendamentoRepository agendaRepositorio;
     private final LinhaDoTempoFrequenciasVinculoService linhaDoTempo;
+    private final EvidenciaStatusVinculo evidenciaStatus;
 
     public enum TipoRegistro { AGENDAMENTO, GRUPO, SESSAO, PARTICIPACAO, HISTORICO }
     public enum ProntidaoTecnica { REQUER_CONFERENCIA, COERENCIA_APENAS_PARA_TESTES }
@@ -100,7 +101,8 @@ public class DiagnosticoConsolidadoMigracaoClinicaService {
                     continue;
                 }
                 var faltas = DiagnosticoFaltasConsecutivasVinculoService.calcular(linhaDoTempo.analisar(vinculo));
-                var estado = DiagnosticoProntidaoEstadoVinculoService.avaliar(vinculo, faltas);
+                var estado = DiagnosticoProntidaoEstadoVinculoService.avaliar(vinculo, faltas,
+                        evidenciaStatus.analisar(vinculo).comprovada());
                 estados.merge(estado.situacao(), 1L, Long::sum);
             }
         }

@@ -18,7 +18,7 @@ class AgendaLegacyMigrationTests {
         var colunasAntigas = LegacyMigrationFixture.columns(source);
         var antes = LegacyMigrationFixture.snapshot(source, colunasAntigas);
 
-        assertEquals(13, AgendaMigrationTool.migrar(source).migrationsExecuted);
+        assertEquals(14, AgendaMigrationTool.migrar(source).migrationsExecuted);
         assertEquals(antes, LegacyMigrationFixture.snapshot(source, colunasAntigas));
         assertEquals(6, jdbc.queryForObject(
                 "select count(*) from tb_historico_paciente where unidade_origem_chave is null", Integer.class));
@@ -33,7 +33,7 @@ class AgendaLegacyMigrationTests {
         var columns = LegacyMigrationFixture.columns(source);
         var before = LegacyMigrationFixture.snapshot(source, columns);
 
-        assertEquals(13, AgendaMigrationTool.migrar(source).migrationsExecuted);
+        assertEquals(14, AgendaMigrationTool.migrar(source).migrationsExecuted);
         assertEquals(before, LegacyMigrationFixture.snapshot(source, columns));
         assertEquals(0, jdbc.queryForObject(
                 "select count(*) from tb_grupo_terapeutico where unidade_origem_chave is not null",
@@ -56,7 +56,7 @@ class AgendaLegacyMigrationTests {
         var columns = LegacyMigrationFixture.columns(source);
         var before = LegacyMigrationFixture.snapshot(source, columns);
 
-        assertEquals(13, AgendaMigrationTool.migrar(source).migrationsExecuted);
+        assertEquals(14, AgendaMigrationTool.migrar(source).migrationsExecuted);
         assertEquals(before, LegacyMigrationFixture.snapshot(source, columns));
         assertEquals(12, jdbc.queryForObject(
                 "select count(*) from tb_agendamento where unidade_origem_chave is null", Integer.class));
@@ -70,12 +70,12 @@ class AgendaLegacyMigrationTests {
         var jdbc = new JdbcTemplate(source);
         var oldColumns = LegacyMigrationFixture.columns(source);
         var previous = LegacyMigrationFixture.snapshot(source, oldColumns);
-        AgendaMigrationTool.migrar(source);
+        assertEquals(8, LegacyMigrationFixture.migrarAte(source, "8").migrationsExecuted);
 
         assertEquals(0, jdbc.queryForObject("select count(*) from tb_vinculo_assistencial", Integer.class));
         assertEquals(0, jdbc.queryForObject("select count(*) from tb_vinculo_assistencial_aud", Integer.class));
         assertEquals(previous, LegacyMigrationFixture.snapshot(source, oldColumns));
-        assertEquals(0, AgendaMigrationTool.migrar(source).migrationsExecuted);
+        assertEquals(0, LegacyMigrationFixture.migrarAte(source, "8").migrationsExecuted);
     }
 
     @Test void migratePersistedOldSchemaWithoutChangingAnyOriginalColumnOrRevision() throws Exception {
@@ -85,7 +85,7 @@ class AgendaLegacyMigrationTests {
         assertFalse(columns.get("TB_AGENDAMENTO").contains("SITUACAO_RESERVA"));
         assertEquals(12, jdbc.queryForObject("select count(*) from tb_agendamento", Integer.class));
         var result = AgendaMigrationTool.migrar(source);
-        assertEquals(13, result.migrationsExecuted);
+        assertEquals(14, result.migrationsExecuted);
         assertEquals(before, LegacyMigrationFixture.snapshot(source, columns));
         assertEquals(4, jdbc.queryForObject("select count(*) from tb_agendamento where migracao_pendente=true", Integer.class));
         assertEquals(3, jdbc.queryForObject("select count(*) from tb_agendamento where ocupa_vaga=true", Integer.class));
@@ -149,7 +149,7 @@ class AgendaLegacyMigrationTests {
         try (var connection = source.getConnection(); var reader = new InputStreamReader(getClass().getResourceAsStream(
                 "/agenda-migration/h2/V1__adicionar_estados_canonicos.sql"))) { RunScript.execute(connection, reader); }
         assertThrows(IllegalStateException.class, () -> CanonicalAgendaGuard.verificar(source));
-        assertEquals(13, AgendaMigrationTool.migrar(source).migrationsExecuted);
+        assertEquals(14, AgendaMigrationTool.migrar(source).migrationsExecuted);
         assertDoesNotThrow(() -> CanonicalAgendaGuard.verificar(source));
     }
 

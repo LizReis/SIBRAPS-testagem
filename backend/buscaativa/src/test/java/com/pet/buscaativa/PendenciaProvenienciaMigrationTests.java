@@ -10,7 +10,6 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import com.pet.buscaativa.migration.AgendaMigrationTool;
 
 /**
  * Executa V12 num H2 EM ARQUIVO com fixture legada real; nao executa em
@@ -26,7 +25,7 @@ class PendenciaProvenienciaMigrationTests {
         var before = LegacyMigrationFixture.snapshot(source, beforeColumns);
         var jdbc = new JdbcTemplate(source);
 
-        assertEquals(13, AgendaMigrationTool.migrar(source).migrationsExecuted);
+        assertEquals(12, LegacyMigrationFixture.migrarAte(source, "12").migrationsExecuted);
         assertEquals(before, LegacyMigrationFixture.snapshot(source, beforeColumns));
         assertEquals(0, jdbc.queryForObject(
                 "select count(*) from tb_pendencia_revisao_proveniencia", Integer.class));
@@ -34,13 +33,13 @@ class PendenciaProvenienciaMigrationTests {
                 "select count(*) from tb_pendencia_revisao_proveniencia_aud", Integer.class));
         assertEquals(0, jdbc.queryForObject(
                 "select count(*) from tb_vinculo_assistencial", Integer.class));
-        assertEquals(0, AgendaMigrationTool.migrar(source).migrationsExecuted);
+        assertEquals(0, LegacyMigrationFixture.migrarAte(source, "12").migrationsExecuted);
     }
 
     @Test
     void chaveDeUnidadePacientePapelEImutabilidadeProtegidosPeloBanco() throws Exception {
         var source = LegacyMigrationFixture.legacy(temp.resolve("constraints-v12"));
-        AgendaMigrationTool.migrar(source);
+        LegacyMigrationFixture.migrarAte(source, "12");
         var jdbc = new JdbcTemplate(source);
 
         jdbc.update("""

@@ -13,8 +13,6 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import org.hibernate.envers.AuditReaderFactory;
-import org.hibernate.envers.query.AuditEntity;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -38,7 +36,6 @@ import com.pet.buscaativa.repositories.HistoricoPacienteRepository;
 import com.pet.buscaativa.services.PoliticaVisitaDomiciliar;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
 
-import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 
 /** Projeção interna de um vínculo autorizado a partir de um único snapshot H2. */
@@ -50,11 +47,11 @@ public class ProjecaoClinicaVinculoService {
     private final LinhaDoTempoFrequenciasVinculoService linhaDoTempo;
     private final HistoricoPacienteRepository historicos;
     private final PoliticaVisitaDomiciliar politicaVisita;
-    private final EntityManager em;
+    private final EvidenciaStatusVinculo evidenciaStatus;
 
     public enum Motivo {
         ORIGEM_HISTORICA_INDETERMINADA, FREQUENCIA_INCONSISTENTE, ORDEM_DE_FREQUENCIAS_INDETERMINADA,
-        CADEIA_LOCAL_INCONCLUSIVA, STATUS_AUSENTE, STATUS_SEM_TRANSICAO_AUDITADA,
+        CADEIA_LOCAL_INCONCLUSIVA, STATUS_AUSENTE, STATUS_SEM_TRANSICAO_AUDITADA, STATUS_EVIDENCIA_CONFLITANTE,
         TIPO_AUSENTE, PENDENCIA_AUSENTE, INDICADORES_PENDENTES
     }
 
@@ -84,7 +81,7 @@ public class ProjecaoClinicaVinculoService {
             LinhaDoTempoFrequenciasVinculoService.Diagnostico frequencias,
             InventarioFrequenciasVinculoService.Inventario inventario,
             DiagnosticoProntidaoEstadoVinculoService.Relatorio prontidao,
-            Avaliacao<StatusPaciente> status, Avaliacao<TipoAcompanhamento> acompanhamento,
+            EvidenciaStatusVinculo.Situacao evidenciaStatus, Avaliacao<StatusPaciente> status, Avaliacao<TipoAcompanhamento> acompanhamento,
             Avaliacao<Boolean> pendencias, Avaliacao<Integer> faltas, Avaliacao<LocalDate> ultimaPresenca,
             Avaliacao<ClassificacaoRisco> risco, Avaliacao<Boolean> visita,
             Avaliacao<ComparadorSelecaoBuscaAtivaVinculo.Resultado> buscaAtiva) {}
@@ -103,10 +100,12 @@ public class ProjecaoClinicaVinculoService {
         var calculo = DiagnosticoFaltasConsecutivasVinculoService.calcular(frequencias);
         var causasSequencia = motivosSequencia(calculo);
         var causasStatus = EnumSet.noneOf(Motivo.class);
-        if (vinculo.getStatusPaciente() == null) {
-            causasStatus.add(Motivo.STATUS_AUSENTE);
-        } else if (!statusTemTransicaoAuditada(vinculo)) {
-            causasStatus.add(Motivo.STATUS_SEM_TRANSICAO_AUDITADA);
+        var provaStatus = evidenciaStatus.analisar(vinculo);
+        switch (provaStatus) {
+            case AUSENTE -> causasStatus.add(Motivo.STATUS_AUSENTE);
+            case SEM_COMPROVACAO -> causasStatus.add(Motivo.STATUS_SEM_TRANSICAO_AUDITADA);
+            case CONFLITANTE -> causasStatus.add(Motivo.STATUS_EVIDENCIA_CONFLITANTE);
+            case INICIALIZACAO_AUDITADA, TRANSICAO_AUDITADA -> { }
         }
         StatusPaciente status = causasStatus.isEmpty() ? vinculo.getStatusPaciente() : null;
         var tipo = vinculo.getTipoAcompanhamento();
@@ -164,7 +163,8 @@ public class ProjecaoClinicaVinculoService {
 
         return new Projecao(vinculoId, unidade, dataReferencia, agenda, grupos, historico, frequencias,
                 InventarioFrequenciasVinculoService.inventariar(frequencias),
-                DiagnosticoProntidaoEstadoVinculoService.avaliar(vinculo, calculo),
+                DiagnosticoProntidaoEstadoVinculoService.avaliar(vinculo, calculo, provaStatus.comprovada()),
+                provaStatus,
                 avaliar(status, causasStatus, vinculo.getStatusPaciente(), global.getStatusPaciente()),
                 avaliar(tipo, causasTipo, tipo, global.getTipoAcompanhamento()),
                 avaliar(pendencia, causasPendencia, pendencia, global.getIndicadoresPendentes()),
@@ -173,18 +173,6 @@ public class ProjecaoClinicaVinculoService {
                 avaliar(risco.orElse(null), causasRisco, vinculo.getClassificacaoRisco(), global.getClassificacaoRisco()),
                 avaliar(visita.orElse(null), causasVisita, vinculo.getGatilhoVisitaAcionado(), global.getGatilhoVisitaAcionado()),
                 buscaComparada);
-    }
-
-    private boolean statusTemTransicaoAuditada(VinculoAssistencial vinculo) {
-        List<?> valores = AuditReaderFactory.get(em).createQuery()
-                .forRevisionsOfEntity(VinculoAssistencial.class, false, false)
-                .add(AuditEntity.id().eq(vinculo.getId()))
-                .addProjection(AuditEntity.property("statusPaciente"))
-                .addOrder(AuditEntity.revisionNumber().desc())
-                .getResultList();
-        // O primeiro valor é o mais recente. O valor inicial ATIVO das fábricas não é prova.
-        return !valores.isEmpty() && vinculo.getStatusPaciente().equals(valores.getFirst())
-                && valores.stream().anyMatch(anterior -> !vinculo.getStatusPaciente().equals(anterior));
     }
 
     private static boolean chaveCanonica(VinculoAssistencial vinculo) {

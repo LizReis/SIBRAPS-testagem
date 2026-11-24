@@ -40,7 +40,7 @@ class DiagnosticoProntidaoEstadoVinculoTests {
     @Test
     void origemIncertaImpedeProntidaoMesmoComValoresLocaisPresentes() {
         var rel = DiagnosticoProntidaoEstadoVinculoService.avaliar(
-                vinculo(3, false, true), diagnostico(null, 2));
+                vinculo(3, false, true), diagnostico(null, 2), false);
         assertEquals(Situacao.REVISAR_PROVENIENCIA_HISTORICA, rel.situacao());
         assertTrue(rel.requerRevisao());
         assertEquals(2, rel.agendamentosHistoricosSemOrigem());
@@ -49,7 +49,7 @@ class DiagnosticoProntidaoEstadoVinculoTests {
     @Test
     void vinculoNovoSemEstadoClinicoNaoCopiaContadorGlobalDoPaciente() {
         var rel = DiagnosticoProntidaoEstadoVinculoService.avaliar(
-                vinculo(null, null, false), diagnostico(0, 0));
+                vinculo(null, null, false), diagnostico(0, 0), false);
         assertEquals(Situacao.RECONCILIAR_ESTADO_LOCAL, rel.situacao());
         assertTrue(rel.faltaContagemLocal());
         assertTrue(rel.faltaTipoAcompanhamentoLocal());
@@ -59,15 +59,24 @@ class DiagnosticoProntidaoEstadoVinculoTests {
     @Test
     void contadorDivergenteRequerRevisaoAntesDeQualquerCorte() {
         var rel = DiagnosticoProntidaoEstadoVinculoService.avaliar(
-                vinculo(3, false, true), diagnostico(1, 0));
+                vinculo(3, false, true), diagnostico(1, 0), true);
         assertEquals(Situacao.REVISAR_DIVERGENCIA_DE_FALTAS, rel.situacao());
         assertTrue(rel.contagemLocalDivergenteDaSequencia());
     }
 
     @Test
+    void estadoCompletoComDefaultSemProvaExigeReconciliacao() {
+        var relatorio = DiagnosticoProntidaoEstadoVinculoService.avaliar(
+                vinculo(0, false, true), diagnostico(0, 0), false);
+        assertEquals(Situacao.RECONCILIAR_ESTADO_LOCAL, relatorio.situacao());
+        assertFalse(relatorio.faltaStatusLocal());
+        assertFalse(relatorio.statusLocalComprovado());
+    }
+
+    @Test
     void estadosCoerentesAindaSaoSomenteParaTestes() {
         var rel = DiagnosticoProntidaoEstadoVinculoService.avaliar(
-                vinculo(1, false, true), diagnostico(1, 0));
+                vinculo(1, false, true), diagnostico(1, 0), true);
         assertEquals(Situacao.COERENTE_APENAS_PARA_TESTES, rel.situacao());
         assertFalse(rel.requerRevisao());
         assertEquals(3, rel.eventosLocaisComprovados());
@@ -76,7 +85,7 @@ class DiagnosticoProntidaoEstadoVinculoTests {
     @Test
     void indicadorLocalMarcadoComoPendenteImpedeProntidaoComDemaisCamposCoerentes() {
         var relatorio = DiagnosticoProntidaoEstadoVinculoService.avaliar(
-                vinculo(1, true, true), diagnostico(1, 0));
+                vinculo(1, true, true), diagnostico(1, 0), true);
         assertEquals(Situacao.REVISAR_INDICADORES_LOCAIS_PENDENTES, relatorio.situacao());
         assertFalse(relatorio.faltaIndicadorDePendenciaLocal());
         assertTrue(relatorio.requerRevisao());
@@ -90,7 +99,7 @@ class DiagnosticoProntidaoEstadoVinculoTests {
         var frequencias = new DiagnosticoFaltasConsecutivasVinculoService.Resultado(
                 OptionalInt.of(1), Optional.of(comprovada.atStartOfDay()), 2, false, 0, 0, 0, false);
 
-        var relatorio = DiagnosticoProntidaoEstadoVinculoService.avaliar(vinculo, frequencias);
+        var relatorio = DiagnosticoProntidaoEstadoVinculoService.avaliar(vinculo, frequencias, true);
 
         assertEquals(Situacao.REVISAR_DIVERGENCIA_DE_ULTIMA_PRESENCA, relatorio.situacao());
         assertTrue(relatorio.ultimaPresencaLocalDivergente());

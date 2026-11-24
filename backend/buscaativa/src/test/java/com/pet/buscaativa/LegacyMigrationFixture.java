@@ -25,6 +25,13 @@ final class LegacyMigrationFixture {
         }
         return source;
     }
+    static org.flywaydb.core.api.output.MigrateResult migrarAte(DataSource source, String versao) {
+        return org.flywaydb.core.Flyway.configure().dataSource(source).table("sibraps_agenda_schema_history")
+                .locations("classpath:agenda-migration/h2").baselineOnMigrate(true).baselineVersion("0")
+                .javaMigrations(new com.pet.buscaativa.migration.V2__identificar_frequencias_legadas(),
+                        new com.pet.buscaativa.migration.V6__identificar_responsabilidade_historica())
+                .target(versao).cleanDisabled(true).load().migrate();
+    }
     static Map<String, List<String>> columns(DataSource source) {
         var jdbc = new JdbcTemplate(source); var result = new TreeMap<String, List<String>>();
         for (String table : jdbc.queryForList("select table_name from information_schema.tables where table_schema='PUBLIC'", String.class)) {

@@ -78,7 +78,7 @@ class LevantamentoOrigemLegadaTests {
         assertThat(LegacyMigrationFixture.snapshot(leituraV8, colunasV8)).isEqualTo(antesV8);
 
         var copia = restaurar(v8, "copia-v13");
-        assertThat(AgendaMigrationTool.migrar(copia).migrationsExecuted).isEqualTo(5);
+        assertThat(LegacyMigrationFixture.migrarAte(copia, "13").migrationsExecuted).isEqualTo(5);
         var leituraV13 = somenteLeitura(copia);
         assertThat(versao(leituraV13)).isEqualTo("13");
         var colunasV13 = LegacyMigrationFixture.columns(leituraV13);
@@ -94,7 +94,12 @@ class LevantamentoOrigemLegadaTests {
             if (tabela.contains("REVISAO_PROVENIENCIA")) assertThat(linhas).isEmpty();
         });
 
-        CorrectiveMigrationApplication.application(leituraV13)
+        var copiaV14 = restaurar(leituraV13, "copia-v14");
+        assertThat(AgendaMigrationTool.migrar(copiaV14).migrationsExecuted).isEqualTo(1);
+        var leituraV14 = somenteLeitura(copiaV14);
+        var colunasV14 = LegacyMigrationFixture.columns(leituraV14);
+        var antesV14 = LegacyMigrationFixture.snapshot(leituraV14, colunasV14);
+        CorrectiveMigrationApplication.application(leituraV14)
                 .withPropertyValues("spring.profiles.active=test,diagnostico-migracao")
                 .run(contexto -> {
                     assertThat(contexto).hasNotFailed();
@@ -107,6 +112,7 @@ class LevantamentoOrigemLegadaTests {
                     assertThat(relatorio.frequenciasExcluidasDoEnsaio()).isEqualTo(10 + participacoes);
                 });
 
+        assertThat(LegacyMigrationFixture.snapshot(leituraV14, colunasV14)).isEqualTo(antesV14);
         conferirPistasDeAuditoria(leituraV13, grupos);
         assertThat(OrigemClinicaPreflight.analisar(leituraV13)).isEqualTo(origemV8);
         assertThat(LegacyMigrationFixture.columns(leituraV13)).isEqualTo(colunasV13);

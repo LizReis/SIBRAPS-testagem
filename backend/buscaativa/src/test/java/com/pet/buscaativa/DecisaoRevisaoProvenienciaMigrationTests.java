@@ -10,7 +10,6 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import com.pet.buscaativa.migration.AgendaMigrationTool;
 
 /**
  * V13 em H2 persistido SINTETICO e isolado; nenhuma tabela em producao
@@ -27,7 +26,7 @@ class DecisaoRevisaoProvenienciaMigrationTests {
         var snapshot = LegacyMigrationFixture.snapshot(fonte, colunasAnteriores);
         var jdbc = new JdbcTemplate(fonte);
 
-        assertEquals(13, AgendaMigrationTool.migrar(fonte).migrationsExecuted);
+        assertEquals(13, LegacyMigrationFixture.migrarAte(fonte, "13").migrationsExecuted);
         assertEquals(snapshot, LegacyMigrationFixture.snapshot(fonte, colunasAnteriores));
         assertEquals(0, jdbc.queryForObject(
                 "select count(*) from tb_decisao_revisao_proveniencia", Integer.class));
@@ -35,13 +34,13 @@ class DecisaoRevisaoProvenienciaMigrationTests {
                 "select count(*) from tb_decisao_revisao_proveniencia_aud", Integer.class));
         assertEquals(0, jdbc.queryForObject(
                 "select count(*) from tb_pendencia_revisao_proveniencia", Integer.class));
-        assertEquals(0, AgendaMigrationTool.migrar(fonte).migrationsExecuted);
+        assertEquals(0, LegacyMigrationFixture.migrarAte(fonte, "13").migrationsExecuted);
     }
 
     @Test
     void decisaoV13ExigeMesmoTicketPacienteUnidadePerfilEImutabilidade() throws Exception {
         var fonte = LegacyMigrationFixture.legacy(temp.resolve("decisao-v13-integridade"));
-        AgendaMigrationTool.migrar(fonte);
+        LegacyMigrationFixture.migrarAte(fonte, "13");
         var jdbc = new JdbcTemplate(fonte);
         jdbc.update("""
             insert into tb_vinculo_assistencial(
