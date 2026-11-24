@@ -58,9 +58,9 @@ public class RelatoriosLocaisEnsaioService {
             var ref=v.getProfissionalReferencia();
             boolean referenciaValida=ref!=null && AtoresEstadoClinicoLocalEnsaio.elegivel(ref,contexto.unidade(),false);
             if(profissionalId!=null && (!referenciaValida || !profissionalId.equals(ref.getIdPublico()))) continue;
-            if(tipo!=null && tipo!=i.tipoAcompanhamento()) continue;
-            if(i.statusPaciente()!=StatusPaciente.ATIVO) {
-                if(i.statusPaciente()==null) revisar++;
+            if (tipo != null && i.tipoAcompanhamento() != null && tipo != i.tipoAcompanhamento()) continue;
+            if (i.statusPaciente() != StatusPaciente.ATIVO) {
+                if (i.statusPaciente() == null) revisar++;
                 continue;
             }
             // Filtros legados referem-se à data da última presença, não à data da falta.
@@ -68,7 +68,7 @@ public class RelatoriosLocaisEnsaioService {
                 var d=i.dataUltimaPresenca();
                 if(inicio!=null && (d==null||d.isBefore(inicio)) || fim!=null && (d==null||d.isAfter(fim))) continue;
             }
-            if(!Boolean.FALSE.equals(i.indicadoresPendentes()) || !i.ultimaPresencaConclusiva()
+            if(i.tipoAcompanhamento()==null || !Boolean.FALSE.equals(i.indicadoresPendentes()) || !i.ultimaPresencaConclusiva()
                     || l.calculo().busca().decisao()==ComparadorSelecaoBuscaAtivaVinculo.Decisao.INDETERMINADA) {
                 revisar++; continue;
             }
@@ -93,7 +93,7 @@ public class RelatoriosLocaisEnsaioService {
                 .setParameter("id",grupoId).setParameter("unidade",contexto.unidade()).getSingleResult()==0)
             throw new ResourceNotFoundException("Grupo não encontrado.");
         var locais=consultas.lerUnidade().stream().collect(Collectors.toMap(l->l.local().getPaciente().getId(),l->l));
-        String hql="select s from SessaoGrupo s join fetch s.grupo g where (s.unidadeOrigemChave=:unidade or g.unidadeOrigemChave=:unidade) and s.status=:status"
+        String hql="select s from SessaoGrupo s join fetch s.grupo g where (s.unidadeOrigemChave=:unidade or g.unidadeOrigemChave=:unidade) and (s.status=:status or s.status is null)"
                 +" and s.dataSessao between :inicio and :fim"+(grupoId==null?"":" and g.id=:grupo")
                 +" order by s.dataSessao,s.horario,s.id";
         var query=em.createQuery(hql,SessaoGrupo.class).setParameter("unidade",contexto.unidade())
@@ -104,7 +104,7 @@ public class RelatoriosLocaisEnsaioService {
         long pendentes=0;
         int presentes=0,ausentes=0;
         for(var s:query.getResultList()) {
-            if(!contexto.unidade().equals(s.getUnidadeOrigemChave())
+            if(s.getStatus()!=StatusSessaoGrupo.REALIZADA || !contexto.unidade().equals(s.getUnidadeOrigemChave())
                     || !contexto.unidade().equals(s.getGrupo().getUnidadeOrigemChave())
                     || AvaliacaoProvenienciaClinica.origemSessao(s)!=AvaliacaoProvenienciaClinica.Situacao.COMPROVADA
                     || s.getParticipantes().stream().anyMatch(p->!fatoColetivoComprovado(p,locais))) {

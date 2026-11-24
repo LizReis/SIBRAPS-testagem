@@ -1,9 +1,11 @@
 package com.pet.buscaativa.services.impl;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+import org.hibernate.envers.AuditReader;
 import org.hibernate.envers.AuditReaderFactory;
 import org.hibernate.envers.DefaultRevisionEntity;
 import org.hibernate.envers.RevisionType;
@@ -36,15 +38,8 @@ public class EvidenciaStatusVinculo {
 
     public Situacao analisar(VinculoAssistencial vinculo) {
         var leitor = AuditReaderFactory.get(em);
-        List<?> linhasVinculo = leitor.createQuery().forRevisionsOfEntity(VinculoAssistencial.class, false, true)
-                .add(AuditEntity.id().eq(vinculo.getId())).addOrder(AuditEntity.revisionNumber().asc())
-                .getResultList();
-        List<?> linhasEventos = leitor.createQuery().forRevisionsOfEntity(EventoEstadoClinicoVinculo.class, false, false)
-                .add(AuditEntity.relatedId("vinculo").eq(vinculo.getId()))
-                .addOrder(AuditEntity.id().asc())
-                .getResultList();
-        var revisoes = linhasVinculo.stream().map(row -> revisao(row, VinculoAssistencial.class)).toList();
-        var eventos = linhasEventos.stream().map(row -> revisao(row, EventoEstadoClinicoVinculo.class)).toList();
+        var revisoes = revisoesVinculo(leitor, vinculo.getId(), null);
+        var eventos = revisoesEventos(leitor, vinculo.getId(), null);
         var atuais = em.createQuery("""
                 select e from EventoEstadoClinicoVinculo e where e.vinculo.id = :id order by e.id
                 """, EventoEstadoClinicoVinculo.class).setParameter("id", vinculo.getId()).getResultList();
@@ -56,6 +51,41 @@ public class EvidenciaStatusVinculo {
             if (auditado.tipo() != RevisionType.ADD || !mesmoEvento(atuais.get(i), auditado.estado(), vinculo))
                 return Situacao.CONFLITANTE;
         }
+        return conferir(vinculo, revisoes, eventos);
+    }
+
+    /** A série histórica exige criação inicial comprovada, inclusive quando houve transições. */
+    boolean comprovadaAte(AuditReader leitor, VinculoAssistencial historico, Number corte, LocalDateTime fim) {
+        var revisoes = revisoesVinculo(leitor, historico.getId(), corte);
+        var eventos = revisoesEventos(leitor, historico.getId(), corte);
+        return !revisoes.isEmpty() && !eventos.isEmpty()
+                && revisoes.getFirst().tipo() == RevisionType.ADD
+                && eventos.getFirst().numero() == revisoes.getFirst().numero()
+                && eventos.getFirst().estado().getNatureza() == Natureza.INICIALIZACAO
+                && eventos.stream().allMatch(e -> e.tipo() == RevisionType.ADD && e.estado().coerente()
+                        && !e.estado().getOcorridoEm().isAfter(fim)
+                        && historico.getUnidadeChave().equals(e.estado().getUnidadeChave()))
+                && conferir(historico, revisoes, eventos).comprovada();
+    }
+
+    private static List<Revisao<VinculoAssistencial>> revisoesVinculo(AuditReader leitor, Long id, Number corte) {
+        var q = leitor.createQuery().forRevisionsOfEntity(VinculoAssistencial.class, false, true)
+                .add(AuditEntity.id().eq(id)).addOrder(AuditEntity.revisionNumber().asc());
+        if (corte != null) q.add(AuditEntity.revisionNumber().le(corte));
+        List<?> linhas = q.getResultList();
+        return linhas.stream().map(row -> revisao(row, VinculoAssistencial.class)).toList();
+    }
+
+    private static List<Revisao<EventoEstadoClinicoVinculo>> revisoesEventos(AuditReader leitor, Long id, Number corte) {
+        var q = leitor.createQuery().forRevisionsOfEntity(EventoEstadoClinicoVinculo.class, false, corte != null)
+                .add(AuditEntity.relatedId("vinculo").eq(id)).addOrder(AuditEntity.id().asc());
+        if (corte != null) q.add(AuditEntity.revisionNumber().le(corte));
+        List<?> linhas = q.getResultList();
+        return linhas.stream().map(row -> revisao(row, EventoEstadoClinicoVinculo.class)).toList();
+    }
+
+    private static Situacao conferir(VinculoAssistencial vinculo,
+            List<Revisao<VinculoAssistencial>> revisoes, List<Revisao<EventoEstadoClinicoVinculo>> eventos) {
         if (revisoes.isEmpty())
             return eventos.isEmpty() ? semComprovacao(vinculo) : Situacao.CONFLITANTE;
 

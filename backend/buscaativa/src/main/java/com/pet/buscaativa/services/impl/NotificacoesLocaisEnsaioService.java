@@ -2,7 +2,9 @@ package com.pet.buscaativa.services.impl;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.*;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -28,13 +30,15 @@ public class NotificacoesLocaisEnsaioService {
     private final EvidenciaStatusVinculo evidencia;
     private final EntityManager em;
     private final Clock clock;
+    @Value("${app.alertas.zone:America/Bahia}")
+    private String zonaRf26;
     public record Chave(LocalDate data,UUID destinatario,String unidade) {}
     public record Entrega(Chave chave,String nome,String email,List<PacienteVermelhoDTO> pacientes) {}
 
     public List<Entrega> planejar() {
         if(SecurityContextHolder.getContext().getAuthentication()!=null)
             throw new AccessDeniedException("Planejamento técnico exige contexto sem autenticação.");
-        LocalDate hoje=LocalDate.now(clock);
+        LocalDate hoje=diaTecnico();
         var porUnidade=new HashMap<String,List<PacienteVermelhoDTO>>();
         var entregas=new ArrayList<Entrega>();
         for(var u:usuarios.findAll()) {
@@ -57,12 +61,16 @@ public class NotificacoesLocaisEnsaioService {
     public Optional<Entrega> revalidar(Chave chave) {
         if(SecurityContextHolder.getContext().getAuthentication()!=null)
             throw new AccessDeniedException("Revalidação técnica exige contexto sem autenticação.");
-        if(chave==null || !LocalDate.now(clock).equals(chave.data())
+        if(chave==null || !diaTecnico().equals(chave.data())
                 || chave.destinatario()==null || chave.unidade()==null) return Optional.empty();
         return usuarios.findByIdPublico(chave.destinatario())
                 .filter(u->AtoresEstadoClinicoLocalEnsaio.elegivel(u,chave.unidade(),false))
                 .filter(u->u.getEmail()!=null&&!u.getEmail().isBlank())
                 .map(u->new Entrega(chave,u.getNome(),u.getEmail(),vermelhos(chave.unidade(),chave.data())));
+    }
+
+    private LocalDate diaTecnico() {
+        return LocalDate.ofInstant(clock.instant(), ZoneId.of(zonaRf26));
     }
 
     private List<PacienteVermelhoDTO> vermelhos(String unidade,LocalDate hoje) {
@@ -73,7 +81,8 @@ public class NotificacoesLocaisEnsaioService {
             if(!ProjecaoClinicaVinculoService.chaveCanonica(v)||!Boolean.FALSE.equals(v.getIndicadoresPendentes()))continue;
             var c=calculo.calcular(v,hoje,evidencia.analisar(v),v.getIndicadoresPendentes());
             if(c.status().valor().orElse(null)!=StatusPaciente.ATIVO||c.risco().valor().orElse(null)!=ClassificacaoRisco.VERMELHO
-                    ||c.faltas().valor().isEmpty()||!c.ultimaPresenca().conclusiva())continue;
+                    ||c.faltas().valor().isEmpty()||!c.ultimaPresenca().conclusiva()
+                    || !c.visita().conclusiva() || c.visita().valor().isEmpty())continue;
             lista.add(new PacienteVermelhoDTO(v.getPaciente().getNome(),c.faltas().valor().orElseThrow(),c.ultimaPresenca().valor().orElse(null)));
         }
         return List.copyOf(lista);

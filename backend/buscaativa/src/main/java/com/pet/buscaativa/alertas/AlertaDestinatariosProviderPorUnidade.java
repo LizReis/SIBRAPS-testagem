@@ -50,10 +50,7 @@ public class AlertaDestinatariosProviderPorUnidade implements AlertaDestinatario
     private boolean unidadeConfigurada(Usuario usuario) {
 
         if (usuario.getUnidadeAtuacao() == null) {
-            log.warn(
-                    "RF26: usuário '{}' sem unidade de atuação configurada. Ignorando alerta.",
-                    usuario.getEmail()
-            );
+            log.warn("RF26: destinatário sem unidade de atuação configurada.");
             return false;
         }
 
@@ -61,11 +58,7 @@ public class AlertaDestinatariosProviderPorUnidade implements AlertaDestinatario
                 && (usuario.getUsfAtuacao() == null
                 || usuario.getUsfAtuacao().getId() == null)) {
 
-            log.warn(
-                    "RF26: usuário '{}' pertence a USF, mas a USF específica não está configurada. Ignorando alerta.",
-                    usuario.getEmail()
-            );
-
+            log.warn("RF26: destinatário sem USF específica configurada.");
             return false;
         }
 

@@ -92,14 +92,14 @@ class EventoEstadoClinicoVinculoMigrationTests {
         // V15 é aditiva: nenhum vínculo histórico recebe uma causa inventada.
         colunasV14.remove("sibraps_agenda_schema_history");
         depois.remove("sibraps_agenda_schema_history");
-        assertEquals(1, AgendaMigrationTool.migrar(fonte).migrationsExecuted);
+        assertEquals(1, LegacyMigrationFixture.migrarAte(fonte, "15").migrationsExecuted);
         assertEquals(depois, LegacyMigrationFixture.snapshot(fonte, colunasV14));
         assertNull(jdbc.queryForObject("select pendencia_empate_local from tb_vinculo_assistencial where id=?", Boolean.class, id));
         assertEquals(0, jdbc.queryForObject("select count(*) from tb_vinculo_assistencial_aud where pendencia_empate_local is not null", Integer.class));
         assertThrows(DataAccessException.class, () -> jdbc.update("update tb_vinculo_assistencial set pendencia_empate_local=true where id=?", id));
         var colsAtualizadas = LegacyMigrationFixture.columns(fonte);
         var dadosAtualizados = LegacyMigrationFixture.snapshot(fonte, colsAtualizadas);
-        assertEquals(0, AgendaMigrationTool.migrar(fonte).migrationsExecuted);
+        assertEquals(0, LegacyMigrationFixture.migrarAte(fonte, "15").migrationsExecuted);
         assertEquals(dadosAtualizados, LegacyMigrationFixture.snapshot(fonte, colsAtualizadas));
 
         CorrectiveMigrationApplication.application(fonte)
@@ -121,11 +121,11 @@ class EventoEstadoClinicoVinculoMigrationTests {
     }
 
     @Test
-    void restauraV15ComEventoEnversEReverteFalhaRealDeAuditoria() throws Exception {
+    void restauraEsquemaAtualComEventoEnversEReverteFalhaRealDeAuditoria() throws Exception {
         var fonte = LegacyMigrationFixture.legacy(temp.resolve("nova-v14"));
         var colunasLegadas = LegacyMigrationFixture.columns(fonte);
         var dadosLegados = LegacyMigrationFixture.snapshot(fonte, colunasLegadas);
-        assertEquals(15, AgendaMigrationTool.migrar(fonte).migrationsExecuted);
+        assertEquals(16, AgendaMigrationTool.migrar(fonte).migrationsExecuted);
         assertEquals(dadosLegados, LegacyMigrationFixture.snapshot(fonte, colunasLegadas));
         var jdbc = new JdbcTemplate(fonte);
         var ids = new UUID[2];

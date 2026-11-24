@@ -11,6 +11,7 @@ import java.util.stream.Stream;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.pet.buscaativa.entities.Endereco;
@@ -33,6 +34,7 @@ public class BuscaAtivaPainelLocalEnsaioService {
     private final ConsultasClinicasLocaisEnsaioService consultas;
     private final EscopoUnidadeService escopo;
     private final Clock clock;
+    private final HistoricoRiscoVinculoEnsaioService historico;
 
     public enum Acao { REVISAO_HISTORICA, VISITA_DOMICILIAR, PONTO_REFERENCIA, CONFERIR_REFERENCIA, ACOMPANHAMENTO_PRIORITARIO }
     public record Alerta(UUID idPublico, UUID vinculo, Integer versao, String nome, ClassificacaoRisco classificacaoRisco,
@@ -53,6 +55,11 @@ public class BuscaAtivaPainelLocalEnsaioService {
     public record Painel(long totalPacientesAtivos,long estadoNaoConfirmado,Distribuicao distribuicaoClassificacao,
             List<Evolucao> evolucao,List<Prioritario> pacientesPrioritarios,List<UnidadePainelDTO> unidadesDisponiveis,
             boolean historicoDisponivel,Atividade atividade,PontoAtual pontoAtual) {}
+
+    @Transactional(readOnly = true, isolation = Isolation.SERIALIZABLE, propagation = Propagation.REQUIRES_NEW)
+    Busca buscaAtivaSnapshot() {
+        return buscaAtiva();
+    }
 
     public Busca buscaAtiva() {
         var locais=consultas.lerUnidade();
@@ -82,14 +89,9 @@ public class BuscaAtivaPainelLocalEnsaioService {
                 || l.calculo().busca().decisao()==Decisao.INCLUIR)
                 .sorted(prioridade()).limit(5).map(this::prioritario).toList();
         int periodo=List.of(3,6,12).contains(periodoMeses)?periodoMeses:6;
-        var meses=new ArrayList<Evolucao>();
         var atual=YearMonth.now(clock);
-        // Não reconstruir passado a partir do estado atual nem da auditoria global.
-        for(int i=periodo-1;i>=0;i--) {
-            var mes=atual.minusMonths(i);
-            meses.add(new Evolucao(mes.toString(),mes.format(java.time.format.DateTimeFormatter.ofPattern("MMM/yy",
-                    Locale.forLanguageTag("pt-BR"))),null,null,null,false));
-        }
+        var meses=historico.reconstruir(java.util.stream.IntStream.range(0, periodo)
+                .mapToObj(i->atual.minusMonths(periodo-1L-i)).toList(),tipo,situacaoRua);
         long reservas=ativos.stream().flatMap(l->l.calculo().evidencias().agenda().stream())
                 .map(a->a.getId()).distinct().count();
         long sessoes=ativos.stream().flatMap(l->l.calculo().evidencias().participacoes().stream())
@@ -102,7 +104,7 @@ public class BuscaAtivaPainelLocalEnsaioService {
                 ativos.stream().filter(l->semPresencaRecente(l)==null).count());
         long estadoNaoConfirmado=filtrados.stream().filter(l->l.item().indicadores().statusPaciente()==null).count();
         return new Painel(total,estadoNaoConfirmado,
-                distribuicao,List.copyOf(meses),prioridades,List.of(unidadeAtual),false,atividade,
+                distribuicao,meses,prioridades,List.of(unidadeAtual),meses.stream().anyMatch(Evolucao::disponivel),atividade,
                 new PontoAtual(LocalDate.now(clock),distribuicao,estadoNaoConfirmado));
     }
 

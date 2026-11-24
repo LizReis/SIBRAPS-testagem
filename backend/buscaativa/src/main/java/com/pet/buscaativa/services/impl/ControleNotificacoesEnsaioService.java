@@ -15,7 +15,7 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * Protocolo experimental de reserva durável, SEM transporte SMTP.
- * A tabela é instalada exclusivamente por fixture de teste, nunca por este serviço.
+ * A tabela técnica é instalada pela migration offline V16.
  * Uma reserva confirmada antes da simulação não é automaticamente reenviada:
  * falha ambígua/crash exige revisão. Não promete exactly-once de transporte externo.
  */
@@ -42,8 +42,8 @@ public class ControleNotificacoesEnsaioService {
         tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         try {
             tx.executeWithoutResult(s->jdbc.update("""
-                    insert into ensaio_entrega_rf26 (dia,destinatario,unidade,estado)
-                    values (?,?,?,'RESERVADA')
+                    insert into tb_entrega_rf26 (dia,destinatario,unidade,estado,reservada_em)
+                    values (?,?,?,'RESERVADA',current_timestamp)
                     """,chave.data(),chave.destinatario(),chave.unidade()));
         } catch(DuplicateKeyException duplicada) { return Resultado.DUPLICADA; }
 
@@ -60,7 +60,7 @@ public class ControleNotificacoesEnsaioService {
         final Resultado finalizado=resultado;
         tx.executeWithoutResult(s->{
             int alteradas=jdbc.update("""
-                    update ensaio_entrega_rf26 set estado=? where dia=? and destinatario=? and unidade=? and estado='RESERVADA'
+                    update tb_entrega_rf26 set estado=?, finalizada_em=greatest(current_timestamp,reservada_em) where dia=? and destinatario=? and unidade=? and estado='RESERVADA'
                     """,finalizado.name(),chave.data(),chave.destinatario(),chave.unidade());
             if(alteradas!=1) throw new IllegalStateException("Reserva técnica não localizada.");
         });

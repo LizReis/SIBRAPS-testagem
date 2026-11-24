@@ -35,14 +35,31 @@ public class AuditoriaBuscaLocalEnsaioService {
 
     public record Resultado(AuditoriaBuscaAtivaDTO evento,boolean criado) {}
 
-    @Transactional(isolation=Isolation.SERIALIZABLE)
+    @Transactional
     public BuscaAtivaPainelLocalEnsaioService.Busca consultarLista() {
-        var contexto=atores.autorizarOperacional();
-        var ator=locks.travarUsuario(contexto.ator());
-        atores.validar(contexto,null,Map.of(contexto.ator(),ator));
-        var dados=busca.buscaAtiva();
-        em.persist(AuditoriaBuscaAtiva.local(null,ator,contexto.unidade(),TipoEventoBuscaAtiva.CONSULTA_LISTA_BUSCA_ATIVA,
-                UUID.randomUUID(),clock.instant().truncatedTo(ChronoUnit.MICROS),"LISTA_DA_UNIDADE",dados.alertas().size(),null,null,null,false,false));
+        return consultarLista(UUID.randomUUID());
+    }
+
+    /** A chave deduplica o evento. Uma repetição lê a lista atual, sem armazenar seu conteúdo. */
+    @Transactional
+    public BuscaAtivaPainelLocalEnsaioService.Busca consultarLista(UUID requisicao) {
+        if (requisicao == null) throw new ValidationException("Identificador da requisição obrigatório.");
+        var contexto = atores.autorizarOperacional();
+        var ator = locks.travarUsuario(contexto.ator());
+        atores.validar(contexto, null, Map.of(contexto.ator(), ator));
+        var tipo = TipoEventoBuscaAtiva.CONSULTA_LISTA_BUSCA_ATIVA;
+        var existente = eventos.findByAtor_IdAndChaveRequisicao(ator.getId(), requisicao);
+        if (existente.isPresent()) {
+            var e = existente.orElseThrow();
+            if (e.getTipoEvento() != tipo || e.getPaciente() != null
+                    || !("VINCULO:" + contexto.unidade()).equals(e.getUnidade()))
+                throw new ConflictException("Identificador de requisição já utilizado em outra operação.");
+            return busca.buscaAtivaSnapshot();
+        }
+        var dados = busca.buscaAtivaSnapshot();
+        em.persist(AuditoriaBuscaAtiva.local(null, ator, contexto.unidade(), tipo, requisicao,
+                clock.instant().truncatedTo(ChronoUnit.MICROS), "LISTA_DA_UNIDADE",
+                dados.alertas().size(), null, null, null, false, false));
         em.flush();
         return dados;
     }

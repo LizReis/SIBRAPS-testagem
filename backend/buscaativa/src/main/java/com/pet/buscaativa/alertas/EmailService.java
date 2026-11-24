@@ -28,8 +28,7 @@ public class EmailService {
 
     public void enviarHtml(String para, String assunto, String corpoHtml) {
         if (!habilitado) {
-            log.info("E-mail desabilitado (app.alertas.email.habilitado=false). Simulando envio para {} | assunto: {}",
-                    para, assunto);
+            log.info("E-mail desabilitado pela configuração. Nenhuma tentativa de transporte.");
             return;
         }
 

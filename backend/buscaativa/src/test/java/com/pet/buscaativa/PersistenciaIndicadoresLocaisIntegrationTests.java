@@ -53,7 +53,8 @@ import com.pet.buscaativa.services.impl.SusApiAdapter;
 import jakarta.persistence.EntityManager;
 
 @ActiveProfiles({"ensaio-estado-local", "relogio-coordenacao"})
-@SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:persistencia-local-63;DB_CLOSE_DELAY=-1")
+@SpringBootTest(properties = {"spring.datasource.url=jdbc:h2:mem:persistencia-local-63;DB_CLOSE_DELAY=-1",
+        "app.alertas.zone=UTC"})
 class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport {
     @Autowired EntityManager em;
     @Autowired TransactionTemplate tx;
@@ -91,7 +92,18 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
         @Bean
         @Primary
         Clock relogioFixo() {
-            return Clock.fixed(Instant.parse("2026-11-24T22:00:00Z"), ZoneId.of("America/Sao_Paulo"));
+            return new RelogioHistorico();
+        }
+    }
+
+    static final class RelogioHistorico extends Clock {
+        static final ThreadLocal<Instant> HISTORICO = new ThreadLocal<>();
+
+        @Override public ZoneId getZone() { return ZoneId.of("America/Sao_Paulo"); }
+        @Override public Clock withZone(ZoneId zone) { return Clock.fixed(instant(), zone); }
+        @Override public Instant instant() {
+            var historico = HISTORICO.get();
+            return historico == null ? Instant.parse("2026-11-24T22:00:00Z") : historico;
         }
     }
 
@@ -1112,6 +1124,13 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
         }
         var s=sessao(a.ator(),List.of(a),diasAtras(2),10);
         como(a.ator(),()->coletivo.confirmar(s.id(),s.versao(),Map.of()));
+        var externa=sessao(b.ator(),List.of(b),diasAtras(1),11);
+        tx.executeWithoutResult(t->{
+            em.find(SessaoGrupo.class,externa.id()).getGrupo().setTema("Grupo externo BX");
+            em.find(SessaoGrupo.class,s.id()).getGrupo().setTema("Grupo local AX");
+        });
+        como(b.ator(),()->coletivo.confirmar(externa.id(),externa.versao(),Map.of()));
+        tx.executeWithoutResult(t->em.find(Usuario.class,a.ator().getId()).setNome("Responsavel AX"));
         var colunas=LegacyMigrationFixture.columns(fonte);
         var antes=LegacyMigrationFixture.snapshot(fonte,colunas);
         var dados=como(a.ator(),()->relatoriosLocais.buscaAtiva(null,null,null,null));
@@ -1119,16 +1138,43 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
         assertTrue(como(b.ator(),()->relatoriosLocais.buscaAtiva(null,null,null,null)).dados().isEmpty());
         var grupos=como(a.ator(),()->relatoriosLocais.frequenciaGrupos(null,null,null));
         assertEquals(1,grupos.grupos()); assertEquals(1,grupos.dados().size());
-        assertEquals(a.ator().getNome(),grupos.dados().getFirst().getCoordenador());
+        assertEquals("Responsavel AX",grupos.dados().getFirst().getCoordenador());
         assertEquals(1,grupos.dados().getFirst().getQuantidadeAusentes());
-        assertTrue(como(b.ator(),()->relatoriosLocais.frequenciaGrupos(null,null,null)).dados().isEmpty());
+        assertEquals("Grupo externo BX",como(b.ator(),()->relatoriosLocais.frequenciaGrupos(null,null,null))
+                .dados().getFirst().getGrupo());
+        assertThrows(ResourceNotFoundException.class,()->como(a.ator(),()->relatoriosLocais.frequenciaGrupos(null,null,
+                tx.execute(t->em.find(SessaoGrupo.class,externa.id()).getGrupo().getId()))));
+        assertTrue(como(a.ator(),()->relatoriosLocais.frequenciaGrupos(diasAtras(1),diasAtras(1),null)).dados().isEmpty());
         var bytes=como(a.ator(),()->relatoriosLocais.exportarBusca(null,null,null,null,true));
         try(var wb=new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(bytes))) {
             assertEquals(4.0,wb.getSheetAt(0).getRow(8).getCell(3).getNumericCellValue());
         }
         var pdf=como(a.ator(),()->relatoriosLocais.exportarGrupos(null,null,null,false));
-        assertTrue(new String(pdf,0,4,java.nio.charset.StandardCharsets.US_ASCII).equals("%PDF"));
+        try(var doc=org.apache.pdfbox.pdmodel.PDDocument.load(pdf)) {
+            var texto=new org.apache.pdfbox.text.PDFTextStripper().getText(doc);
+            assertTrue(texto.contains("Grupo local AX"));
+            assertTrue(texto.contains("Responsavel AX"));
+            assertFalse(texto.contains("Grupo externo BX"));
+        }
         assertEquals(antes,LegacyMigrationFixture.snapshot(fonte,colunas));
+    }
+
+    @Test
+    void filtrosDeRelatorioSinalizamModalidadeESessaoInconclusivas() {
+        var l=novoLocal(UnidadeAtuacao.USF);
+        var semModalidade=novoPaciente();
+        tx.executeWithoutResult(t->em.persist(VinculoAssistencial.paraUsf(em.find(Paciente.class,semModalidade.getId()),
+                em.find(UsfReferencia.class,l.ator().getUsfAtuacao().getId()))));
+        var b=como(l.ator(),()->relatoriosLocais.buscaAtiva(null,null,null,TipoAcompanhamento.INDIVIDUAL));
+        assertTrue(b.dados().isEmpty());
+        assertEquals(1,b.revisaoOuSelecaoInconclusiva());
+
+        var incompleta=sessao(l.ator(),List.of(l),diasAtras(2),10);
+        tx.executeWithoutResult(t->em.find(SessaoGrupo.class,incompleta.id()).setStatus(null));
+        var g=como(l.ator(),()->relatoriosLocais.frequenciaGrupos(null,null,null));
+        assertTrue(g.dados().isEmpty());
+        assertEquals(1,g.sessoesPendentes());
+        assertThrows(ConflictException.class,()->como(l.ator(),()->relatoriosLocais.exportarGrupos(null,null,null,true)));
     }
 
     @Test
@@ -1147,6 +1193,18 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
         var depois=como(a.ator(),()->pendenciasPainel.listar(null,0,10));
         assertEquals(0,depois.pendentes());assertEquals(1,depois.aprovadas());assertEquals("APROVADA",depois.itens().getFirst().estado().name());
         assertEquals(v,carregar(a).getVersion());
+        var segunda=reserva(a,diasAtras(1),9,SituacaoAtendimento.AGENDADO,true);
+        var rejeitada=como(a.ator(),()->revisaoLocal.solicitar(a.paciente().getIdPublico(),a.vinculo(),v,
+                PendenciaRevisaoProveniencia.TipoRegistro.AGENDAMENTO,segunda.id(),JUSTIFICATIVA));
+        como(a.ator(),()->revisaoLocal.decidir(a.paciente().getIdPublico(),a.vinculo(),v,rejeitada,
+                DecisaoRevisaoProveniencia.Decisao.REJEITAR,JUSTIFICATIVA));
+        var primeiraPagina=como(a.ator(),()->pendenciasPainel.listar(null,0,1));
+        assertEquals(2,primeiraPagina.total());
+        assertEquals(1,primeiraPagina.aprovadas());
+        assertEquals(1,primeiraPagina.rejeitadas());
+        assertEquals(rejeitada,como(a.ator(),()->pendenciasPainel.listar(
+                com.pet.buscaativa.services.impl.PainelPendenciasLocalEnsaioService.Estado.REJEITADA,0,1)).itens().getFirst().ticket());
+        assertEquals(2,total("select count(*) from tb_agendamento where id in (?,?) and frequencia_assistencial='NAO_REGISTRADA'",ag.id(),segunda.id()));
         var recepcao=tx.execute(t->{var u=usuario(UnidadeAtuacao.USF);u.setTipoUsuario(TipoUsuario.RECEPCAO);
             u.setUsfAtuacao(em.find(UsfReferencia.class,a.ator().getUsfAtuacao().getId()));return u;});
         assertThrows(org.springframework.security.access.AccessDeniedException.class,()->como(recepcao,()->pendenciasPainel.listar(null,0,10)));
@@ -1226,6 +1284,28 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
     }
 
     @Test
+    void consultaRnf17ConcorrenteDeduplicaEventoSemEscreverFrequencia() throws Exception {
+        var local=novoLocal(UnidadeAtuacao.USF);
+        var chave=UUID.randomUUID();
+        var colunas=LegacyMigrationFixture.columns(fonte);
+        var antes=LegacyMigrationFixture.snapshot(fonte,colunas);
+        var partir=new CountDownLatch(1);
+        try(var executor=Executors.newFixedThreadPool(2)) {
+            var chamadas=List.of(executor.submit(()->apos(partir,()->como(local.ator(),()->auditoriaLocal.consultarLista(chave)))),
+                    executor.submit(()->apos(partir,()->como(local.ator(),()->auditoriaLocal.consultarLista(chave)))));
+            partir.countDown();
+            for(var f:chamadas) assertTrue(f.get(20,TimeUnit.SECONDS).alertas().isEmpty());
+        }
+        var eventos=como(local.ator(),()->auditoriaLocal.listarUnidade(0,10));
+        assertEquals(1,eventos.getTotalElements());
+        assertThrows(ConflictException.class,()->como(local.ator(),()->auditoriaLocal.visualizar(
+                local.paciente().getIdPublico(),local.vinculo(),carregar(local).getVersion(),chave)));
+        var depois=LegacyMigrationFixture.snapshot(fonte,colunas);
+        for(var tabela:antes.keySet()) if(!tabela.equals("TB_AUDITORIA_BUSCA_ATIVA"))
+            assertEquals(antes.get(tabela),depois.get(tabela),tabela);
+    }
+
+    @Test
     void revalidacaoTecnicaDescartaPlanoAntigoELotacaoAlterada() {
         var a=novoLocal(UnidadeAtuacao.USF);
         for(int d:List.of(5,4,3)) {
@@ -1242,25 +1322,62 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
     }
 
     @Test
+    void revalidacaoRf26ReleEmailPerfilCorrecaoEEncerramentoNoDiaTecnico() {
+        var a=novoLocal(UnidadeAtuacao.USF);
+        var reservas = new java.util.ArrayList<FrequenciaIndividualLocalEnsaioService.Resultado>();
+        for (int d : List.of(5,4,3)) {
+            var ag=reserva(a,diasAtras(d),9,SituacaoAtendimento.AGENDADO,true);
+            reservas.add(como(a.ator(),()->individual.registrar(ag.id(),ag.versao(),FrequenciaAssistencial.FALTOU)));
+        }
+        var chave=notificacoesLocais.planejar().stream()
+                .filter(e->e.chave().destinatario().equals(a.ator().getIdPublico())).findFirst().orElseThrow().chave();
+        assertEquals(1,notificacoesLocais.revalidar(chave).orElseThrow().pacientes().size());
+        tx.executeWithoutResult(t->em.find(Usuario.class,a.ator().getId()).setEmail("novo-sintetico@test.local"));
+        assertEquals("novo-sintetico@test.local",notificacoesLocais.revalidar(chave).orElseThrow().email());
+        var ultima=reservas.getLast();
+        var presenca=como(a.ator(),()->individual.corrigir(ultima.atendimento(),ultima.versaoFato(),
+                FrequenciaAssistencial.PRESENTE,JUSTIFICATIVA));
+        assertTrue(notificacoesLocais.revalidar(chave).orElseThrow().pacientes().isEmpty());
+        como(a.ator(),()->individual.corrigir(presenca.atendimento(),presenca.versaoFato(),FrequenciaAssistencial.FALTOU,JUSTIFICATIVA));
+        assertEquals(1,notificacoesLocais.revalidar(chave).orElseThrow().pacientes().size());
+        como(a.ator(),()->estado.encerrar(a.paciente().getIdPublico(),a.vinculo(),carregar(a).getVersion(),
+                new EncerramentoPacienteDTO(MotivoEncerramento.ALTA_TERAPEUTICA,StatusPaciente.ALTA_TERAPEUTICA,null)));
+        assertTrue(notificacoesLocais.revalidar(chave).orElseThrow().pacientes().isEmpty());
+        RelogioHistorico.HISTORICO.set(Instant.parse("2026-11-25T00:30:00Z"));
+        try {
+            assertEquals(chave.data(),LocalDate.now(clock));
+            assertTrue(notificacoesLocais.revalidar(chave).isEmpty());
+            var virada=notificacoesLocais.planejar().stream()
+                    .filter(e->e.chave().destinatario().equals(a.ator().getIdPublico())).findFirst().orElseThrow().chave();
+            assertEquals(chave.data().plusDays(1),virada.data());
+            assertTrue(notificacoesLocais.revalidar(virada).isPresent());
+            tx.executeWithoutResult(t->em.find(Usuario.class,a.ator().getId()).setTipoUsuario(TipoUsuario.RECEPCAO));
+            assertTrue(notificacoesLocais.revalidar(virada).isEmpty());
+        } finally {
+            RelogioHistorico.HISTORICO.remove();
+        }
+    }
+
+    @Test
     void controleRf26ReservaDuravelIsolaFalhasERecusaDuplicatasConcorrentes() throws Exception {
         var a=novoLocal(UnidadeAtuacao.USF);
         var b=novoLocal(UnidadeAtuacao.USF);
         var c=novoLocal(UnidadeAtuacao.USF);
+        var interrompido=novoLocal(UnidadeAtuacao.USF);
         var planos=notificacoesLocais.planejar();
         var ka=planos.stream().filter(e->e.chave().destinatario().equals(a.ator().getIdPublico())).findFirst().orElseThrow().chave();
         var kb=planos.stream().filter(e->e.chave().destinatario().equals(b.ator().getIdPublico())).findFirst().orElseThrow().chave();
         var kc=planos.stream().filter(e->e.chave().destinatario().equals(c.ator().getIdPublico())).findFirst().orElseThrow().chave();
+        var kd=planos.stream().filter(e->e.chave().destinatario().equals(interrompido.ator().getIdPublico()))
+                .findFirst().orElseThrow().chave();
         var jdbc=new JdbcTemplate(fonte);
-        jdbc.execute("""
-                create table ensaio_entrega_rf26 (
-                  dia date not null,destinatario uuid not null,unidade varchar(80) not null,
-                  estado varchar(20) not null check(estado in ('RESERVADA','SIMULADA','INVALIDADA','INCERTA')),
-                  primary key(dia,destinatario,unidade))
-                """);
+        new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(
+                new org.springframework.core.io.ClassPathResource("agenda-migration/h2/V16__controle_tecnico_rf26.sql")).execute(fonte);
         try {
             var iniciou=new CountDownLatch(1);var liberar=new CountDownLatch(1);
             try(var executor=Executors.newFixedThreadPool(2)) {
                 var f=executor.submit(()->controleNotificacoes.executar(ka,e->{
+                    assertFalse(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive());
                     iniciou.countDown();
                     try { if(!liberar.await(10,TimeUnit.SECONDS))throw new IllegalStateException("Timeout"); }
                     catch(InterruptedException ex){Thread.currentThread().interrupt();throw new IllegalStateException(ex);}
@@ -1275,8 +1392,15 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
             assertEquals("INCERTA",controleNotificacoes.executar(kb,e->{throw new IllegalStateException("Falha simulada");}).name());
             assertEquals("DUPLICADA",controleNotificacoes.executar(kb,e->fail("Reenvio incerto")).name());
             assertEquals("SIMULADA",controleNotificacoes.executar(kc,e->{}).name());
-            assertEquals(3,total("select count(*) from ensaio_entrega_rf26"));
-        } finally {jdbc.execute("drop table ensaio_entrega_rf26");}
+            assertThrows(AssertionError.class,()->controleNotificacoes.executar(kd,e->{throw new AssertionError("interrupção simulada");}));
+            var recriado=new com.pet.buscaativa.services.impl.ControleNotificacoesEnsaioService(
+                    jdbc,tx.getTransactionManager(),notificacoesLocais);
+            assertEquals("DUPLICADA",recriado.executar(kd,e->fail("Reserva interrompida")).name());
+            assertEquals("DUPLICADA",recriado.executar(ka,e->fail("Reserva finalizada")).name());
+            assertEquals(4,total("select count(*) from tb_entrega_rf26"));
+            assertEquals(1,total("select count(*) from tb_entrega_rf26 where estado='RESERVADA' and finalizada_em is null"));
+            assertEquals(3,total("select count(*) from tb_entrega_rf26 where finalizada_em >= reservada_em"));
+        } finally {jdbc.execute("drop table tb_entrega_rf26");}
     }
 
     private static <T> T apos(CountDownLatch partir, Supplier<T> comando) throws InterruptedException {

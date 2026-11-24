@@ -33,7 +33,7 @@ public class AlertaPacientesVermelhosService {
         for (DestinatarioAlerta destinatario : destinatarios) {
             if (destinatario.email() == null || destinatario.email().isBlank()) {
                 ignorados++;
-                log.warn("RF26: destinatário '{}' sem e-mail cadastrado. Ignorado.", destinatario.nome());
+                log.warn("RF26: destinatário sem e-mail cadastrado. Ignorado.");
                 continue;
             }
 
@@ -49,7 +49,7 @@ public class AlertaPacientesVermelhosService {
                 enviados++;
             } catch (Exception e) {
                 falhas++;
-                log.error("RF26: falha ao enviar alerta para {}: {}", destinatario.email(), e.getMessage());
+                log.warn("RF26: falha no transporte do alerta.");
             }
         }
 
