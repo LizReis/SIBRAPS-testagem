@@ -106,20 +106,35 @@ public class PersistenciaIndicadoresVinculoEnsaioService {
 
     @Transactional(propagation = Propagation.MANDATORY)
     Resultado aplicar(Avaliado avaliacao, Usuario ator) {
+        java.util.Objects.requireNonNull(ator, "Ator humano obrigatório.");
+        return aplicarInterno(avaliacao, ator);
+    }
+
+    /** Alterações derivadas auditadas pelo Envers, sem autoria clínica fictícia. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    Resultado aplicarTecnico(Avaliado avaliacao) {
+        if (org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication() != null)
+            throw new org.springframework.security.access.AccessDeniedException("Rotina técnica exige contexto sem autenticação.");
+        if (avaliacao.resolverEmpate())
+            throw new IllegalStateException("Rotina técnica não resolve pendência por correção.");
+        return aplicarInterno(avaliacao, null);
+    }
+
+    private Resultado aplicarInterno(Avaliado avaliacao, Usuario ator) {
         var local = avaliacao.vinculo();
         var candidato = avaliacao.plano().candidato();
         if (candidato.isEmpty()) {
             boolean mudou = avaliacao.fatosInconclusivos() && (avaliacao.apenasEmpate()
                     ? local.sinalizarPendenciaDeEmpateLocal() : local.sinalizarIndicadoresLocaisPendentes());
             boolean efeitos = avaliacao.encerradoComprovado() && local.preservarEfeitosEncerramentoLocal();
-            if (mudou || efeitos) registrar(local, ator, "Indicadores locais inconclusivos; estado e pendência preservados conforme evidência.");
+            if (ator != null && (mudou || efeitos)) registrar(local, ator, "Indicadores locais inconclusivos; estado e pendência preservados conforme evidência.");
             return new Resultado(Situacao.INCONCLUSIVO, mudou, local.getVersion());
         }
         var valores = candidato.orElseThrow();
         if (avaliacao.resolverEmpate()) local.resolverPendenciaDeEmpateLocal();
         boolean mudou = local.aplicarIndicadoresLocais(valores.faltas(), valores.ultimaPresenca().orElse(null),
                 valores.risco(), valores.gatilhoVisita());
-        if (mudou || avaliacao.resolverEmpate()) registrar(local, ator, avaliacao.resolverEmpate()
+        if (ator != null && (mudou || avaliacao.resolverEmpate())) registrar(local, ator, avaliacao.resolverEmpate()
                 ? "Pendência de empate local resolvida por correção comprovada; indicadores recalculados."
                 : "Indicadores do acompanhamento local atualizados.");
         return new Resultado(mudou || avaliacao.resolverEmpate() ? Situacao.ATUALIZADO : Situacao.SEM_ALTERACAO,

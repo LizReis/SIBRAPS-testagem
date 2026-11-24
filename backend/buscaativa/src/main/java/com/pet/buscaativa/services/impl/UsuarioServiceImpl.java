@@ -160,8 +160,9 @@ public class UsuarioServiceImpl implements UsuarioService {
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public void removerUsuario(UUID idPublico) {
-        var usuarioEntity = usuarioRepository.findByIdPublico(idPublico)
+        var usuarioEntity = usuarioRepository.findByIdPublicoForUpdate(idPublico)
                 .filter(escopoUnidadeService::usuarioPertenceAoEscopo)
                 .orElseThrow(() -> new ResourceNotFoundException(idPublico));
         if (pacienteRepository.existsByProfissionalReferenciaId(usuarioEntity.getId())) {

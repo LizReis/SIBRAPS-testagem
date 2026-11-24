@@ -67,8 +67,20 @@ public class EstadoClinicoLocalEnsaioService {
     }
 
     @Transactional
+    public Resultado inativar(UUID paciente, UUID vinculo, Integer versao) {
+        return encerrarInterno(paciente, vinculo, versao,
+                new EncerramentoPacienteDTO(MotivoEncerramento.OUTRO, StatusPaciente.INATIVO,
+                        "Inativação administrativa do acompanhamento local."), true);
+    }
+
+    @Transactional
     public Resultado encerrar(UUID paciente, UUID vinculo, Integer versao, EncerramentoPacienteDTO dados) {
-        var bloqueados = coordenacao.paraVinculo(atores.autorizar(false), paciente, vinculo, null);
+        return encerrarInterno(paciente, vinculo, versao, dados, false);
+    }
+
+    private Resultado encerrarInterno(UUID paciente, UUID vinculo, Integer versao, EncerramentoPacienteDTO dados,
+            boolean somenteAdministrador) {
+        var bloqueados = coordenacao.paraVinculo(atores.autorizar(somenteAdministrador), paciente, vinculo, null);
         Usuario ator = bloqueados.atores().ator();
         var local = bloqueados.vinculos().get(paciente);
         CoordenacaoEscritaClinicaEnsaio.validarVersao(versao, local.getVersion());

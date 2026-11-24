@@ -1,0 +1,10 @@
+# Etapa 6.3 — Pacote 4A: estado, histórico manual e monitoramento técnico
+
+Base `aaf0ba744dd4047fbbfefd71a5f0b6554836f339`, Actions #45495538201: 1.352 Java, 12 concorrência, 28 Angular e build aprovados. CI deste pacote pendente.
+
+- Adaptador interno de configuração, encerramento, inativação e reativação, com versão explícita. Inativação administrativa exige administrador e registra ENCERRAMENTO/OUTRO com descrição técnica explícita, sem inventar alta ou abandono. Óbito não é liberado no novo adaptador; política transversal pendente. Rotas antigas inalteradas. Configuração continua restrita a administrador no ensaio.
+- Histórico manual local usa tipos narrativos existentes, locks paciente/ator/vínculo e origem do executor, sem produzir frequência. Histórico manual legado agora bloqueia a identidade; remoção de usuário passa a usar transação e lock de usuário, sem mudar regras de autorização.
+- Monitoramento interno manual, sem @Scheduled, sem autenticação ou transação do chamador. Enumera IDs escalares de vínculos ativos; uma transação por vínculo, paciente antes de vínculo, revalida unidade e estado após espera. Só estado comprovado; mesmo cálculo local, sem limpar pendências por passagem do tempo, sem autor humano fictício. Envers registra valores derivados; não cria novo fato ou evento de histórico. Falhas individuais revertidas e contabilizadas.
+- Três novos testes: inativação/reativação isoladas; histórico manual; monitoramento técnico, idempotência e alta preservada.
+
+Limites: scheduler, inicializador e GET busca ativa legados ainda escrevem no cache global; não ativar o novo monitoramento em produção. Paginação, coordenação concorrente da execução técnica e testes direcionados ainda necessários. V12/V13 continuam append-only e sem aplicação clínica, revisão da ordem de locks pendente. Alteração de usuários já bloqueia usuário; referências locais e mudanças de lotação/perfil exigem revisão adicional. Cadastro/demografia, compatibilidade HTTP, consumidores e corte coordenado seguem pendentes. Sem migration, tela, rota, main ou banco real. Não houve execução local.

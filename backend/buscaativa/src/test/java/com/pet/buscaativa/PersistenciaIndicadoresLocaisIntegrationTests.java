@@ -70,6 +70,9 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
     @Autowired com.pet.buscaativa.services.impl.ComandosAssistenciaisLocaisEnsaioService comandosLocais;
     @Autowired com.pet.buscaativa.services.impl.SerieGruposLocaisEnsaioService seriesLocais;
     @Autowired com.pet.buscaativa.services.impl.DtosAssistenciaisLocaisEnsaioService dtosLocais;
+    @Autowired com.pet.buscaativa.services.impl.ComandosEstadoLocalEnsaioService comandosEstado;
+    @Autowired com.pet.buscaativa.services.impl.HistoricoManualLocalEnsaioService historicoManual;
+    @Autowired com.pet.buscaativa.services.impl.MonitoramentoVinculosEnsaioService monitorLocal;
     @MockitoBean SusApiAdapter sus;
     @MockitoBean EmailService email;
 
@@ -729,6 +732,83 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
         assertEquals(TipoAcompanhamento.AMBOS,dto.tipoAcompanhamento());
         assertEquals(a.paciente().getIdPublico(),dto.pacienteId());
         assertThrows(ResourceNotFoundException.class,() -> como(externo.ator(), () -> dtosLocais.atendimento(ag.id())));
+    }
+
+    @Test
+    void inativacaoAdministrativaLocalEReativacaoNaoAfetamOutraUnidade() {
+        var a=novoLocal(UnidadeAtuacao.CAPS_AD);
+        var externo=iniciar(a.paciente(),tx.execute(t -> usuario(UnidadeAtuacao.CAPS_I)));
+        var prof=tx.execute(t -> {
+            var u=usuario(UnidadeAtuacao.CAPS_AD);
+            u.setTipoUsuario(TipoUsuario.PROFISSIONAL);
+            return u;
+        });
+        var versao=carregar(a).getVersion();
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,() -> como(prof,
+                () -> comandosEstado.inativar(a.paciente().getIdPublico(),a.vinculo(),versao)));
+        assertThrows(ValidationException.class,() -> como(a.ator(),() -> comandosEstado.encerrar(
+                a.paciente().getIdPublico(),a.vinculo(),versao,new EncerramentoPacienteDTO(
+                        MotivoEncerramento.OBITO,StatusPaciente.OBITO,null))));
+        var colunas=LegacyMigrationFixture.columns(fonte);
+        var antes=LegacyMigrationFixture.snapshot(fonte,colunas);
+        var inativo=como(a.ator(),() -> comandosEstado.inativar(a.paciente().getIdPublico(),a.vinculo(),versao));
+        assertEquals(StatusPaciente.INATIVO,inativo.status());
+        assertEquals(ClassificacaoRisco.VERDE,carregar(a).getClassificacaoRisco());
+        assertFalse(carregar(a).getGatilhoVisitaAcionado());
+        assertEquals(StatusPaciente.ATIVO,carregar(externo).getStatusPaciente());
+        como(a.ator(),() -> comandosEstado.reativar(a.paciente().getIdPublico(),a.vinculo(),inativo.versao(),
+                new com.pet.buscaativa.entities.dto.ReativacaoPacienteDTO(JUSTIFICATIVA)));
+        assertEquals(StatusPaciente.ATIVO,carregar(a).getStatusPaciente());
+        var depois=LegacyMigrationFixture.snapshot(fonte,colunas);
+        assertEquals(antes.get("TB_PACIENTE"),depois.get("TB_PACIENTE"));
+        assertEquals(antes.get("TB_PACIENTE_AUD"),depois.get("TB_PACIENTE_AUD"));
+    }
+
+    @Test
+    void historicoManualNaoCriaFrequenciaNemPermiteAcessoExterno() {
+        var a=novoLocal(UnidadeAtuacao.CAPS_II);
+        var externo=iniciar(a.paciente(),tx.execute(t -> usuario(UnidadeAtuacao.CAPS_I)));
+        var versao=carregar(a).getVersion();
+        var dto=new com.pet.buscaativa.entities.dto.RegistroHistoricoPacienteDTO(TipoEventoHistoricoPaciente.BUSCA_ATIVA,
+                null,"Registro sintético de contato.");
+        assertThrows(ResourceNotFoundException.class,() -> como(externo.ator(),
+                () -> historicoManual.registrar(a.paciente().getIdPublico(),a.vinculo(),versao,dto)));
+        var colunas=LegacyMigrationFixture.columns(fonte);
+        var antes=LegacyMigrationFixture.snapshot(fonte,colunas);
+        var id=como(a.ator(),() -> historicoManual.registrar(a.paciente().getIdPublico(),a.vinculo(),versao,dto));
+        assertEquals(1L,total("select count(*) from tb_historico_paciente where id=? and unidade_origem_chave='CAPS_II' and agendamento_id is null and sessao_grupo_id is null",id));
+        var depois=LegacyMigrationFixture.snapshot(fonte,colunas);
+        for (var tabela:List.of("TB_PACIENTE","TB_VINCULO_ASSISTENCIAL","TB_AGENDAMENTO","TB_SESSAO_GRUPO_PARTICIPANTE"))
+            assertEquals(antes.get(tabela),depois.get(tabela),tabela);
+    }
+
+    @Test
+    void monitoramentoTecnicoRecalculaPorVinculoSemCriarFatoOuReabrirAlta() {
+        var a=novoLocal(UnidadeAtuacao.CAPS_AD);
+        var externo=iniciar(a.paciente(),tx.execute(t -> usuario(UnidadeAtuacao.CAPS_I)));
+        var antigo=reserva(a,diasAtras(40),9,SituacaoAtendimento.AGENDADO,true);
+        como(a.ator(),() -> individual.registrar(antigo.id(),antigo.versao(),FrequenciaAssistencial.PRESENTE));
+        assertEquals(ClassificacaoRisco.VERMELHO,carregar(a).getClassificacaoRisco());
+        tx.executeWithoutResult(t -> vinculos.findByIdPublico(a.vinculo()).orElseThrow().aplicarIndicadoresLocais(
+                0,diasAtras(40),ClassificacaoRisco.VERDE,false));
+        var fechado=como(externo.ator(),() -> estado.encerrar(externo.paciente().getIdPublico(),externo.vinculo(),carregar(externo).getVersion(),
+                new EncerramentoPacienteDTO(MotivoEncerramento.ALTA_TERAPEUTICA,StatusPaciente.ALTA_TERAPEUTICA,null)));
+        var colunas=LegacyMigrationFixture.columns(fonte);
+        var antes=LegacyMigrationFixture.snapshot(fonte,colunas);
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,() -> como(a.ator(),monitorLocal::executar));
+        var resultado=monitorLocal.executar();
+        assertTrue(resultado.atualizados()>=1);
+        assertEquals(0,resultado.falhas());
+        assertEquals(ClassificacaoRisco.VERMELHO,carregar(a).getClassificacaoRisco());
+        assertEquals(fechado.versao(),carregar(externo).getVersion());
+        assertEquals(ClassificacaoRisco.VERDE,carregar(externo).getClassificacaoRisco());
+        var depois=LegacyMigrationFixture.snapshot(fonte,colunas);
+        for (var tabela:List.of("TB_PACIENTE","TB_PACIENTE_AUD","TB_AGENDAMENTO","TB_HISTORICO_PACIENTE"))
+            assertEquals(antes.get(tabela),depois.get(tabela),tabela);
+        var repetido=monitorLocal.executar();
+        assertEquals(0,repetido.atualizados());
+        assertEquals(0,repetido.falhas());
+        assertEquals(depois,LegacyMigrationFixture.snapshot(fonte,colunas));
     }
 
     private static <T> T apos(CountDownLatch partir, Supplier<T> comando) throws InterruptedException {

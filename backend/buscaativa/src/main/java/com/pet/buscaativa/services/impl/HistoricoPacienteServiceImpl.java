@@ -104,7 +104,8 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
             "A descrição da busca ativa é obrigatória." );
         }
 
-        Paciente paciente = pacienteRepository.findByIdPublico(pacienteId)
+        // Serializa o escritor legado com os comandos que bloqueiam a identidade.
+        Paciente paciente = pacienteRepository.findByIdPublicoForUpdate(pacienteId)
                 .filter(escopoUnidadeService::pacientePertenceAoEscopo)
                 .orElseThrow(() -> new ResourceNotFoundException(pacienteId));
         salvar(paciente, null, usuarioLogado(), registro.tipo(), null,
