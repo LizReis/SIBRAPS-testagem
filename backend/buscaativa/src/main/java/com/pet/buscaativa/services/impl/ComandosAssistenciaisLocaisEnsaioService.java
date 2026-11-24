@@ -31,6 +31,26 @@ public class ComandosAssistenciaisLocaisEnsaioService {
     private final FrequenciaColetivaLocalEnsaioService coletivo;
 
     @Transactional
+    public FrequenciaIndividualLocalEnsaioService.Resultado atualizarStatusIndividual(Long id,
+            com.pet.buscaativa.entities.enums.SituacaoAtendimento destino, Integer version, String justificativa) {
+        int v = versao(version);
+        if (destino == null) throw invalido();
+        return switch (destino) {
+            case PRESENTE, FALTOU -> individual.atualizarFrequencia(id, v,
+                    com.pet.buscaativa.entities.enums.FrequenciaAssistencial.valueOf(destino.name()), justificativa);
+            case CANCELADO -> individual.cancelarReserva(id, v);
+            default -> throw new ConflictException("Use o comando próprio de reserva ou remarcação.");
+        };
+    }
+
+    @Transactional
+    public FrequenciaIndividualLocalEnsaioService.Resultado recuperarReserva(Long id,
+            com.pet.buscaativa.entities.dto.RecuperarReservaCanceladaDTO dto) {
+        if (dto == null) throw invalido();
+        return individual.recuperarReserva(id, versao(dto.version()), dto.justificativa());
+    }
+
+    @Transactional
     public FrequenciaIndividualLocalEnsaioService.Resultado corrigirIndividual(Long id, CorrigirFrequenciaDTO dto) {
         if (dto == null) throw invalido();
         return individual.corrigir(id, versao(dto.version()), dto.novaFrequencia(), dto.justificativa());

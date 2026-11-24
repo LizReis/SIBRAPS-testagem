@@ -116,7 +116,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         return datas;
     }
 
-    private void validarPeriodoRecorrencia(CriarGrupoDTO dto) {
+    void validarPeriodoRecorrencia(CriarGrupoDTO dto) {
         if (dto.recorrencia() != RecorrenciaGrupo.UNICA && dto.dataFimRecorrencia() == null) {
             throw new ValidationException("A data final da recorrência é obrigatória para grupos recorrentes.");
         }
@@ -125,7 +125,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         }
     }
 
-    private void validarIdsParticipantes(List<UUID> ids) {
+    void validarIdsParticipantes(List<UUID> ids) {
         if (ids != null && new HashSet<>(ids).size() != ids.size()) {
             throw new ConflictException("A lista inicial contém paciente duplicado.");
         }
@@ -735,7 +735,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         // Correção/retroativa de sessão realizada não criam um novo fato do responsável.
     }
 
-    private void validarCompromissoCoordenador(Usuario coordenador, LocalDate data, LocalTime hora, Long sessaoId) {
+    void validarCompromissoCoordenador(Usuario coordenador, LocalDate data, LocalTime hora, Long sessaoId) {
         var instante = new IntegridadeAgendaAssistencialService.Instante(data, hora);
         var avaliacao = integridadeAgendaAssistencial.avaliarProfissional(coordenador, instante,
                 new IntegridadeAgendaAssistencialService.Exclusao(null, sessaoId));
@@ -762,7 +762,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
             throw new ConflictException("O paciente possui compromisso assistencial incompatível neste horário.");
     }
 
-    private SessaoGrupo novaSessao(GrupoTerapeutico grupo, LocalDate data, LocalTime horario) {
+    SessaoGrupo novaSessao(GrupoTerapeutico grupo, LocalDate data, LocalTime horario) {
         SessaoGrupo s = new SessaoGrupo();
         s.setGrupo(grupo);
         // Grupo legado sem origem permanece pendente, sem atribuição retroativa.

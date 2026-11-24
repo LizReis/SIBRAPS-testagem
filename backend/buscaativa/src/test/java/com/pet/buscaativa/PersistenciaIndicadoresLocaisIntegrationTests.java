@@ -68,6 +68,7 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
     @Autowired PersistenciaIndicadoresVinculoEnsaioService indicadores;
     @Autowired com.pet.buscaativa.services.impl.ReservaIndividualLocalEnsaioService reservasLocais;
     @Autowired com.pet.buscaativa.services.impl.ComandosAssistenciaisLocaisEnsaioService comandosLocais;
+    @Autowired com.pet.buscaativa.services.impl.SerieGruposLocaisEnsaioService seriesLocais;
     @MockitoBean SusApiAdapter sus;
     @MockitoBean EmailService email;
 
@@ -574,6 +575,91 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
         assertTrue(carregar(a).getIndicadoresPendentes());
         assertNull(carregar(a).getPendenciaEmpateLocal());
         assertEquals(0, carregar(a).getCountFaltas());
+    }
+
+    @Test
+    void cancelamentoRecuperacaoERemarcacaoAdministrativaPreservamVinculoEFatos() {
+        var a = novoLocal(UnidadeAtuacao.CAPS_AD);
+        var externo = iniciar(a.paciente(), tx.execute(t -> usuario(UnidadeAtuacao.CAPS_I)));
+        var novoProf = tx.execute(t -> usuario(UnidadeAtuacao.CAPS_AD));
+        var recepcao = tx.execute(t -> {
+            var u = usuario(UnidadeAtuacao.CAPS_AD);
+            u.setTipoUsuario(TipoUsuario.RECEPCAO);
+            return u;
+        });
+        var data = LocalDate.now(clock).plusDays(1);
+        var dataNova = data.plusDays(1);
+        tx.executeWithoutResult(t -> {
+            for (var u : List.of(a.ator(), novoProf)) {
+                var oferta = new DisponibilidadeExcecao();
+                oferta.setUsuario(em.find(Usuario.class, u.getId()));
+                oferta.setData(u.getId().equals(a.ator().getId()) ? data : dataNova);
+                oferta.setTurno(TurnoEnum.MANHA);
+                oferta.setCapacidade(10);
+                em.persist(oferta);
+            }
+        });
+        var criada = como(recepcao, () -> reservasLocais.criar(new com.pet.buscaativa.entities.dto.AgendamentoDTO(
+                null, a.ator().getIdPublico(), null, a.paciente().getIdPublico(), null, null,
+                data, TurnoEnum.MANHA, LocalTime.of(9, 0), null, null, null)));
+        var cancelada = como(recepcao, () -> comandosLocais.atualizarStatusIndividual(criada.atendimento(),
+                SituacaoAtendimento.CANCELADO, criada.versao(), null));
+        assertEquals(1L, total("select count(*) from tb_agendamento where id=? and situacao_reserva='CANCELADA' and frequencia_assistencial='NAO_REGISTRADA'", criada.atendimento()));
+        var dtoRecuperar = new com.pet.buscaativa.entities.dto.RecuperarReservaCanceladaDTO(cancelada.versaoFato(), JUSTIFICATIVA);
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+                () -> como(recepcao, () -> comandosLocais.recuperarReserva(criada.atendimento(), dtoRecuperar)));
+        var recuperada = como(a.ator(), () -> comandosLocais.recuperarReserva(criada.atendimento(), dtoRecuperar));
+        assertEquals(1L, total("select count(*) from tb_auditoria_regularizacao_cancelamento where agendamento_id=? and tipo_regularizacao='RECUPERACAO_RESERVA'", criada.atendimento()));
+        var remarcacao = new com.pet.buscaativa.entities.dto.AgendamentoDTO(null, novoProf.getIdPublico(), null,
+                a.paciente().getIdPublico(), null, null, dataNova, TurnoEnum.MANHA, LocalTime.of(9, 0),
+                null, criada.atendimento(), recuperada.versaoFato());
+        var sucessor = como(recepcao, () -> individual.remarcarPorCadastro(remarcacao));
+        assertEquals(1L, total("select count(*) from tb_agendamento where id=? and situacao_reserva='SUBSTITUIDA'", criada.atendimento()));
+        assertEquals(1L, total("select count(*) from tb_agendamento where id=? and usuario_id=? and agendamento_original_id=? and unidade_origem_chave='CAPS_AD'", sucessor.atendimento(), novoProf.getId(), criada.atendimento()));
+        assertEquals(0, carregar(a).getCountFaltas());
+        assertEquals(0, carregar(externo).getCountFaltas());
+    }
+
+    @Test
+    void patchClinicoCorrigeSobLockSemApagarFatoPorCancelamento() {
+        var a = novoLocal(UnidadeAtuacao.CAPS_I);
+        var reserva = reserva(a, diasAtras(2), 9, SituacaoAtendimento.AGENDADO, true);
+        var falta = como(a.ator(), () -> comandosLocais.atualizarStatusIndividual(reserva.id(),
+                SituacaoAtendimento.FALTOU, reserva.versao(), null));
+        assertEquals(1, carregar(a).getCountFaltas());
+        assertThrows(ConflictException.class, () -> como(a.ator(), () -> comandosLocais.atualizarStatusIndividual(
+                reserva.id(), SituacaoAtendimento.CANCELADO, falta.versaoFato(), null)));
+        var presente = como(a.ator(), () -> comandosLocais.atualizarStatusIndividual(reserva.id(),
+                SituacaoAtendimento.PRESENTE, falta.versaoFato(), JUSTIFICATIVA));
+        assertEquals(0, carregar(a).getCountFaltas());
+        assertEquals(1L, total("select count(*) from tb_auditoria_correcao_frequencia where agendamento_id=?", reserva.id()));
+        var repetido = como(a.ator(), () -> comandosLocais.atualizarStatusIndividual(reserva.id(),
+                SituacaoAtendimento.PRESENTE, presente.versaoFato(), null));
+        assertEquals(presente.versaoFato(), repetido.versaoFato());
+    }
+
+    @Test
+    void criaSerieEProximaSessaoPorVinculoSemFrequenciaOuAcessoExterno() {
+        var a = novoLocal(UnidadeAtuacao.CAPS_II);
+        var externo = iniciar(a.paciente(), tx.execute(t -> usuario(UnidadeAtuacao.CAPS_I)));
+        var data = LocalDate.now(clock).plusDays(1);
+        var dto = new com.pet.buscaativa.entities.dto.CriarGrupoDTO("Grupo local", a.ator().getIdPublico(),
+                RecorrenciaGrupo.SEMANAL, data, data.plusWeeks(1), LocalTime.of(10, 0), List.of(a.paciente().getIdPublico()));
+        var colunas = LegacyMigrationFixture.columns(fonte);
+        var antes = LegacyMigrationFixture.snapshot(fonte, colunas);
+        var criada = como(a.ator(), () -> seriesLocais.criar(dto));
+        assertEquals(2, criada.sessoes().size());
+        var nova = new com.pet.buscaativa.entities.dto.NovaSessaoDTO(criada.grupo(), data.plusWeeks(2), null,
+                List.of(a.paciente().getIdPublico()));
+        assertThrows(ResourceNotFoundException.class, () -> como(externo.ator(), () -> seriesLocais.criarProxima(nova)));
+        var proxima = como(a.ator(), () -> seriesLocais.criarProxima(nova));
+        assertNotNull(proxima.sessao());
+        assertThrows(ConflictException.class, () -> como(a.ator(), () -> seriesLocais.criarProxima(nova)));
+        assertEquals(3L, total("select count(*) from tb_sessao_grupo where grupo_id=? and unidade_origem_chave='CAPS_II'", criada.grupo()));
+        assertEquals(3L, total("select count(*) from tb_sessao_grupo_participante p join tb_sessao_grupo s on s.id=p.sessao_grupo_id where s.grupo_id=? and p.status_presenca='NAO_REGISTRADA'", criada.grupo()));
+        var depois = LegacyMigrationFixture.snapshot(fonte, colunas);
+        for (String tabela : List.of("TB_PACIENTE", "TB_VINCULO_ASSISTENCIAL", "TB_HISTORICO_PACIENTE"))
+            assertEquals(antes.get(tabela), depois.get(tabela), tabela);
     }
 
     private static <T> T apos(CountDownLatch partir, Supplier<T> comando) throws InterruptedException {

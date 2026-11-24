@@ -69,7 +69,7 @@ public class FrequenciaIndividualLocalEnsaioService {
             PersistenciaIndicadoresVinculoEnsaioService.Resultado indicadores) {}
 
     record Fato(Long id, UUID paciente, UUID profissional, Long original, String unidade, Integer versao) {}
-    private enum Operacao { REGISTRAR, CORRIGIR, REGULARIZAR }
+    private enum Operacao { REGISTRAR, CORRIGIR, REGULARIZAR, PATCH }
 
     @Transactional
     public Resultado registrar(Long id, int versao, FrequenciaAssistencial frequencia) {
@@ -86,6 +86,12 @@ public class FrequenciaIndividualLocalEnsaioService {
         return frequencia(id, versao, frequencia, justificativa, Operacao.REGULARIZAR);
     }
 
+    /** Adaptador de status clínico: decide registro/correção somente sob locks. */
+    @Transactional
+    public Resultado atualizarFrequencia(Long id, int versao, FrequenciaAssistencial destino, String justificativa) {
+        return frequencia(id, versao, destino, justificativa, Operacao.PATCH);
+    }
+
     private Resultado frequencia(Long id, int versao, FrequenciaAssistencial destino, String justificativa, Operacao operacao) {
         if (destino != PRESENTE && destino != FALTOU) throw new ValidationException("Informe presença ou falta.");
         var contexto = atores.autorizar(false);
@@ -98,6 +104,16 @@ public class FrequenciaIndividualLocalEnsaioService {
 
         var antes = fato.getFrequenciaAssistencial();
         boolean cancelado = fato.getSituacaoReserva() == SituacaoReserva.CANCELADA;
+        if (operacao == Operacao.PATCH) {
+            if (cancelado) throw new ConflictException("Atendimento cancelado exige regularização específica.");
+            operacao = antes == NAO_REGISTRADA || antes == destino ? Operacao.REGISTRAR : Operacao.CORRIGIR;
+            // Repetição de fato registrado, inclusive em reserva substituída, é sem escrita.
+            if (antes == destino) {
+                temporal.validarAgendamento(fato, true);
+                return new Resultado(id, fato.getVersion(), new PersistenciaIndicadoresVinculoEnsaioService.Resultado(
+                        PersistenciaIndicadoresVinculoEnsaioService.Situacao.SEM_ALTERACAO, false, local.getVersion()));
+            }
+        }
         boolean correcao = operacao == Operacao.CORRIGIR;
         boolean regularizacao = operacao == Operacao.REGULARIZAR;
         if (regularizacao) {
@@ -140,6 +156,7 @@ public class FrequenciaIndividualLocalEnsaioService {
                     case REGISTRAR -> "Frequência individual registrada no ensaio.";
                     case CORRIGIR -> "Frequência individual corrigida no ensaio.";
                     case REGULARIZAR -> "Frequência regularizada preservando a reserva cancelada.";
+                    case PATCH -> throw new IllegalStateException("Comando de status não resolvido.");
                 });
         var agora = clock.instant().truncatedTo(ChronoUnit.MICROS);
         var unidadeAuditoria = escopo.unidadePainel().valor();
@@ -154,20 +171,101 @@ public class FrequenciaIndividualLocalEnsaioService {
         return new Resultado(id, fato.getVersion(), resultado);
     }
 
+    /** Cancelamento administrativo nunca elimina frequência já comprovada. */
+    @Transactional
+    public Resultado cancelarReserva(Long id, int versao) {
+        var contexto = atores.autorizarOperacional();
+        var bloqueados = coordenacao.bloquear(() -> descobrir(id, contexto), contexto, null);
+        var fato = bloqueados.agenda().get(id);
+        var ator = bloqueados.atores().ator();
+        var local = bloqueados.vinculos().get(fato.getPaciente().getIdPublico());
+        autorizarReserva(fato, ator, contexto.unidade());
+        CoordenacaoEscritaClinicaEnsaio.validarVersao(versao, fato.getVersion());
+        if (fato.getFrequenciaAssistencial() != NAO_REGISTRADA
+                || fato.getSituacaoReserva() == SituacaoReserva.SUBSTITUIDA
+                || agenda.existsByAgendamentoOriginal_Id(id))
+            throw new ConflictException("Cancelamento não pode apagar fato ou cadeia de remarcação.");
+        historico.individual(fato, local, NAO_REGISTRADA);
+        if (fato.getSituacaoReserva() == SituacaoReserva.CANCELADA)
+            return semAlteracao(fato, local);
+        var anterior = fato.getSituacaoAtendimento();
+        fato.setSituacaoAtendimento(SituacaoAtendimento.CANCELADO);
+        em.flush();
+        var resultado = indicadores.aplicar(indicadores.avaliar(local), ator);
+        historicoReservas.registrarAlteracaoDeAtendimento(fato, anterior);
+        return new Resultado(id, fato.getVersion(), resultado);
+    }
+
+    @Transactional
+    public Resultado recuperarReserva(Long id, int versao, String justificativa) {
+        var contexto = atores.autorizar(false);
+        var bloqueados = coordenacao.bloquear(() -> descobrir(id, contexto), contexto, null);
+        var fato = bloqueados.agenda().get(id);
+        var ator = bloqueados.atores().ator();
+        var local = bloqueados.vinculos().get(fato.getPaciente().getIdPublico());
+        autorizar(fato, ator, contexto.unidade());
+        CoordenacaoEscritaClinicaEnsaio.validarVersao(versao, fato.getVersion());
+        if (fato.getSituacaoReserva() != SituacaoReserva.CANCELADA || fato.getFrequenciaAssistencial() != NAO_REGISTRADA
+                || agenda.existsByAgendamentoOriginal_Id(id) || correcoes.existsByAgendamento_Id(id)
+                || regularizacoes.countByAgendamento_IdAndTipoRegularizacao(id, "REGISTRO_FATO_ASSISTENCIAL") != 0)
+            throw new ConflictException("Recuperação exige cancelamento sem frequência anterior.");
+        if (local.getStatusPaciente() != StatusPaciente.ATIVO || !indicadores.evidencia(local).comprovada())
+            throw new ConflictException("Recuperação exige acompanhamento ativo comprovado.");
+        temporal.validarRecuperacao(fato);
+        String motivo = justificativas.validar(justificativa);
+        historico.individual(fato, local, NAO_REGISTRADA);
+        guardasAgenda.validarVagaOperacional(fato.getUsuario(), fato.getPaciente(), fato.getDataAgendamento(),
+                fato.getTurnoAgendamento(), fato.getHoraAtendimento(), id, local);
+        fato.recuperarReservaCancelada();
+        em.flush();
+        em.persist(new AuditoriaRegularizacaoCancelamento(fato, ator, contexto.unidade(),
+                "RECUPERACAO_RESERVA", motivo, clock.instant().truncatedTo(ChronoUnit.MICROS), versao));
+        em.flush();
+        return semAlteracao(fato, local);
+    }
+
+    private static Resultado semAlteracao(Agendamento fato, com.pet.buscaativa.entities.VinculoAssistencial local) {
+        return new Resultado(fato.getId(), fato.getVersion(), new PersistenciaIndicadoresVinculoEnsaioService.Resultado(
+                PersistenciaIndicadoresVinculoEnsaioService.Situacao.SEM_ALTERACAO, false, local.getVersion()));
+    }
+
     @Transactional
     public Resultado remarcar(Long originalId, int versao, LocalDate data, LocalTime hora, TurnoEnum turno) {
+        return remarcar(originalId, versao, data, hora, turno, null, null, false);
+    }
+
+    /** POST de remarcação: permite outro profissional da mesma unidade, sob o mesmo plano. */
+    @Transactional
+    public Resultado remarcarPorCadastro(com.pet.buscaativa.entities.dto.AgendamentoDTO dto) {
+        if (dto == null || dto.agendamentoOriginalId() == null || dto.version() == null || dto.version() < 0
+                || dto.pacienteId() == null || dto.usuarioId() == null
+                || dto.agendamentoOriginalId().equals(dto.id()))
+            throw new ValidationException("Informe original, paciente, profissional e versão da remarcação.");
+        return remarcar(dto.agendamentoOriginalId(), dto.version(), dto.dataAgendamento(), dto.horaAtendimento(),
+                dto.turnoAgendamento(), dto.pacienteId(), dto.usuarioId(), true);
+    }
+
+    private Resultado remarcar(Long originalId, int versao, LocalDate data, LocalTime hora, TurnoEnum turno,
+            UUID pacienteEsperado, UUID profissionalNovo, boolean cadastro) {
         if (data == null || hora == null || turno == null) throw new ValidationException("Informe o horário da remarcação.");
-        var contexto = atores.autorizar(false);
-        var bloqueados = coordenacao.bloquear(() -> descobrir(originalId, contexto), contexto, null);
+        var contexto = cadastro ? atores.autorizarOperacional() : atores.autorizar(false);
+        if (cadastro && contexto.perfil() != TipoUsuario.ADMINISTRADOR && contexto.perfil() != TipoUsuario.RECEPCAO)
+            throw new AccessDeniedException("Perfil sem permissão para remarcação administrativa.");
+        var bloqueados = coordenacao.bloquear(() -> descobrir(originalId, contexto, profissionalNovo), contexto, profissionalNovo);
         var original = bloqueados.agenda().get(originalId);
         var ator = bloqueados.atores().ator();
         var local = bloqueados.vinculos().get(original.getPaciente().getIdPublico());
-        autorizar(original, ator, contexto.unidade());
+        if (cadastro) {
+            autorizarReserva(original, ator, contexto.unidade());
+            if (!pacienteEsperado.equals(original.getPaciente().getIdPublico()))
+                throw new ValidationException("Remarcação exige o mesmo paciente.");
+        } else autorizar(original, ator, contexto.unidade());
+        var profissional = cadastro ? bloqueados.atores().referencia() : original.getUsuario();
         CoordenacaoEscritaClinicaEnsaio.validarVersao(versao, original.getVersion());
         if (data.isBefore(LocalDate.now(clock)))
             throw new ValidationException("Não é permitido criar agendamento em data passada.");
         var antes = original.getSituacaoAtendimento();
-        if (local.getStatusPaciente() != StatusPaciente.ATIVO || local.getTipoAcompanhamento() == null
+        if (!indicadores.evidencia(local).comprovada() || local.getStatusPaciente() != StatusPaciente.ATIVO || local.getTipoAcompanhamento() == null
                 || local.getTipoAcompanhamento() == TipoAcompanhamento.GRUPO_TERAPEUTICO
                 || original.getSituacaoReserva() != SituacaoReserva.AGENDADA
                         && original.getSituacaoReserva() != SituacaoReserva.REMARCADA
@@ -176,11 +274,11 @@ public class FrequenciaIndividualLocalEnsaioService {
                 || original.getDataAgendamento() == null || original.getHoraAtendimento() == null
                 || !LocalDateTime.of(original.getDataAgendamento(), original.getHoraAtendimento()).isBefore(LocalDateTime.of(data, hora)))
             throw new ConflictException("O atendimento não permite criar sucessor por remarcação.");
-        guardasAgenda.validarVagaOperacional(original.getUsuario(), original.getPaciente(), data, turno, hora, null, local);
+        guardasAgenda.validarVagaOperacional(profissional, original.getPaciente(), data, turno, hora, null, local);
 
         var sucessor = new Agendamento();
         sucessor.setPaciente(original.getPaciente());
-        sucessor.setUsuario(original.getUsuario());
+        sucessor.setUsuario(profissional);
         sucessor.setDataAgendamento(data);
         sucessor.setHoraAtendimento(hora);
         sucessor.setTurnoAgendamento(turno);
@@ -204,7 +302,18 @@ public class FrequenciaIndividualLocalEnsaioService {
             throw new AccessDeniedException("Usuário sem autorização para este atendimento.");
     }
 
+    private void autorizarReserva(Agendamento a, com.pet.buscaativa.entities.Usuario ator, String unidade) {
+        autorizacao.validarAgendamentoLocal(a);
+        if (!AtoresEstadoClinicoLocalEnsaio.elegivel(a.getUsuario(), unidade, false)
+                || (ator.getTipoUsuario() == TipoUsuario.PROFISSIONAL && !ator.getId().equals(a.getUsuario().getId())))
+            throw new AccessDeniedException("Usuário sem autorização para esta reserva.");
+    }
+
     private Descoberta<List<Fato>> descobrir(Long id, AtoresEstadoClinicoLocalEnsaio.Contexto contexto) {
+        return descobrir(id, contexto, null);
+    }
+
+    private Descoberta<List<Fato>> descobrir(Long id, AtoresEstadoClinicoLocalEnsaio.Contexto contexto, UUID referencia) {
         var cadeia = new ArrayList<Fato>();
         var visitados = new HashSet<Long>();
         for (Long atual = id; atual != null;) {
@@ -224,7 +333,7 @@ public class FrequenciaIndividualLocalEnsaioService {
         if (cadeia.isEmpty()) throw new ResourceNotFoundException("Atendimento não encontrado.");
         var pacientes = List.of(cadeia.getFirst().paciente());
         var locais = coordenacao.identificar(pacientes, contexto.unidade(), true);
-        return CoordenacaoEscritaClinicaEnsaio.descoberta(locais, pacientes, contexto, null,
+        return CoordenacaoEscritaClinicaEnsaio.descoberta(locais, pacientes, contexto, referencia,
                 cadeia.stream().map(Fato::profissional).toList(), List.of(), List.of(),
                 cadeia.stream().map(Fato::id).toList(), List.copyOf(cadeia));
     }
