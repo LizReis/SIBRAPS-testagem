@@ -124,6 +124,24 @@ public class VinculoAssistencial extends AbstractEntities {
         return vinculo;
     }
 
+    /** Estado explícito do acompanhamento presente; não atribui fatos antigos. */
+    public void definirAcompanhamentoLocal(TipoAcompanhamento tipo, Usuario referencia) {
+        Objects.requireNonNull(tipo, "Tipo de acompanhamento obrigatório.");
+        if (referencia != null && (referencia.getId() == null
+                || referencia.getTipoUsuario() == null
+                || referencia.getTipoUsuario() == com.pet.buscaativa.entities.enums.TipoUsuario.RECEPCAO
+                || !unidadeChave.equals(ChaveUnidadeAssistencial.doUsuarioAtual(referencia)))) {
+            throw new IllegalArgumentException("Profissional de referência deve pertencer à unidade do vínculo.");
+        }
+        this.tipoAcompanhamento = tipo;
+        this.profissionalReferencia = referencia;
+    }
+
+    /** Transição local explícita; autorização e trilha cabem ao serviço transacional. */
+    public void alterarStatusLocal(StatusPaciente novoStatus) {
+        this.statusPaciente = Objects.requireNonNull(novoStatus, "Status local obrigatório.");
+    }
+
     @PrePersist
     @PreUpdate
     private void validarIdentidadeDoVinculo() {
