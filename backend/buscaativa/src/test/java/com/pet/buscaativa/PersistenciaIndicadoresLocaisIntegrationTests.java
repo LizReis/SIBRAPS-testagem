@@ -69,6 +69,7 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
     @Autowired com.pet.buscaativa.services.impl.ReservaIndividualLocalEnsaioService reservasLocais;
     @Autowired com.pet.buscaativa.services.impl.ComandosAssistenciaisLocaisEnsaioService comandosLocais;
     @Autowired com.pet.buscaativa.services.impl.SerieGruposLocaisEnsaioService seriesLocais;
+    @Autowired com.pet.buscaativa.services.impl.DtosAssistenciaisLocaisEnsaioService dtosLocais;
     @MockitoBean SusApiAdapter sus;
     @MockitoBean EmailService email;
 
@@ -660,6 +661,74 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
         var depois = LegacyMigrationFixture.snapshot(fonte, colunas);
         for (String tabela : List.of("TB_PACIENTE", "TB_VINCULO_ASSISTENCIAL", "TB_HISTORICO_PACIENTE"))
             assertEquals(antes.get(tabela), depois.get(tabela), tabela);
+    }
+
+    @Test
+    void transfereGrupoSemAlterarResponsabilidadeHistoricaEInscreveRetroativamente() {
+        var a = novoLocal(UnidadeAtuacao.CAPS_AD);
+        var b = iniciar(novoPaciente(),a.ator());
+        var externo = iniciar(b.paciente(),tx.execute(t -> usuario(UnidadeAtuacao.CAPS_I)));
+        var novo = tx.execute(t -> usuario(UnidadeAtuacao.CAPS_AD));
+        var passada = sessao(a.ator(),List.of(a),diasAtras(3),10);
+        como(a.ator(), () -> coletivo.confirmar(passada.id(),passada.versao(),Map.of()));
+        Long grupoId = total("select grupo_id from tb_sessao_grupo where id=?",passada.id());
+        tx.executeWithoutResult(t -> {
+            var g=em.find(GrupoTerapeutico.class,grupoId);
+            g.setRecorrencia(RecorrenciaGrupo.SEMANAL);
+            g.setHorarioPadrao(LocalTime.of(10,0));
+        });
+        var futura = como(a.ator(), () -> seriesLocais.criarProxima(new com.pet.buscaativa.entities.dto.NovaSessaoDTO(
+                grupoId,LocalDate.now(clock).plusDays(2),null,List.of(a.paciente().getIdPublico()))));
+        int versao = (int)total("select version from tb_grupo_terapeutico where id=?",grupoId);
+        var atualizar = new com.pet.buscaativa.entities.dto.AtualizarGrupoTerapeuticoDTO("Transferido",novo.getIdPublico(),
+                diasAtras(3),LocalTime.of(10,0),RecorrenciaGrupo.SEMANAL,null,versao);
+        como(a.ator(), () -> seriesLocais.atualizar(grupoId,atualizar));
+        var antes = como(novo, () -> dtosLocais.sessao(passada.id()));
+        assertEquals(a.ator().getIdPublico(),antes.responsavelAtendimentoId());
+        assertEquals(novo.getNome(),antes.nomeCoordenador());
+        var dto = new com.pet.buscaativa.entities.dto.InscricaoRetroativaGrupoDTO(b.paciente().getIdPublico(),
+                List.of(new com.pet.buscaativa.entities.dto.FrequenciaSessaoRetroativaDTO(passada.id(),StatusPresencaGrupo.FALTOU)));
+        como(novo, () -> seriesLocais.inscreverRetroativamente(grupoId,dto));
+        assertEquals(1,carregar(b).getCountFaltas());
+        assertEquals(0,carregar(externo).getCountFaltas());
+        assertEquals(1L,total("select count(*) from tb_inscricao_retroativa_grupo_auditoria where grupo_id=? and paciente_id=?",grupoId,b.paciente().getId()));
+        var depois=como(novo, () -> dtosLocais.sessao(passada.id()));
+        assertEquals(a.ator().getIdPublico(),depois.responsavelAtendimentoId());
+        assertEquals(2,depois.quantidadeParticipantes());
+        assertThrows(ResourceNotFoundException.class,() -> como(externo.ator(), () -> dtosLocais.sessao(passada.id())));
+        como(novo, () -> seriesLocais.removerFuturas(grupoId,b.paciente().getIdPublico()));
+        assertEquals(1L,total("select count(*) from tb_sessao_grupo_participante where sessao_grupo_id=? and paciente_id=?",passada.id(),b.paciente().getId()));
+        assertEquals(0L,total("select count(*) from tb_sessao_grupo_participante where sessao_grupo_id=? and paciente_id=?",futura.sessao(),b.paciente().getId()));
+        assertEquals(1,carregar(b).getCountFaltas());
+        como(novo, () -> seriesLocais.inscreverFuturas(grupoId,new com.pet.buscaativa.entities.dto.InscricaoFuturaGrupoDTO(b.paciente().getIdPublico())));
+        assertEquals(1L,total("select count(*) from tb_sessao_grupo_participante where sessao_grupo_id=? and paciente_id=?",futura.sessao(),b.paciente().getId()));
+    }
+
+    @Test
+    void regeneraApenasSerieFuturaHomogeneaERecusaVersaoAntiga() {
+        var a=novoLocal(UnidadeAtuacao.CAPS_II);
+        var data=LocalDate.now(clock).plusDays(2);
+        var dto=new com.pet.buscaativa.entities.dto.CriarGrupoDTO("Série futura",a.ator().getIdPublico(),
+                RecorrenciaGrupo.SEMANAL,data,data.plusWeeks(1),LocalTime.of(10,0),List.of(a.paciente().getIdPublico()));
+        var criada=como(a.ator(), () -> seriesLocais.criar(dto));
+        var atualizar=new com.pet.buscaativa.entities.dto.AtualizarGrupoTerapeuticoDTO("Nova série",a.ator().getIdPublico(),
+                data.plusDays(1),LocalTime.of(11,0),RecorrenciaGrupo.SEMANAL,data.plusDays(1).plusWeeks(2),criada.versaoGrupo());
+        var nova=como(a.ator(), () -> seriesLocais.atualizar(criada.grupo(),atualizar));
+        assertEquals(3,nova.sessoes().size());
+        assertTrue(java.util.Collections.disjoint(criada.sessoes(),nova.sessoes()));
+        assertThrows(ValidationException.class,() -> como(a.ator(), () -> seriesLocais.atualizar(criada.grupo(),atualizar)));
+        assertEquals(0,carregar(a).getCountFaltas());
+    }
+
+    @Test
+    void dtoIndividualUsaTipoLocalENegaUnidadeExterna() {
+        var a=novoLocal(UnidadeAtuacao.CAPS_AD);
+        var externo=iniciar(a.paciente(),tx.execute(t -> usuario(UnidadeAtuacao.CAPS_I)));
+        var ag=reserva(a,diasAtras(2),9,SituacaoAtendimento.AGENDADO,true);
+        var dto=como(a.ator(), () -> dtosLocais.atendimento(ag.id()));
+        assertEquals(TipoAcompanhamento.AMBOS,dto.tipoAcompanhamento());
+        assertEquals(a.paciente().getIdPublico(),dto.pacienteId());
+        assertThrows(ResourceNotFoundException.class,() -> como(externo.ator(), () -> dtosLocais.atendimento(ag.id())));
     }
 
     private static <T> T apos(CountDownLatch partir, Supplier<T> comando) throws InterruptedException {

@@ -1,0 +1,12 @@
+# Etapa 6.3 — pacote 3B: edição, inscrições em lote e DTOs
+
+Base `439147da7af32ef915a1c6f0f21e30ff3d0cb330`, Actions #45494462254: 1.349 testes Java, 12 concorrência, Angular e build aprovados. CI deste pacote pendente.
+
+- Descoberta escalar da série completa (grupo, sessões, responsáveis e participantes, versões e frequências), locks canônicos de todos os sujeitos, vínculos, grupo e sessões; revalidação do conjunto antes de qualquer escrita. Não atribui origem ausente. Série com composição externa/ambígua recusa operação.
+- Edição/transferência mantém a responsabilidade consolidada de sessões realizadas, valida novo coordenador e conflitos nas agendadas. Regeneração somente antes do início, listas homogêneas, sem frequência provisória, guardas de recorrência, disponibilidade e origem; exclui somente sessão substituída no mesmo instante. Não apaga fatos históricos. Recusa versão antiga.
+- Inscrição futura e remoção somente em sessões futuras agendadas, papéis ADMINISTRADOR/PROFISSIONAL conforme rotas atuais. Pré-validação do lote, sem fatos clínicos. Remoção mantém participação passada.
+- Inscrição retroativa: todas e somente as realizadas, papel clínico e responsabilidade atual/histórica, horário e origem comprovados, rejeita duplicação factual e conflitos, não altera registros existentes; futuras recebem NAO_REGISTRADA. Histórico local, auditoria existente e Envers, recálculo e numeração na mesma transação. Pendências não são limpas pelo mero acréscimo de fato.
+- DTOs de atendimento e sessão experimentais reutilizam contratos existentes, origem local e vínculos explícitos, leitura serializável, tipo de acompanhamento local, sem dados clínicos de outras unidades. Composição incoerente falha fechada. Não expõe rotas. DTO de grupo e demais listas/consumidores ficam para pacote de consultas.
+- Três testes integrados: transferência e retroativa/futura/remoção e DTO sessão; regeneração e versão; DTO individual e acesso externo. Não executados localmente.
+
+Limites: permanece ensaio, sem cutover. A exigência de origem e vínculos de todos os participantes é deliberadamente conservadora; não autoriza reconciliação automática. A equivalência de permissões, versão opcional e casos de transferência histórica exige revisão antes do corte; testes HTTP ainda pendentes. Próxima frente após CI: estado clínico, escritores complementares e scheduler, com inventário e proteção de concorrência. Sem migration, frontend, main ou banco real.
