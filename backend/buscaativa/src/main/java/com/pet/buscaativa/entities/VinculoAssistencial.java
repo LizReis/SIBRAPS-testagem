@@ -137,6 +137,24 @@ public class VinculoAssistencial extends AbstractEntities {
         this.profissionalReferencia = referencia;
     }
 
+    /**
+     * Inicialização de vínculo ainda não persistido, após verificação de ausência
+     * de fatos anteriores. Não é backfill nem atualização de vínculo existente.
+     */
+    public void inicializarNovoAcompanhamento(TipoAcompanhamento tipo, Usuario referencia,
+            ClassificacaoRisco riscoInicial) {
+        if (id != null || statusPaciente != StatusPaciente.ATIVO || tipoAcompanhamento != null
+                || profissionalReferencia != null || countFaltas != null || dataUltimaPresenca != null
+                || classificacaoRisco != null || gatilhoVisitaAcionado != null || indicadoresPendentes != null)
+            throw new IllegalStateException("Somente vínculo novo e sem estado clínico pode ser inicializado.");
+        Objects.requireNonNull(riscoInicial, "Risco inicial calculado obrigatório.");
+        definirAcompanhamentoLocal(tipo, referencia);
+        countFaltas = 0;
+        classificacaoRisco = riscoInicial;
+        gatilhoVisitaAcionado = false;
+        indicadoresPendentes = false;
+    }
+
     /** Transição local explícita; autorização e trilha cabem ao serviço transacional. */
     public void alterarStatusLocal(StatusPaciente novoStatus) {
         this.statusPaciente = Objects.requireNonNull(novoStatus, "Status local obrigatório.");

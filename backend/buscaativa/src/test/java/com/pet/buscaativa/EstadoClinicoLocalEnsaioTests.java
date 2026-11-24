@@ -28,6 +28,8 @@ import com.pet.buscaativa.repositories.HistoricoPacienteRepository;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
 import com.pet.buscaativa.services.exceptions.ValidationException;
 import com.pet.buscaativa.services.impl.EstadoClinicoLocalEnsaioService;
+import com.pet.buscaativa.services.impl.InicioAcompanhamentoLocalEnsaioService;
+import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
 import com.pet.buscaativa.services.impl.SusApiAdapter;
 
 import jakarta.persistence.EntityManager;
@@ -39,6 +41,8 @@ class EstadoClinicoLocalEnsaioTests extends SecurityTestSupport {
     @Autowired TransactionTemplate tx;
     @Autowired DataSource fonte;
     @Autowired EstadoClinicoLocalEnsaioService servico;
+    @Autowired InicioAcompanhamentoLocalEnsaioService inicioLocal;
+    @Autowired VinculoAssistencialRepository vinculos;
     @Autowired HistoricoPacienteRepository historicos;
     @MockitoBean SusApiAdapter sus;
 
@@ -167,6 +171,109 @@ class EstadoClinicoLocalEnsaioTests extends SecurityTestSupport {
             assertEquals(c.b().versao(), em.find(VinculoAssistencial.class, c.b().id()).getVersion());
             assertEquals(c.caps().versao(), em.find(VinculoAssistencial.class, c.caps().id()).getVersion());
         });
+    }
+
+    @Test
+    void iniciaNovoVinculoSemHerdarIndicadoresERepeticaoNaoReinicializa() {
+        var c = tx.execute(t -> preparar());
+        var atorAd = tx.execute(t -> {
+            var ator = usuario(UnidadeAtuacao.CAPS_AD, null, TipoUsuario.PROFISSIONAL);
+            // Um fato conhecido de outra unidade não impede acompanhamento novo.
+            var h = new HistoricoPaciente();
+            h.setPaciente(em.find(Paciente.class, c.idPessoa()));
+            h.setProfissional(em.find(Usuario.class, c.a().admin().getId()));
+            h.setTipo(TipoEventoHistoricoPaciente.SITUACAO_ATUALIZADA);
+            h.setOcorridoEm(java.time.LocalDateTime.now());
+            h.registrarOrigemDeAcaoLocal(h.getProfissional());
+            em.persist(h);
+            return ator;
+        });
+        var colunas = LegacyMigrationFixture.columns(fonte);
+        var antes = LegacyMigrationFixture.snapshot(fonte, colunas);
+        var criado = como(atorAd, () -> inicioLocal.iniciar(c.pessoa(), TipoAcompanhamento.GRUPO_TERAPEUTICO,
+                atorAd.getIdPublico()));
+        assertEquals(InicioAcompanhamentoLocalEnsaioService.Situacao.CRIADO_NO_ENSAIO, criado.situacao());
+        tx.executeWithoutResult(t -> {
+            var v = vinculos.findByIdPublico(criado.vinculo()).orElseThrow();
+            assertEquals("CAPS_AD", v.getUnidadeChave());
+            assertEquals(StatusPaciente.ATIVO, v.getStatusPaciente());
+            assertEquals(TipoAcompanhamento.GRUPO_TERAPEUTICO, v.getTipoAcompanhamento());
+            assertEquals(0, v.getCountFaltas());
+            assertNull(v.getDataUltimaPresenca());
+            assertEquals(ClassificacaoRisco.VERDE, v.getClassificacaoRisco());
+            assertEquals(Boolean.FALSE, v.getGatilhoVisitaAcionado());
+            assertEquals(Boolean.FALSE, v.getIndicadoresPendentes());
+            assertEquals(atorAd.getId(), v.getProfissionalReferencia().getId());
+            var leitor = AuditReaderFactory.get(em);
+            var revisoes = leitor.getRevisions(VinculoAssistencial.class, v.getId());
+            assertEquals(1, revisoes.size());
+            assertEquals(0, leitor.find(VinculoAssistencial.class, v.getId(), revisoes.getFirst()).getCountFaltas());
+            var trilha = historicos.findLocaisComOrigemComprovada(c.pessoa(), "CAPS_AD");
+            assertEquals(1, trilha.size());
+            assertEquals(atorAd.getId(), trilha.getFirst().getProfissional().getId());
+            assertEquals(revisoes, leitor.getRevisions(HistoricoPaciente.class, trilha.getFirst().getId()));
+            for (var externo : List.of(c.a(), c.b(), c.caps())) {
+                assertEquals(externo.versao(), em.find(VinculoAssistencial.class, externo.id()).getVersion());
+            }
+            assertEquals(8, em.find(Paciente.class, c.idPessoa()).getCountFaltas());
+        });
+        var depois = LegacyMigrationFixture.snapshot(fonte, colunas);
+        assertEquals(antes.get("TB_PACIENTE"), depois.get("TB_PACIENTE"));
+        assertEquals(antes.get("TB_PACIENTE_AUD"), depois.get("TB_PACIENTE_AUD"));
+        var repetido = como(atorAd, () -> inicioLocal.iniciar(c.pessoa(), TipoAcompanhamento.AMBOS, null));
+        assertEquals(criado.vinculo(), repetido.vinculo());
+        assertEquals(InicioAcompanhamentoLocalEnsaioService.Situacao.JA_EXISTENTE_NAO_MODIFICADO, repetido.situacao());
+        var existente = como(c.a().admin(), () -> inicioLocal.iniciar(c.pessoa(), TipoAcompanhamento.AMBOS, null));
+        assertEquals(c.a().publico(), existente.vinculo());
+        assertEquals(depois, LegacyMigrationFixture.snapshot(fonte, colunas));
+    }
+
+    @Test
+    void inicioRecusaLegadoLocalOuSemOrigemEReferenciaExternaSemEscrever() {
+        var c = tx.execute(t -> preparar());
+        var atorAd = tx.execute(t -> usuario(UnidadeAtuacao.CAPS_AD, null, TipoUsuario.ADMINISTRADOR));
+        var colunas = LegacyMigrationFixture.columns(fonte);
+        var antes = LegacyMigrationFixture.snapshot(fonte, colunas);
+        assertThrows(ResourceNotFoundException.class, () -> como(atorAd,
+                () -> inicioLocal.iniciar(c.pessoa(), TipoAcompanhamento.AMBOS, c.a().admin().getIdPublico())));
+        assertThrows(AccessDeniedException.class, () -> como(c.recepcao(),
+                () -> inicioLocal.iniciar(c.pessoa(), TipoAcompanhamento.AMBOS, null)));
+        assertEquals(antes, LegacyMigrationFixture.snapshot(fonte, colunas));
+
+        tx.executeWithoutResult(t -> {
+            var h = new HistoricoPaciente();
+            h.setPaciente(em.find(Paciente.class, c.idPessoa()));
+            h.setProfissional(em.find(Usuario.class, atorAd.getId()));
+            h.setTipo(TipoEventoHistoricoPaciente.SITUACAO_ATUALIZADA);
+            h.setOcorridoEm(java.time.LocalDateTime.now());
+            // Sem origem: lotação atual não comprova fato antigo.
+            em.persist(h);
+        });
+        var comLegado = LegacyMigrationFixture.snapshot(fonte, colunas);
+        assertThrows(ValidationException.class, () -> como(atorAd,
+                () -> inicioLocal.iniciar(c.pessoa(), TipoAcompanhamento.AMBOS, null)));
+        assertEquals(comLegado, LegacyMigrationFixture.snapshot(fonte, colunas));
+
+        var outro = tx.execute(t -> {
+            var p = new Paciente();
+            p.setNome("Identidade sintética com fato local");
+            p.setCpf(UUID.randomUUID().toString());
+            p.setCns(UUID.randomUUID().toString());
+            em.persist(p);
+            var a = new Agendamento();
+            a.setPaciente(p);
+            a.setUsuario(em.find(Usuario.class, atorAd.getId()));
+            a.setDataAgendamento(java.time.LocalDate.of(2026, 11, 23));
+            a.setHoraAtendimento(java.time.LocalTime.of(9, 0));
+            a.setSituacaoAtendimento(SituacaoAtendimento.FALTOU);
+            a.registrarUnidadeDeOrigem(a.getUsuario());
+            em.persist(a);
+            return p.getIdPublico();
+        });
+        var comFatoLocal = LegacyMigrationFixture.snapshot(fonte, colunas);
+        assertThrows(ValidationException.class, () -> como(atorAd,
+                () -> inicioLocal.iniciar(outro, TipoAcompanhamento.INDIVIDUAL, null)));
+        assertEquals(comFatoLocal, LegacyMigrationFixture.snapshot(fonte, colunas));
     }
 
     private boolean tentativa(Cenario c, CountDownLatch inicio, TipoAcompanhamento tipo) throws InterruptedException {
