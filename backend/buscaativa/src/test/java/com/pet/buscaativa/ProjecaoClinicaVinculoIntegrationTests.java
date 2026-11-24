@@ -54,6 +54,8 @@ import com.pet.buscaativa.entities.UsfReferencia;
 import com.pet.buscaativa.entities.Usuario;
 import com.pet.buscaativa.entities.VinculoAssistencial;
 import com.pet.buscaativa.entities.enums.*;
+import com.pet.buscaativa.migration.PlanoIndicadoresVinculo;
+import com.pet.buscaativa.migration.PlanoIndicadoresVinculo.Campo;
 import com.pet.buscaativa.repositories.HistoricoPacienteRepository;
 import com.pet.buscaativa.services.ExcelRelatorioService;
 import com.pet.buscaativa.services.PdfRendererService;
@@ -202,6 +204,56 @@ class ProjecaoClinicaVinculoIntegrationTests extends SecurityTestSupport {
         assertTrue(visita.visita().valor().orElseThrow());
         assertEquals(Decisao.INCLUIR, visita.buscaAtiva().valor().orElseThrow().decisao());
         assertEquals(Motivo.VISITA_CONFIRMADA, visita.buscaAtiva().valor().orElseThrow().motivo());
+    }
+
+    @Test
+    void preparaPlanoDeIndicadoresSemCopiarEstadoGlobalNemEscreverNoBanco() {
+        var c = transacoes.execute(tx -> preparar());
+        confirmarEstados(c);
+        var colunas = LegacyMigrationFixture.columns(fonte);
+        var antes = LegacyMigrationFixture.snapshot(fonte, colunas);
+
+        var a = PlanoIndicadoresVinculo.preparar(projetar(projecoes, c.paciente(), c.usfA()));
+        var ad = PlanoIndicadoresVinculo.preparar(projetar(projecoes, c.paciente(), c.capsAd()));
+        assertEquals(c.usfA().publico(), a.vinculo());
+        assertEquals(c.capsAd().publico(), ad.vinculo());
+        assertEquals(c.usfA().unidade(), a.unidade());
+        assertEquals(c.capsAd().unidade(), ad.unidade());
+        assertEquals(REFERENCIA, a.dataReferencia());
+        assertTrue(a.bloqueios().isEmpty());
+        assertTrue(ad.bloqueios().isEmpty());
+        assertEquals(5, a.candidato().orElseThrow().faltas());
+        assertEquals(2, ad.candidato().orElseThrow().faltas());
+        assertEquals(REFERENCIA.minusDays(10), a.candidato().orElseThrow().ultimaPresenca().orElseThrow());
+        assertEquals(REFERENCIA.minusDays(7), ad.candidato().orElseThrow().ultimaPresenca().orElseThrow());
+        assertEquals(ClassificacaoRisco.VERMELHO, a.candidato().orElseThrow().risco());
+        assertEquals(ClassificacaoRisco.AMARELO, ad.candidato().orElseThrow().risco());
+        assertTrue(a.candidato().orElseThrow().gatilhoVisita());
+        assertTrue(ad.candidato().orElseThrow().gatilhoVisita());
+
+        var b = PlanoIndicadoresVinculo.preparar(projetar(projecoes, c.paciente(), c.usfB()));
+        assertTrue(b.candidato().isEmpty());
+        assertTrue(b.bloqueios().get(Campo.STATUS).motivos().contains(STATUS_SEM_TRANSICAO_AUDITADA));
+        assertTrue(b.bloqueios().containsKey(Campo.ACOMPANHAMENTO));
+        assertTrue(b.bloqueios().containsKey(Campo.PENDENCIAS));
+        assertFalse(b.bloqueios().containsKey(Campo.ULTIMA_PRESENCA));
+
+        var ii = PlanoIndicadoresVinculo.preparar(projetar(projecoes, c.paciente(), c.capsII()));
+        assertTrue(ii.candidato().isEmpty());
+        assertTrue(ii.bloqueios().get(Campo.FALTAS).motivos().contains(ORDEM_DE_FREQUENCIAS_INDETERMINADA));
+        var legado = PlanoIndicadoresVinculo.preparar(projetar(projecoes, c.outroPaciente(), c.vinculoSemStatus()));
+        assertTrue(legado.candidato().isEmpty());
+        assertTrue(legado.bloqueios().get(Campo.FALTAS).motivos().contains(ORIGEM_HISTORICA_INDETERMINADA));
+        var pendente = PlanoIndicadoresVinculo.preparar(projetar(projecoes, c.outroPaciente(), c.vinculoPendente()));
+        assertTrue(pendente.candidato().isEmpty());
+        assertTrue(pendente.bloqueios().get(Campo.PENDENCIAS).motivos().contains(INDICADORES_PENDENTES));
+
+        for (var plano : List.of(a, ad, b, ii, legado, pendente)) {
+            assertFalse(plano.aplicacaoAutorizada());
+        }
+        assertEquals(a, PlanoIndicadoresVinculo.preparar(projetar(projecoes, c.paciente(), c.usfA())));
+        assertEquals(antes, LegacyMigrationFixture.snapshot(fonte, colunas));
+        verifyNoInteractions(envio);
     }
 
     private void verificarQuatroVinculos(Cenario c, Projecao a, Projecao b, Projecao ad, Projecao ii) {
