@@ -36,6 +36,14 @@ class ComparadorSelecaoBuscaAtivaVinculoTests {
     }
 
     @Test
+    void criterioConfirmadoBastaQuandoOOutroEstaInconclusivo() {
+        assertEquals(new ComparadorSelecaoBuscaAtivaVinculo.Resultado(Decisao.INCLUIR, Motivo.RISCO_VERMELHO),
+                decidir(StatusPaciente.ATIVO, ClassificacaoRisco.VERMELHO, false, null));
+        assertEquals(new ComparadorSelecaoBuscaAtivaVinculo.Resultado(Decisao.INCLUIR, Motivo.VISITA_CONFIRMADA),
+                decidir(StatusPaciente.ATIVO, null, false, true));
+    }
+
+    @Test
     void amareloSemVisitaNaoEntra() {
         var r = decidir(StatusPaciente.ATIVO, ClassificacaoRisco.AMARELO, false, false);
         assertEquals(Decisao.NAO_INCLUIR, r.decisao());
@@ -64,8 +72,9 @@ class ComparadorSelecaoBuscaAtivaVinculoTests {
     @Test
     void dadosDesconhecidosNaoCriamFalsoAlertaNemFalsoNormal() {
         assertEquals(Decisao.INDETERMINADA, decidir(null, ClassificacaoRisco.VERMELHO, false, true).decisao());
-        assertEquals(Decisao.INDETERMINADA, decidir(StatusPaciente.ATIVO, null, false, true).decisao());
+        assertEquals(Decisao.INDETERMINADA, decidir(StatusPaciente.ATIVO, null, false, false).decisao());
         assertEquals(Decisao.INDETERMINADA, decidir(StatusPaciente.ATIVO, ClassificacaoRisco.VERDE, false, null).decisao());
         assertEquals(Decisao.INDETERMINADA, decidir(StatusPaciente.ATIVO, ClassificacaoRisco.VERDE, null, false).decisao());
+        assertEquals(Decisao.INDETERMINADA, decidir(StatusPaciente.ATIVO, ClassificacaoRisco.VERMELHO, null, true).decisao());
     }
 }

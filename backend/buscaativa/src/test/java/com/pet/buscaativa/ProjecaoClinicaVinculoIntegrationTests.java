@@ -178,6 +178,32 @@ class ProjecaoClinicaVinculoIntegrationTests extends SecurityTestSupport {
         verifyNoInteractions(envio);
     }
 
+    @Test
+    void projetaBuscaAtivaComUmCriterioConfirmadoSemCompletarOOutroIndicador() {
+        var c = transacoes.execute(tx -> preparar());
+        confirmarEstados(c);
+        transacoes.executeWithoutResult(tx -> {
+            campo(vinculo(c.capsAd()), "tipoAcompanhamento", null);
+            var paciente = vinculo(c.usfA()).getPaciente();
+            // A reserva sem frequência tem origem local, mas falta o agendamento original.
+            agenda(paciente, c.usfA().ator(), 1, SituacaoAtendimento.REMARCADO, null, true);
+        });
+
+        var vermelho = projetar(projecoes, c.paciente(), c.usfA());
+        assertEquals(ClassificacaoRisco.VERMELHO, vermelho.risco().valor().orElseThrow());
+        assertTrue(vermelho.visita().valor().isEmpty());
+        assertFalse(vermelho.visita().conclusiva());
+        assertEquals(Decisao.INCLUIR, vermelho.buscaAtiva().valor().orElseThrow().decisao());
+        assertEquals(Motivo.RISCO_VERMELHO, vermelho.buscaAtiva().valor().orElseThrow().motivo());
+
+        var visita = projetar(projecoes, c.paciente(), c.capsAd());
+        assertTrue(visita.risco().valor().isEmpty());
+        assertTrue(visita.risco().motivos().contains(TIPO_AUSENTE));
+        assertTrue(visita.visita().valor().orElseThrow());
+        assertEquals(Decisao.INCLUIR, visita.buscaAtiva().valor().orElseThrow().decisao());
+        assertEquals(Motivo.VISITA_CONFIRMADA, visita.buscaAtiva().valor().orElseThrow().motivo());
+    }
+
     private void verificarQuatroVinculos(Cenario c, Projecao a, Projecao b, Projecao ad, Projecao ii) {
         assertEquals(c.usfA().publico(), a.vinculo());
         assertEquals(c.usfA().unidade(), a.unidade());

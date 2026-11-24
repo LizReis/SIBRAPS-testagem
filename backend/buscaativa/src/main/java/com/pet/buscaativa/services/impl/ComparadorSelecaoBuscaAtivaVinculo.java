@@ -28,8 +28,8 @@ public final class ComparadorSelecaoBuscaAtivaVinculo {
     /**
      * Reproduz a selecao do PacienteServiceImpl: apenas vinculos ATIVOS
      * com risco VERMELHO, indicador pendente de revisao OU visita confirmada.
-     * A revisao historica tem prioridade sobre os demais alertas. Situacoes
-     * nao conclusivas retornam INDETERMINADA, nao um falso "verde".
+     * A revisao historica tem prioridade. Com pendencia descartada, um
+     * criterio comprovado basta para incluir o vinculo.
      *
      * A situacao de rua e a mensagem/endereco de busca pertencem a outra
      * camada de apresentacao segura e NAO sao tratados aqui.
@@ -53,14 +53,14 @@ public final class ComparadorSelecaoBuscaAtivaVinculo {
         if (indicadoresPendentesDoVinculo)
             return new Resultado(Decisao.INCLUIR, Motivo.REVISAO_HISTORICA);
 
-        if (riscoDoVinculo.isEmpty() || visitaConfirmadaDoVinculo.isEmpty())
-            return new Resultado(Decisao.INDETERMINADA, Motivo.DADOS_INCOMPLETOS);
-
-        if (riscoDoVinculo.get() == ClassificacaoRisco.VERMELHO)
+        if (riscoDoVinculo.orElse(null) == ClassificacaoRisco.VERMELHO)
             return new Resultado(Decisao.INCLUIR, Motivo.RISCO_VERMELHO);
 
-        if (visitaConfirmadaDoVinculo.get())
+        if (visitaConfirmadaDoVinculo.orElse(false))
             return new Resultado(Decisao.INCLUIR, Motivo.VISITA_CONFIRMADA);
+
+        if (riscoDoVinculo.isEmpty() || visitaConfirmadaDoVinculo.isEmpty())
+            return new Resultado(Decisao.INDETERMINADA, Motivo.DADOS_INCOMPLETOS);
 
         return new Resultado(Decisao.NAO_INCLUIR, Motivo.SEM_CRITERIO);
     }
