@@ -67,6 +67,21 @@ public class PacienteServiceImpl implements PacienteService{
     @Override
     @Transactional
     public PacienteDTO save(PacienteDTO pacienteDTO, boolean ignorarSimilaridade) {
+        return salvar(pacienteDTO, ignorarSimilaridade, vinculoAssistencialService::vincularExplicitamente);
+    }
+
+    // Somente chamador interno transacional; o ensaio substitui a criação
+    // do vínculo antes de persistir qualquer default clínico local.
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    PacienteDTO salvarNovoComVinculacao(PacienteDTO dados, boolean ignorarSimilaridade,
+            java.util.function.Consumer<UUID> criarVinculo) {
+        if (dados == null || dados.idPublico() != null)
+            throw new ValidationException("Cadastro novo obrigatório.");
+        return salvar(dados, ignorarSimilaridade, criarVinculo);
+    }
+
+    private PacienteDTO salvar(PacienteDTO pacienteDTO, boolean ignorarSimilaridade,
+            java.util.function.Consumer<UUID> criarVinculo) {
         if (pacienteDTO.countFaltas() != null) {
             throw new ValidationException("O contador de faltas é calculado pelo sistema e não pode ser informado.");
         }
@@ -118,7 +133,7 @@ public class PacienteServiceImpl implements PacienteService{
             // esse vinculo, na mesma transacao: nunca associar uma unidade a
             // partir de usfReferencia/capsReferencia (referencias territoriais).
             // Caso a vinculacao falhe, o cadastro tambem deve ser revertido.
-            vinculoAssistencialService.vincularExplicitamente(pacienteSalvar.getIdPublico());
+            criarVinculo.accept(pacienteSalvar.getIdPublico());
         }
         // Atualizar identidade existente nao altera/cria vinculos assistenciais.
         // Consultas clinicas legadas permanecem isoladas pelo modelo atual

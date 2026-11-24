@@ -207,7 +207,7 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
     }
 
     @Test
-    void preservaValoresConhecidosQuandoOProprioVinculoTemLegadoEReverteLoteInconclusivo() {
+    void preservaValoresConhecidosQuandoOProprioVinculoTemLegadoERegistraLoteValido() {
         var a = novoLocal(UnidadeAtuacao.CAPS_II);
         var b = iniciar(novoPaciente(), a.ator());
         var conhecida = reserva(a, diasAtras(4), 9, SituacaoAtendimento.AGENDADO, true);
@@ -224,8 +224,21 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
         var sessao = sessao(a.ator(), List.of(a, b), diasAtras(1), 10);
         var colunas = LegacyMigrationFixture.columns(fonte);
         var antes = LegacyMigrationFixture.snapshot(fonte, colunas);
-        assertThrows(ConflictException.class, () -> como(a.ator(), () -> coletivo.confirmar(sessao.id(), sessao.versao(), Map.of())));
-        assertEquals(antes, LegacyMigrationFixture.snapshot(fonte, colunas));
+        como(a.ator(), () -> coletivo.confirmar(sessao.id(), sessao.versao(), Map.of()));
+        assertTrue(carregar(a).getIndicadoresPendentes());
+        assertEquals(0, carregar(a).getCountFaltas());
+        assertEquals(diasAtras(4), carregar(a).getDataUltimaPresenca());
+        assertFalse(carregar(b).getIndicadoresPendentes());
+        assertEquals(1, carregar(b).getCountFaltas());
+        tx.executeWithoutResult(t -> {
+            var s = em.find(SessaoGrupo.class, sessao.id());
+            assertEquals(StatusSessaoGrupo.REALIZADA, s.getStatus());
+            assertEquals(2, s.getParticipantes().size());
+            assertTrue(s.getParticipantes().stream().allMatch(p -> p.getStatusPresenca() == StatusPresencaGrupo.FALTOU));
+        });
+        var depois = LegacyMigrationFixture.snapshot(fonte, colunas);
+        assertEquals(antes.get("TB_PACIENTE"), depois.get("TB_PACIENTE"));
+        assertEquals(antes.get("TB_PACIENTE_AUD"), depois.get("TB_PACIENTE_AUD"));
     }
 
     @Test
@@ -352,6 +365,38 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
                 join tb_vinculo_assistencial_aud v on v.id=e.vinculo_id and v.rev=e.rev
                 where v.id_publico=? and e.natureza in ('ENCERRAMENTO','REATIVACAO') and v.count_faltas=2
                 """, a.vinculo()));
+    }
+
+    @Test
+    void altaLocalDesativaRiscoEVisitaSemApagarFaltasOuPendencia() {
+        var a = novoLocal(UnidadeAtuacao.CAPS_AD);
+        var externo = iniciar(a.paciente(), tx.execute(t -> usuario(UnidadeAtuacao.CAPS_I)));
+        for (int dias : List.of(5, 4, 3)) {
+            var ag = reserva(a, diasAtras(dias), 9, SituacaoAtendimento.AGENDADO, true);
+            como(a.ator(), () -> individual.registrar(ag.id(), ag.versao(), FrequenciaAssistencial.FALTOU));
+        }
+        assertEquals(ClassificacaoRisco.VERMELHO, carregar(a).getClassificacaoRisco());
+        tx.executeWithoutResult(t -> {
+            var local = vinculos.findByIdPublico(a.vinculo()).orElseThrow();
+            local.aplicarIndicadoresLocais(3, null, ClassificacaoRisco.VERMELHO, true);
+            local.sinalizarIndicadoresLocaisPendentes();
+        });
+        var versaoExterna = carregar(externo).getVersion();
+        var colunas = LegacyMigrationFixture.columns(fonte);
+        var antes = LegacyMigrationFixture.snapshot(fonte, colunas);
+        como(a.ator(), () -> estado.encerrar(a.paciente().getIdPublico(), a.vinculo(), carregar(a).getVersion(),
+                new EncerramentoPacienteDTO(MotivoEncerramento.ALTA_TERAPEUTICA, StatusPaciente.ALTA_TERAPEUTICA, null)));
+        var fechado = carregar(a);
+        assertEquals(StatusPaciente.ALTA_TERAPEUTICA, fechado.getStatusPaciente());
+        assertEquals(ClassificacaoRisco.VERDE, fechado.getClassificacaoRisco());
+        assertFalse(fechado.getGatilhoVisitaAcionado());
+        assertEquals(3, fechado.getCountFaltas());
+        assertTrue(fechado.getIndicadoresPendentes());
+        assertEquals(StatusPaciente.ATIVO, carregar(externo).getStatusPaciente());
+        assertEquals(versaoExterna, carregar(externo).getVersion());
+        var depois = LegacyMigrationFixture.snapshot(fonte, colunas);
+        for (var tabela : List.of("TB_PACIENTE", "TB_PACIENTE_AUD", "TB_AGENDAMENTO", "TB_AGENDAMENTO_AUD"))
+            assertEquals(antes.get(tabela), depois.get(tabela), tabela);
     }
 
     private static <T> T apos(CountDownLatch partir, Supplier<T> comando) throws InterruptedException {

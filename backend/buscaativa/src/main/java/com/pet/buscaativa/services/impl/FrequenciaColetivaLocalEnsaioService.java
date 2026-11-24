@@ -121,8 +121,10 @@ public class FrequenciaColetivaLocalEnsaioService {
         em.flush();
         var avaliacoes = mudancas.stream().map(m -> indicadores.avaliar(
                 recursos.vinculos().get(m.participante().getPaciente().getIdPublico()))).toList();
-        if (avaliacoes.stream().anyMatch(a -> a.plano().candidato().isEmpty()))
-            throw new ConflictException("Indicadores inconclusivos no lote. A frequência coletiva permanece sem alteração.");
+        // Fatos válidos não dependem da conclusão dos indicadores: o mesmo
+        // contrato conservador da frequência individual preserva o cache
+        // inconclusivo e sinaliza pendência quando cabível. Falha de validação
+        // factual ou persistência ainda reverte toda a sessão.
         avaliacoes.forEach(a -> indicadores.aplicar(a, ator));
 
         var instante = clock.instant().truncatedTo(ChronoUnit.MICROS);

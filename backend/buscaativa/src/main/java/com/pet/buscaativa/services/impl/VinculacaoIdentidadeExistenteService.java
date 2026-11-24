@@ -43,6 +43,12 @@ public class VinculacaoIdentidadeExistenteService {
 
     @Transactional
     public Resultado vincularPorDocumentos(String cpfInformado, String cnsInformado) {
+        return vincularPorDocumentosCom(cpfInformado, cnsInformado, vinculos::vincularExplicitamente);
+    }
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    Resultado vincularPorDocumentosCom(String cpfInformado, String cnsInformado,
+            java.util.function.Function<UUID, VinculoAssistencial> criarVinculo) {
         // A verificacao de acesso vem ANTES de qualquer pesquisa global.
         escopo.validarUnidadeConfigurada();
         Usuario ator = escopo.usuarioLogado();
@@ -74,7 +80,7 @@ public class VinculacaoIdentidadeExistenteService {
 
         // O servico existente faz lock da identidade e garante UNIQUE para
         // paciente + unidade, sem inferir vinculo via caps/usf de referencia.
-        VinculoAssistencial local = vinculos.vincularExplicitamente(identidade.getIdPublico());
+        VinculoAssistencial local = criarVinculo.apply(identidade.getIdPublico());
 
         // Revalidacao sob o lock, ainda dentro da transacao: evita associar
         // um CPF/CNS que tenha sido alterado entre pesquisa e gravacao.

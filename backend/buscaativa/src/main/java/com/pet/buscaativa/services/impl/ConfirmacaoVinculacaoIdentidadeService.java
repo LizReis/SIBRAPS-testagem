@@ -43,6 +43,15 @@ public class ConfirmacaoVinculacaoIdentidadeService {
             String nomeConfirmado,
             String nomeMaeConfirmada,
             LocalDate nascimentoConfirmado) {
+        return confirmarComVinculacao(cpfInformado, cnsInformado, nomeConfirmado, nomeMaeConfirmada,
+                nascimentoConfirmado, vinculacao::vincularPorDocumentos);
+    }
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    VinculacaoIdentidadeExistenteService.Resultado confirmarComVinculacao(
+            String cpfInformado, String cnsInformado, String nomeConfirmado,
+            String nomeMaeConfirmada, LocalDate nascimentoConfirmado,
+            java.util.function.BiFunction<String, String, VinculacaoIdentidadeExistenteService.Resultado> criarVinculo) {
         if (normalizarNome(nomeConfirmado) == null
                 || normalizarNome(nomeMaeConfirmada) == null
                 || nascimentoConfirmado == null)
@@ -56,7 +65,7 @@ public class ConfirmacaoVinculacaoIdentidadeService {
 
         // Repete pesquisa documental dentro do servico transacional existente
         // e serializa a vinculacao na identidade global com lock.
-        var resultado = vinculacao.vincularPorDocumentos(cpfInformado, cnsInformado);
+        var resultado = criarVinculo.apply(cpfInformado, cnsInformado);
 
         // Defesa contra alteracao dos dados entre pre-conferencia e escrita:
         // a identidade continua bloqueada ate o commit da transacao externa.

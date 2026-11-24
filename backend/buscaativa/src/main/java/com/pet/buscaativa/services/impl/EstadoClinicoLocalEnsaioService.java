@@ -82,22 +82,14 @@ public class EstadoClinicoLocalEnsaioService {
                 + ". Motivo: " + dados.motivo()
                 + (dados.descricao() == null || dados.descricao().isBlank() ? "." : ". " + dados.descricao().trim());
         validarDescricao(descricao);
-        var provaAnterior = indicadores.evidencia(local);
         var anterior = local.getStatusPaciente();
-        local.alterarStatusLocal(dados.statusPaciente());
+        local.encerrarEstadoLocal(dados.statusPaciente());
         var instante = LocalDateTime.now(clock);
         String complemento = dados.descricao() == null || dados.descricao().isBlank() ? null : dados.descricao().trim();
         em.persist(new EventoEstadoClinicoVinculo(local, ator, instante, Natureza.ENCERRAMENTO,
                 anterior, dados.motivo().name(), complemento));
-        if (provaAnterior.comprovada()) {
-            var avaliacao = indicadores.avaliar(local, EvidenciaStatusVinculo.Situacao.TRANSICAO_AUDITADA);
-            // O encerramento legado desativa visita e grava verde. Aplicamos apenas
-            // quando o candidato conclusivo da projeção também respeita esses efeitos.
-            var candidato = avaliacao.plano().candidato();
-            if (candidato.isEmpty() || candidato.filter(c -> !c.gatilhoVisita()
-                    && c.risco() == com.pet.buscaativa.entities.enums.ClassificacaoRisco.VERDE).isPresent())
-                indicadores.aplicar(avaliacao, ator);
-        }
+        // Encerrar é um comando explícito, não uma inferência sobre frequência.
+        // A trilha registra os efeitos do encerramento na mesma revisão.
         return registrar(local, ator, descricao, instante);
     }
 

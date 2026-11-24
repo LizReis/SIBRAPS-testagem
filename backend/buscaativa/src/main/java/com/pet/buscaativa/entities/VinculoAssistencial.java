@@ -176,6 +176,16 @@ public class VinculoAssistencial extends AbstractEntities {
         return true;
     }
 
+    /** Efeitos explícitos do encerramento vigente, sem apagar frequência ou pendência. */
+    public void encerrarEstadoLocal(StatusPaciente destino) {
+        Objects.requireNonNull(destino, "Status local obrigatório.");
+        if (destino == StatusPaciente.ATIVO || destino == statusPaciente)
+            throw new IllegalArgumentException("Encerramento local inválido.");
+        statusPaciente = destino;
+        classificacaoRisco = ClassificacaoRisco.VERDE;
+        gatilhoVisitaAcionado = false;
+    }
+
     /** Transição local explícita; autorização e trilha cabem ao serviço transacional. */
     public void alterarStatusLocal(StatusPaciente novoStatus) {
         this.statusPaciente = Objects.requireNonNull(novoStatus, "Status local obrigatório.");
