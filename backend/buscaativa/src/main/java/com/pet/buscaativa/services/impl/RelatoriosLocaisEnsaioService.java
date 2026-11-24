@@ -93,7 +93,7 @@ public class RelatoriosLocaisEnsaioService {
                 .setParameter("id",grupoId).setParameter("unidade",contexto.unidade()).getSingleResult()==0)
             throw new ResourceNotFoundException("Grupo não encontrado.");
         var locais=consultas.lerUnidade().stream().collect(Collectors.toMap(l->l.local().getPaciente().getId(),l->l));
-        String hql="select s from SessaoGrupo s join fetch s.grupo g where s.unidadeOrigemChave=:unidade and s.status=:status"
+        String hql="select s from SessaoGrupo s join fetch s.grupo g where (s.unidadeOrigemChave=:unidade or g.unidadeOrigemChave=:unidade) and s.status=:status"
                 +" and s.dataSessao between :inicio and :fim"+(grupoId==null?"":" and g.id=:grupo")
                 +" order by s.dataSessao,s.horario,s.id";
         var query=em.createQuery(hql,SessaoGrupo.class).setParameter("unidade",contexto.unidade())
@@ -104,7 +104,8 @@ public class RelatoriosLocaisEnsaioService {
         long pendentes=0;
         int presentes=0,ausentes=0;
         for(var s:query.getResultList()) {
-            if(!contexto.unidade().equals(s.getGrupo().getUnidadeOrigemChave())
+            if(!contexto.unidade().equals(s.getUnidadeOrigemChave())
+                    || !contexto.unidade().equals(s.getGrupo().getUnidadeOrigemChave())
                     || AvaliacaoProvenienciaClinica.origemSessao(s)!=AvaliacaoProvenienciaClinica.Situacao.COMPROVADA
                     || s.getParticipantes().stream().anyMatch(p->!fatoColetivoComprovado(p,locais))) {
                 pendentes++; continue;

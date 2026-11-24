@@ -50,6 +50,21 @@ public class NotificacoesLocaisEnsaioService {
                 .thenComparing(e->e.chave().destinatario())).toList();
     }
 
+    /** Reconstroi o payload a partir da lotação e dos fatos atuais.
+     * Nunca reutiliza e-mail, nome ou pacientes de um plano anterior. */
+    @Transactional(readOnly=true,isolation=Isolation.SERIALIZABLE,
+            propagation=org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public Optional<Entrega> revalidar(Chave chave) {
+        if(SecurityContextHolder.getContext().getAuthentication()!=null)
+            throw new AccessDeniedException("Revalidação técnica exige contexto sem autenticação.");
+        if(chave==null || !LocalDate.now(clock).equals(chave.data())
+                || chave.destinatario()==null || chave.unidade()==null) return Optional.empty();
+        return usuarios.findByIdPublico(chave.destinatario())
+                .filter(u->AtoresEstadoClinicoLocalEnsaio.elegivel(u,chave.unidade(),false))
+                .filter(u->u.getEmail()!=null&&!u.getEmail().isBlank())
+                .map(u->new Entrega(chave,u.getNome(),u.getEmail(),vermelhos(chave.unidade(),chave.data())));
+    }
+
     private List<PacienteVermelhoDTO> vermelhos(String unidade,LocalDate hoje) {
         var lista=new ArrayList<PacienteVermelhoDTO>();
         var locais=em.createQuery("select v from VinculoAssistencial v join fetch v.paciente where v.unidadeChave=:unidade and v.statusPaciente=:ativo order by v.id",

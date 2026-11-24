@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { rotuloRiscoLocal, rotuloFaltasLocal, rotuloUltimaPresencaLocal,
-  segmentosLocais, valoresEvolucaoLocal } from './contrato-clinico-local';
+  segmentosLocais, valoresEvolucaoLocal, rotuloRevisaoLocal } from './contrato-clinico-local';
 
 describe('Contrato clínico local experimental', () => {
   it('não transforma risco ou falta desconhecidos em verde ou zero', () => {
@@ -18,6 +18,10 @@ describe('Contrato clínico local experimental', () => {
       percentualVerdes:40,percentualAmarelos:20,percentualVermelhos:20,percentualNaoConfirmados:20});
     expect(s.map(v=>v.quantidade)).toEqual([2,1,1,1]);
     expect(s[3].classe).toBe('unknown');
+  });
+  it('não interpreta aprovação como correção aplicada', () => {
+    expect(rotuloRevisaoLocal('APROVADA')).toContain('sem aplicação automática');
+    expect(rotuloRevisaoLocal('PENDENTE')).toBe('Pendente de revisão');
   });
   it('mantém lacunas históricas mesmo se receber contagens antigas', () => {
     expect(valoresEvolucaoLocal([

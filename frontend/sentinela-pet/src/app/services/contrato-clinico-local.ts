@@ -65,6 +65,7 @@ export interface PainelLocal {
   pacientesPrioritarios: PrioritarioLocal[];
   unidadesDisponiveis: UnidadePainel[];
   historicoDisponivel: boolean;
+  pontoAtual: { data: string; distribuicao: DistribuicaoLocal; estadoNaoConfirmado: number };
   atividade: {
     reservasIndividuaisComprovadas: number; sessoesDistintasComprovadas: number;
     presencasComprovadas: number; faltasComprovadas: number; vinculosComRevisao: number;
@@ -98,4 +99,23 @@ export function segmentosLocais(d: DistribuicaoLocal) {
 /** Null interrompe a série; nunca converter ausência histórica em zero. */
 export function valoresEvolucaoLocal(e: EvolucaoLocal[], campo: 'verdes'|'amarelos'|'vermelhos'): (number|null)[] {
   return e.map(m => m.disponivel ? m[campo] : null);
+}
+
+/** Contrato da fila V12/V13. Aprovação não significa correção aplicada. */
+export type EstadoRevisaoLocal = 'PENDENTE' | 'APROVADA' | 'REJEITADA';
+export interface PendenciaLocal {
+  ticket: string; paciente: string; vinculo: string; nome: string;
+  tipoRegistro: string; solicitadoEm: string; estado: EstadoRevisaoLocal;
+  decisao: string | null; decididaEm: string | null;
+}
+export interface PaginaPendenciasLocal {
+  pendentes: number; aprovadas: number; rejeitadas: number;
+  itens: PendenciaLocal[]; total: number; pagina: number; tamanho: number;
+}
+export function rotuloRevisaoLocal(estado: EstadoRevisaoLocal): string {
+  switch(estado) {
+    case 'PENDENTE': return 'Pendente de revisão';
+    case 'APROVADA': return 'Decisão aprovada — sem aplicação automática';
+    case 'REJEITADA': return 'Decisão rejeitada';
+  }
 }

@@ -48,9 +48,11 @@ public class BuscaAtivaPainelLocalEnsaioService {
     public record Atividade(long reservasIndividuaisComprovadas,long sessoesDistintasComprovadas,
             long presencasComprovadas,long faltasComprovadas,long vinculosComRevisao,
             long semPresencaRecenteConfirmada,long semPresencaRecenteIndeterminada) {}
+    /** Ponto atual não é fechamento de mês nem prova retrospectiva. */
+    public record PontoAtual(LocalDate data,Distribuicao distribuicao,long estadoNaoConfirmado) {}
     public record Painel(long totalPacientesAtivos,long estadoNaoConfirmado,Distribuicao distribuicaoClassificacao,
             List<Evolucao> evolucao,List<Prioritario> pacientesPrioritarios,List<UnidadePainelDTO> unidadesDisponiveis,
-            boolean historicoDisponivel,Atividade atividade) {}
+            boolean historicoDisponivel,Atividade atividade,PontoAtual pontoAtual) {}
 
     public Busca buscaAtiva() {
         var locais=consultas.lerUnidade();
@@ -98,8 +100,10 @@ public class BuscaAtivaPainelLocalEnsaioService {
                 ativos.stream().filter(l->l.item().indicadores().revisaoNecessaria()).count(),
                 ativos.stream().filter(l->Boolean.TRUE.equals(semPresencaRecente(l))).count(),
                 ativos.stream().filter(l->semPresencaRecente(l)==null).count());
-        return new Painel(total,filtrados.stream().filter(l->l.item().indicadores().statusPaciente()==null).count(),
-                distribuicao,List.copyOf(meses),prioridades,List.of(unidadeAtual),false,atividade);
+        long estadoNaoConfirmado=filtrados.stream().filter(l->l.item().indicadores().statusPaciente()==null).count();
+        return new Painel(total,estadoNaoConfirmado,
+                distribuicao,List.copyOf(meses),prioridades,List.of(unidadeAtual),false,atividade,
+                new PontoAtual(LocalDate.now(clock),distribuicao,estadoNaoConfirmado));
     }
 
     private static boolean ativo(Leitura l) { return l.item().indicadores().statusPaciente()==StatusPaciente.ATIVO; }

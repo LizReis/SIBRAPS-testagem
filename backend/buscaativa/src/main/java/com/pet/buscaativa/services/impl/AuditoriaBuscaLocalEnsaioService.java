@@ -94,6 +94,13 @@ public class AuditoriaBuscaLocalEnsaioService {
         return eventos.findByPaciente_IdAndUnidade(id,"VINCULO:"+contexto.unidade(),pagina(pagina,tamanho)).map(AuditoriaBuscaAtivaDTO::new);
     }
 
+    @Transactional(readOnly=true,isolation=Isolation.SERIALIZABLE)
+    public Page<AuditoriaBuscaAtivaDTO> listarUnidade(int pagina,int tamanho) {
+        var contexto=atores.autorizar(true);
+        return eventos.findUnidadeLocal("VINCULO:"+contexto.unidade(),contexto.unidade(),pagina(pagina,tamanho))
+                .map(AuditoriaBuscaAtivaDTO::new);
+    }
+
     private static Pageable pagina(int p,int t) {
         if(p<0||t<1||t>100)throw new ValidationException("Paginação inválida.");
         return PageRequest.of(p,t,Sort.by(Sort.Order.desc("ocorridoEm"),Sort.Order.desc("id")));

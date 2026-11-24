@@ -1,0 +1,17 @@
+# Etapa 6.3 — Pacote 6A.2: proteção complementar e limites de integração
+
+Base `00582b69d7ad6494cff8ee9f3540e0cfb35565e1`, Actions #45504909202: 1369 Java (43 integração local), 12 concorrência, 32 Angular e build aprovados. CI nova pendente.
+
+## Entrega
+- RF26: revalidação em transação nova, pelo UUID e unidade do destinatário e dia técnico atual. Recalcula fatos, não usa endereço de e-mail ou payload antigo. Reserva durável de chave (dia, destinatário, unidade) em tabela de teste, PK contra concorrência; confirmação antes da simulação. Falha ambígua fica INCERTA e não reenvia automaticamente. Reserva interrompida permanece RESERVADA para revisão, não há recuperação automática. Nenhum SMTP, scheduler ou migração operacional. Sem payload clínico na tabela.
+- RNF17: listagem administrativa local paginada, namespace canônico e vínculo atual comprovam escopo; não reaproveita filtro territorial legado. Eventos de lista local também incluídos. Sem ampliação de acesso ao profissional.
+- Relatório coletivo: detecta sessão incoerente quando a origem do grupo é local mas a sessão perdeu/divergiu da origem; não expõe nomes desse caso; exportação integral permanece bloqueada.
+- Angular: contrato de fila administrativa e rótulo explícito de decisão sem aplicação automática. Ponto atual do painel em campo próprio (data, distribuição e estados não comprovados), separado da série mensal. Não altera telas ou HTTP.
+- Quatro testes Java e um Vitest novos. Não executados localmente.
+
+## Bloqueios reais para conclusão operacional
+A série histórica continua com null, inclusive mês corrente na série de fechamentos. O ponto atual NÃO é reconstrução de passado. PainelHistoricoServiceImpl consulta snapshots de Paciente em Envers, o que não comprova a composição dos vínculos em data anterior. EvidenciaStatusVinculo valida cadeias atuais, inclusive transições de vínculos antigos que não provam criação. Não é seguro deduzir ausência de vínculo a partir de ausência de revisão, nem usar os fatos atuais para simular o passado. Antes de liberar meses, estabelecer cobertura temporal verificável por unidade (inclusive vínculos removidos, origens, modalidade, estado, situação de rua, agenda e participantes), distinguir conhecimento à época de correções posteriores conforme comportamento legado, testar cortes, ambiguidades e população incompleta. Sem evidência suficiente, manter indisponível. Essa reconstrução fica para revisão focalizada antes do corte.
+
+Dedup durável foi ensaiada, NÃO implementada em schema de produção. Proposta: migration aditiva após aprovação, tabela técnica com chave única e estados RESERVADA, ENVIADA, INVALIDADA, INCERTA, timestamps de reserva e resultado (UTC), sem nomes, e-mails ou dados clínicos; verificar compatibilidade H2 e backup/rollback. Reconciliar reservas interrompidas sem reenvio cego. SMTP não garante exactly-once; não prometer. Revalidar imediatamente antes de transporte, avaliar janela concorrente de mudança de lotação/indicadores, não manter transação clínica aberta durante rede. Dia técnico e zone RF26 precisam ser alinhados no corte. Nenhum log com informações de paciente/destinatário. Não introduzir política de reenvio sem decisão. Relatório PDF/XLSX completo e conteúdo, estados e sessões inconclusivas exigem revisão adicional.
+
+A integração operacional 6B ainda não está autorizada por este ensaio. Sem alteração de main, migrações, banco real, rotas, telas, ou envio. Reservar Codex para revisão focalizada da reconstrução e corte; evitar reler todo o repositório sem necessidade.
