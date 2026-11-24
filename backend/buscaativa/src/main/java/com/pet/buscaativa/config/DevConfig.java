@@ -1,5 +1,6 @@
 package com.pet.buscaativa.config;
 
+import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -25,8 +26,10 @@ import com.pet.buscaativa.entities.SessaoGrupo;
 import com.pet.buscaativa.entities.SessaoGrupoParticipante;
 import com.pet.buscaativa.entities.UsfReferencia;
 import com.pet.buscaativa.entities.Usuario;
+import com.pet.buscaativa.entities.VinculoAssistencial;
 import com.pet.buscaativa.entities.enums.CapsEnum;
 import com.pet.buscaativa.entities.enums.ClassificacaoRisco;
+import com.pet.buscaativa.entities.enums.FrequenciaAssistencial;
 import com.pet.buscaativa.entities.enums.MotivoEncerramento;
 import com.pet.buscaativa.entities.enums.RacaCorEnum;
 import com.pet.buscaativa.entities.enums.RecorrenciaGrupo;
@@ -51,6 +54,7 @@ import com.pet.buscaativa.repositories.SessaoGrupoParticipanteRepository;
 import com.pet.buscaativa.repositories.SessaoGrupoRepository;
 import com.pet.buscaativa.repositories.UsfReferenciaRepository;
 import com.pet.buscaativa.repositories.UsuarioRepository;
+import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
 import com.pet.buscaativa.services.PacienteService;
 
 import lombok.RequiredArgsConstructor;
@@ -69,7 +73,7 @@ import lombok.RequiredArgsConstructor;
  * IMPORTANTE:
  * - todos os nomes/documentos abaixo são dados sintéticos para teste;
  * - este arquivo NÃO deve ser usado para dados reais de pacientes;
- * - as datas são relativas a LocalDate.now(), mantendo os cenários úteis.
+ * - as datas são relativas a LocalDate.now(clock), mantendo os cenários úteis.
  */
 @Configuration
 @Profile("dev")
@@ -87,13 +91,15 @@ public class DevConfig implements CommandLineRunner {
     private final SessaoGrupoRepository sessaoGrupoRepository;
     private final SessaoGrupoParticipanteRepository sessaoGrupoParticipanteRepository;
     private final HistoricoPacienteRepository historicoPacienteRepository;
+    private final VinculoAssistencialRepository vinculoAssistencialRepository;
     private final PacienteService pacienteService;
+    private final Clock clock;
     private final PasswordEncoder passwordEncoder;
 
     @Override
     @Transactional
     public void run(String... args) {
-        LocalDate hoje = LocalDate.now();
+        LocalDate hoje = LocalDate.now(clock);
 
         // ---------------------------------------------------------------------
         // 1) USUÁRIOS / PROFISSIONAIS
@@ -194,7 +200,7 @@ public class DevConfig implements CommandLineRunner {
                 "(75) 99901-0001",
                 endereco("Centro", "Rua das Flores", "120", "Próximo à praça"),
                 false,
-                TipoAcompanhamento.INDIVIDUAL,
+                TipoAcompanhamento.AMBOS,
                 usfCentro,
                 CapsEnum.CAPS_II
         );
@@ -331,7 +337,7 @@ public class DevConfig implements CommandLineRunner {
                 "(75) 99901-0009",
                 endereco("Centro", "Rua do Sol", "22", null),
                 false,
-                TipoAcompanhamento.INDIVIDUAL,
+                TipoAcompanhamento.GRUPO_TERAPEUTICO,
                 usfCentro,
                 CapsEnum.CAPS_I
         );
@@ -353,6 +359,24 @@ public class DevConfig implements CommandLineRunner {
         );
 
         pacienteRepository.saveAll(List.of(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10));
+
+        // Unidades previstas para os atendimentos, grupos e ações de cada cenário.
+        vinculoAssistencialRepository.saveAll(List.of(
+                VinculoAssistencial.paraCaps(p1, UnidadeAtuacao.CAPS_AD),
+                VinculoAssistencial.paraCaps(p1, UnidadeAtuacao.CAPS_I),
+                VinculoAssistencial.paraCaps(p2, UnidadeAtuacao.CAPS_AD),
+                VinculoAssistencial.paraCaps(p3, UnidadeAtuacao.CAPS_II),
+                VinculoAssistencial.paraCaps(p4, UnidadeAtuacao.CAPS_II),
+                VinculoAssistencial.paraCaps(p5, UnidadeAtuacao.CAPS_II),
+                VinculoAssistencial.paraCaps(p5, UnidadeAtuacao.CAPS_AD),
+                VinculoAssistencial.paraCaps(p6, UnidadeAtuacao.CAPS_I),
+                VinculoAssistencial.paraCaps(p6, UnidadeAtuacao.CAPS_II),
+                VinculoAssistencial.paraCaps(p7, UnidadeAtuacao.CAPS_AD),
+                VinculoAssistencial.paraCaps(p8, UnidadeAtuacao.CAPS_II),
+                VinculoAssistencial.paraCaps(p9, UnidadeAtuacao.CAPS_I),
+                VinculoAssistencial.paraCaps(p10, UnidadeAtuacao.CAPS_II),
+                VinculoAssistencial.paraUsf(p10, usfAndai)
+        ));
 
         // ---------------------------------------------------------------------
         // 4) DISPONIBILIDADE SEMANAL DOS PROFISSIONAIS
@@ -420,11 +444,11 @@ public class DevConfig implements CommandLineRunner {
         // P1: presença recente -> deve ficar VERDE.
         Agendamento p1Presenca = agendamento(
                 joao, p1, hoje.minusDays(10), LocalTime.of(8, 0),
-                SituacaoAtendimento.PRESENTE, null, false
+                SituacaoAtendimento.PRESENTE
         );
         Agendamento p1Hoje = agendamento(
                 joao, p1, hoje, LocalTime.of(9, 0),
-                SituacaoAtendimento.AGENDADO, null, false
+                SituacaoAtendimento.AGENDADO
         );
         agendamentos.add(p1Presenca);
         agendamentos.add(p1Hoje);
@@ -432,15 +456,15 @@ public class DevConfig implements CommandLineRunner {
         // P2: duas faltas consecutivas -> AMARELO.
         Agendamento p2Presenca = agendamento(
                 joao, p2, hoje.minusDays(20), LocalTime.of(8, 30),
-                SituacaoAtendimento.PRESENTE, null, false
+                SituacaoAtendimento.PRESENTE
         );
         Agendamento p2Falta1 = agendamento(
                 joao, p2, hoje.minusDays(5), LocalTime.of(8, 30),
-                SituacaoAtendimento.FALTOU, null, false
+                SituacaoAtendimento.FALTOU
         );
         Agendamento p2Falta2 = agendamento(
                 joao, p2, hoje.minusDays(2), LocalTime.of(9, 0),
-                SituacaoAtendimento.FALTOU, null, false
+                SituacaoAtendimento.FALTOU
         );
         agendamentos.add(p2Presenca);
         agendamentos.add(p2Falta1);
@@ -449,19 +473,19 @@ public class DevConfig implements CommandLineRunner {
         // P3: três faltas consecutivas -> VERMELHO.
         Agendamento p3Presenca = agendamento(
                 maria, p3, hoje.minusDays(35), LocalTime.of(13, 30),
-                SituacaoAtendimento.PRESENTE, null, false
+                SituacaoAtendimento.PRESENTE
         );
         Agendamento p3Falta1 = agendamento(
                 maria, p3, hoje.minusDays(6), LocalTime.of(14, 0),
-                SituacaoAtendimento.FALTOU, null, false
+                SituacaoAtendimento.FALTOU
         );
         Agendamento p3Falta2 = agendamento(
                 maria, p3, hoje.minusDays(4), LocalTime.of(14, 30),
-                SituacaoAtendimento.FALTOU, null, false
+                SituacaoAtendimento.FALTOU
         );
         Agendamento p3Falta3 = agendamento(
                 maria, p3, hoje.minusDays(1), LocalTime.of(15, 0),
-                SituacaoAtendimento.FALTOU, null, false
+                SituacaoAtendimento.FALTOU
         );
         agendamentos.add(p3Presenca);
         agendamentos.add(p3Falta1);
@@ -471,40 +495,35 @@ public class DevConfig implements CommandLineRunner {
         // P6: faltou, mas depois compareceu -> contador deve zerar.
         Agendamento p6Falta = agendamento(
                 pedro, p6, hoje.minusDays(9), LocalTime.of(9, 0),
-                SituacaoAtendimento.FALTOU, null, false
+                SituacaoAtendimento.FALTOU
         );
         Agendamento p6Presenca = agendamento(
                 pedro, p6, hoje.minusDays(4), LocalTime.of(9, 30),
-                SituacaoAtendimento.PRESENTE, null, false
+                SituacaoAtendimento.PRESENTE
         );
         agendamentos.add(p6Falta);
         agendamentos.add(p6Presenca);
 
-        // P7: situação de rua + duas faltas consecutivas -> cenário de busca ativa.
+        // P7: falta no original e na remarcação após a última presença (RF22).
         Agendamento p7Presenca = agendamento(
                 joao, p7, hoje.minusDays(20), LocalTime.of(10, 0),
-                SituacaoAtendimento.PRESENTE, null, false
+                SituacaoAtendimento.PRESENTE
         );
         Agendamento p7Falta1 = agendamento(
                 joao, p7, hoje.minusDays(3), LocalTime.of(10, 0),
-                SituacaoAtendimento.FALTOU, null, false
-        );
-        Agendamento p7Falta2 = agendamento(
-                joao, p7, hoje.minusDays(1), LocalTime.of(10, 30),
-                SituacaoAtendimento.FALTOU, null, false
+                SituacaoAtendimento.FALTOU
         );
         agendamentos.add(p7Presenca);
         agendamentos.add(p7Falta1);
-        agendamentos.add(p7Falta2);
 
         // P10: presença recente + consulta hoje.
         Agendamento p10Presenca = agendamento(
                 maria, p10, hoje.minusDays(3), LocalTime.of(13, 0),
-                SituacaoAtendimento.PRESENTE, null, false
+                SituacaoAtendimento.PRESENTE
         );
         Agendamento p10Hoje = agendamento(
                 maria, p10, hoje, LocalTime.of(14, 0),
-                SituacaoAtendimento.AGENDADO, null, false
+                SituacaoAtendimento.AGENDADO
         );
         agendamentos.add(p10Presenca);
         agendamentos.add(p10Hoje);
@@ -513,22 +532,22 @@ public class DevConfig implements CommandLineRunner {
         // que a tela Agenda reconhece.
         Agendamento presenteHoje = agendamento(
                 joao, p1, hoje, LocalTime.of(7, 30),
-                SituacaoAtendimento.PRESENTE, null, false
+                SituacaoAtendimento.PRESENTE
         );
 
         Agendamento faltouHoje = agendamento(
                 maria, p3, hoje, LocalTime.of(10, 0),
-                SituacaoAtendimento.FALTOU, null, false
+                SituacaoAtendimento.FALTOU
         );
 
         Agendamento canceladoHoje = agendamento(
                 carla, p10, hoje, LocalTime.of(11, 0),
-                SituacaoAtendimento.CANCELADO, null, false
+                SituacaoAtendimento.CANCELADO
         );
 
         Agendamento origemRemarcacaoHoje = agendamento(
                 maria, p10, hoje, LocalTime.of(13, 30),
-                SituacaoAtendimento.REMARCADO_ORIGEM, null, false
+                SituacaoAtendimento.AGENDADO
         );
 
         agendamentos.add(presenteHoje);
@@ -538,23 +557,12 @@ public class DevConfig implements CommandLineRunner {
 
         agendamentoRepository.saveAll(agendamentos);
 
-        // Remarcações depois da persistência do agendamento original.
-        Agendamento p2Remarcado = agendamento(
-                joao, p2, hoje.plusDays(3), LocalTime.of(9, 30),
-                SituacaoAtendimento.REMARCADO, p2Falta2, true
-        );
-
-        Agendamento p3Remarcado = agendamento(
-                maria, p3, hoje.plusDays(2), LocalTime.of(15, 30),
-                SituacaoAtendimento.REMARCADO, p3Falta3, true
-        );
-
-        Agendamento remarcadoHoje = agendamento(
-                maria, p10, hoje, LocalTime.of(15, 0),
-                SituacaoAtendimento.REMARCADO, origemRemarcacaoHoje, false
-        );
-
-        agendamentoRepository.saveAll(List.of(p2Remarcado, p3Remarcado, remarcadoHoje));
+        Agendamento p2Remarcado = remarcar(p2Falta2, hoje.plusDays(3), LocalTime.of(9, 30));
+        Agendamento p3Remarcado = remarcar(p3Falta3, hoje.plusDays(2), LocalTime.of(15, 30));
+        Agendamento p7Falta2 = remarcar(p7Falta1, hoje.minusDays(1), LocalTime.of(10, 30));
+        p7Falta2.setSituacaoAtendimento(SituacaoAtendimento.FALTOU);
+        Agendamento remarcadoHoje = remarcar(origemRemarcacaoHoje, hoje, LocalTime.of(15, 0));
+        agendamentoRepository.saveAll(List.of(p2Remarcado, p3Remarcado, p7Falta2, remarcadoHoje));
 
         // ---------------------------------------------------------------------
         // 6) GRUPOS TERAPÊUTICOS
@@ -661,7 +669,7 @@ public class DevConfig implements CommandLineRunner {
         participantes.add(participante(sessaoFutura, p4, StatusPresencaGrupo.NAO_REGISTRADA));
         participantes.add(participante(sessaoFutura, p5, StatusPresencaGrupo.NAO_REGISTRADA));
         participantes.add(participante(sessaoFutura, p10, StatusPresencaGrupo.NAO_REGISTRADA));
-        participantes.add(participante(sessaoAdFutura, p7, StatusPresencaGrupo.NAO_REGISTRADA));
+        participantes.add(participante(sessaoAdFutura, p5, StatusPresencaGrupo.NAO_REGISTRADA));
 
         // Participantes das sessões exibidas hoje.
         participantes.add(participante(sessaoHojeAgendada, p4, StatusPresencaGrupo.NAO_REGISTRADA));
@@ -669,7 +677,6 @@ public class DevConfig implements CommandLineRunner {
         participantes.add(participante(sessaoHojeAgendada, p10, StatusPresencaGrupo.NAO_REGISTRADA));
 
         participantes.add(participante(sessaoHojeAndamento, p5, StatusPresencaGrupo.NAO_REGISTRADA));
-        participantes.add(participante(sessaoHojeAndamento, p7, StatusPresencaGrupo.NAO_REGISTRADA));
 
         participantes.add(participante(sessaoHojeRealizada, p1, StatusPresencaGrupo.PRESENTE));
         participantes.add(participante(sessaoHojeRealizada, p9, StatusPresencaGrupo.FALTOU));
@@ -692,14 +699,10 @@ public class DevConfig implements CommandLineRunner {
         // 2 faltas => amarelo; 3 faltas => vermelho;
         // e também os limites por dias sem presença.
         // ---------------------------------------------------------------------
+        // O histórico de demonstração descreve o risco junto da frequência que o motivou.
         for (Paciente paciente : List.of(p1, p2, p3, p4, p5, p6, p7, p9, p10)) {
-            pacienteService.recalcularAssiduidadePaciente(paciente);
+            pacienteService.recalcularAssiduidadePaciente(paciente, false);
         }
-
-        // O gatilho de visita é um estado de fluxo; mantemos ligado no paciente
-        // em situação de rua após as duas faltas para a tela de busca ativa.
-        p7.setGatilhoVisitaAcionado(true);
-        pacienteRepository.save(p7);
 
         // ---------------------------------------------------------------------
         // 8) HISTÓRICO DO PACIENTE
@@ -756,14 +759,14 @@ public class DevConfig implements CommandLineRunner {
                 TipoEventoHistoricoPaciente.FALTA,
                 SituacaoAtendimento.FALTOU,
                 hoje.minusDays(1).atTime(15, 0),
-                "Terceira falta consecutiva. Busca ativa recomendada.",
+                "Terceira falta consecutiva. Risco vermelho e busca ativa recomendada.",
                 3
         ));
 
         historicos.add(historico(
                 p4, null, sessao20, maria,
                 TipoEventoHistoricoPaciente.PARTICIPACAO_GRUPO_TERAPEUTICO,
-                null,
+                SituacaoAtendimento.PRESENTE,
                 hoje.minusDays(20).atTime(14, 0),
                 "Presença registrada no grupo terapêutico.",
                 0
@@ -771,10 +774,10 @@ public class DevConfig implements CommandLineRunner {
 
         historicos.add(historico(
                 p5, null, sessao2, maria,
-                TipoEventoHistoricoPaciente.PARTICIPACAO_GRUPO_TERAPEUTICO,
-                null,
+                TipoEventoHistoricoPaciente.FALTA,
+                SituacaoAtendimento.FALTOU,
                 hoje.minusDays(2).atTime(14, 0),
-                "Falta registrada em sessão de grupo terapêutico.",
+                "Terceira falta consecutiva no grupo terapêutico. Risco vermelho.",
                 3
         ));
 
@@ -788,11 +791,29 @@ public class DevConfig implements CommandLineRunner {
         ));
 
         historicos.add(historico(
+                p7, p7Falta1, null, joao,
+                TipoEventoHistoricoPaciente.FALTA,
+                SituacaoAtendimento.FALTOU,
+                hoje.minusDays(3).atTime(10, 0),
+                "Falta no atendimento original.",
+                1
+        ));
+
+        historicos.add(historico(
+                p7, p7Falta2, null, joao,
+                TipoEventoHistoricoPaciente.FALTA,
+                SituacaoAtendimento.FALTOU,
+                hoje.minusDays(1).atTime(10, 30),
+                "Falta na remarcação do atendimento.",
+                2
+        ));
+
+        historicos.add(historico(
                 p7, p7Falta2, null, joao,
                 TipoEventoHistoricoPaciente.BUSCA_ATIVA,
                 SituacaoAtendimento.FALTOU,
                 hoje.minusDays(1).atTime(10, 30),
-                "Duas faltas consecutivas em paciente em situação de rua. Busca em ponto de referência recomendada.",
+                "Faltas no atendimento original e na remarcação. Busca em ponto de referência necessária.",
                 2
         ));
 
@@ -955,9 +976,7 @@ public class DevConfig implements CommandLineRunner {
             Paciente paciente,
             LocalDate data,
             LocalTime hora,
-            SituacaoAtendimento situacao,
-            Agendamento original,
-            boolean remarcacaoAposFalta) {
+            SituacaoAtendimento situacao) {
 
         Agendamento agendamento = new Agendamento();
         agendamento.setUsuario(usuario);
@@ -968,9 +987,17 @@ public class DevConfig implements CommandLineRunner {
                 hora.isBefore(LocalTime.NOON) ? TurnoEnum.MANHA : TurnoEnum.TARDE
         );
         agendamento.setSituacaoAtendimento(situacao);
-        agendamento.setAgendamentoOriginal(original);
-        agendamento.setRemarcacaoAposFalta(remarcacaoAposFalta);
+        agendamento.registrarUnidadeDeOrigem(usuario);
         return agendamento;
+    }
+
+    private Agendamento remarcar(Agendamento original, LocalDate data, LocalTime hora) {
+        Agendamento sucessor = agendamento(original.getUsuario(), original.getPaciente(),
+                data, hora, SituacaoAtendimento.REMARCADO);
+        sucessor.setAgendamentoOriginal(original);
+        sucessor.setRemarcacaoAposFalta(original.getFrequenciaAssistencial() == FrequenciaAssistencial.FALTOU);
+        original.setSituacaoAtendimento(SituacaoAtendimento.REMARCADO_ORIGEM);
+        return sucessor;
     }
 
     private GrupoTerapeutico grupo(
@@ -983,6 +1010,7 @@ public class DevConfig implements CommandLineRunner {
         GrupoTerapeutico grupo = new GrupoTerapeutico();
         grupo.setTema(tema);
         grupo.setCoordenador(coordenador);
+        grupo.registrarUnidadeDeOrigem(coordenador);
         grupo.setRecorrencia(recorrencia);
         grupo.setHorarioPadrao(horario);
         grupo.setDataFimRecorrencia(fimRecorrencia);
@@ -998,11 +1026,15 @@ public class DevConfig implements CommandLineRunner {
 
         SessaoGrupo sessao = new SessaoGrupo();
         sessao.setGrupo(grupo);
+        sessao.registrarUnidadeDeOrigemDoGrupo();
         sessao.setDataSessao(data);
         sessao.setHorario(horario);
         sessao.setStatus(StatusSessaoGrupo.AGENDADA);
-        if (status == StatusSessaoGrupo.REALIZADA) sessao.confirmarRealizacao(grupo.getCoordenador());
-        else sessao.setStatus(status);
+        if (status == StatusSessaoGrupo.REALIZADA) {
+            sessao.confirmarRealizacao(grupo.getCoordenador());
+        } else {
+            sessao.setStatus(status);
+        }
         return sessao;
     }
 
@@ -1039,6 +1071,13 @@ public class DevConfig implements CommandLineRunner {
         historico.setOcorridoEm(ocorridoEm);
         historico.setDescricao(descricao);
         historico.setNumeroFaltaConsecutiva(numeroFalta);
+        if (agendamento != null) {
+            historico.registrarOrigemDoAgendamento(agendamento);
+        } else if (sessao != null) {
+            historico.registrarOrigemDaSessao(sessao);
+        } else {
+            historico.registrarOrigemDeAcaoLocal(profissional);
+        }
         return historico;
     }
 }

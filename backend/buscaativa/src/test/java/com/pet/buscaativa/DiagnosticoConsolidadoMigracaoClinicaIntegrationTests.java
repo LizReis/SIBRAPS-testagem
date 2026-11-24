@@ -16,11 +16,14 @@ import java.util.UUID;
 
 import javax.sql.DataSource;
 
+import org.hibernate.envers.AuditReaderFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -35,6 +38,7 @@ import com.pet.buscaativa.entities.SessaoGrupoParticipante;
 import com.pet.buscaativa.entities.UsfReferencia;
 import com.pet.buscaativa.entities.Usuario;
 import com.pet.buscaativa.entities.VinculoAssistencial;
+import com.pet.buscaativa.entities.dto.HistoricoClinicoLocalDTO.EventoLocalDTO;
 import com.pet.buscaativa.entities.enums.SituacaoAtendimento;
 import com.pet.buscaativa.entities.enums.StatusPresencaGrupo;
 import com.pet.buscaativa.entities.enums.StatusSessaoGrupo;
@@ -44,6 +48,8 @@ import com.pet.buscaativa.entities.enums.UnidadeAtuacao;
 import com.pet.buscaativa.migration.AgendaMigrationTool;
 import com.pet.buscaativa.migration.CadastroUnicoPreflight;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
+import com.pet.buscaativa.services.impl.ConsultaHistoricoClinicoLocalService;
+import com.pet.buscaativa.services.impl.ConsultaPendenciasRevisaoProvenienciaService;
 import com.pet.buscaativa.services.impl.DiagnosticoConsolidadoMigracaoClinicaService;
 import com.pet.buscaativa.services.impl.DiagnosticoConsolidadoMigracaoClinicaService.Proveniencia;
 import com.pet.buscaativa.services.impl.DiagnosticoConsolidadoMigracaoClinicaService.ProntidaoTecnica;
@@ -69,6 +75,8 @@ class DiagnosticoConsolidadoMigracaoClinicaIntegrationTests extends SecurityTest
     @Autowired InventarioFrequenciasVinculoService inventario;
     @Autowired DiagnosticoFaltasConsecutivasVinculoService faltas;
     @Autowired VerificacaoFatoRevisaoProvenienciaService verificador;
+    @Autowired ConsultaHistoricoClinicoLocalService historicosLocais;
+    @Autowired ConsultaPendenciasRevisaoProvenienciaService pendenciasLocais;
     @MockitoBean EscopoUnidadeService escopo;
     @MockitoBean SusApiAdapter susApi;
     @TempDir Path temp;
@@ -179,6 +187,84 @@ class DiagnosticoConsolidadoMigracaoClinicaIntegrationTests extends SecurityTest
                 });
         assertEquals(antes, LegacyMigrationFixture.snapshot(copia, colunas));
         assertEquals(antes, LegacyMigrationFixture.snapshot(base, colunas));
+    }
+
+    @Test
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
+    void mudancaDeLotacaoPreservaFonteComprovadaEMantemLegadoForaDaRevisaoLocal() {
+        record Fatos(UUID pessoa, Usuario unidadeA, Usuario unidadeB, Long profissionalTransferido,
+                Long atendimentoA, Long atendimentoSemOrigem, Long historicoA, Long historicoB, Long historicoSemOrigem) {}
+        var fatos = transacoes.execute(tx -> {
+            var paciente = new Paciente();
+            paciente.setNome("Pessoa sintética com dois vínculos");
+            paciente.setCpf("00000000002");
+            paciente.setCns("000000000000002");
+            em.persist(paciente);
+
+            var unidadeA = profissional(UnidadeAtuacao.CAPS_I, null);
+            var unidadeB = profissional(UnidadeAtuacao.CAPS_II, null);
+            var transferido = profissional(UnidadeAtuacao.CAPS_I, null);
+            em.persist(VinculoAssistencial.paraCaps(paciente, UnidadeAtuacao.CAPS_I));
+            em.persist(VinculoAssistencial.paraCaps(paciente, UnidadeAtuacao.CAPS_II));
+            var atendimentoA = agenda(paciente, transferido, 8, SituacaoAtendimento.PRESENTE, true, null);
+            var atendimentoB = agenda(paciente, unidadeB, 9, SituacaoAtendimento.FALTOU, true, null);
+            var atendimentoSemOrigem = agenda(paciente, transferido, 7, SituacaoAtendimento.FALTOU, false, null);
+
+            var historicoA = historico(paciente, transferido, TipoEventoHistoricoPaciente.PRESENCA);
+            historicoA.setSituacaoAtendimento(SituacaoAtendimento.PRESENTE);
+            historicoA.setAgendamento(atendimentoA);
+            historicoA.registrarOrigemDoAgendamento(atendimentoA);
+            em.persist(historicoA);
+            var historicoB = historico(paciente, unidadeB, TipoEventoHistoricoPaciente.FALTA);
+            historicoB.setSituacaoAtendimento(SituacaoAtendimento.FALTOU);
+            historicoB.setAgendamento(atendimentoB);
+            historicoB.registrarOrigemDoAgendamento(atendimentoB);
+            em.persist(historicoB);
+
+            // A fonte já tem origem, mas o registro legado continua com o campo vazio.
+            var historicoSemOrigem = historico(paciente, transferido, TipoEventoHistoricoPaciente.PRESENCA);
+            historicoSemOrigem.setSituacaoAtendimento(SituacaoAtendimento.PRESENTE);
+            historicoSemOrigem.setAgendamento(atendimentoA);
+            em.persist(historicoSemOrigem);
+            return new Fatos(paciente.getIdPublico(), unidadeA, unidadeB, transferido.getId(), atendimentoA.getId(),
+                    atendimentoSemOrigem.getId(), historicoA.getId(), historicoB.getId(), historicoSemOrigem.getId());
+        });
+        transacoes.executeWithoutResult(tx -> em.find(Usuario.class, fatos.profissionalTransferido())
+                .setUnidadeAtuacao(UnidadeAtuacao.CAPS_II));
+        transacoes.executeWithoutResult(tx -> {
+            var leitor = AuditReaderFactory.get(em);
+            var revisoes = leitor.getRevisions(Usuario.class, fatos.profissionalTransferido());
+            assertEquals(2, revisoes.size());
+            assertEquals(UnidadeAtuacao.CAPS_I,
+                    leitor.find(Usuario.class, fatos.profissionalTransferido(), revisoes.getFirst()).getUnidadeAtuacao());
+            assertEquals(UnidadeAtuacao.CAPS_II,
+                    leitor.find(Usuario.class, fatos.profissionalTransferido(), revisoes.getLast()).getUnidadeAtuacao());
+        });
+        var colunas = LegacyMigrationFixture.columns(fonte);
+        var antes = LegacyMigrationFixture.snapshot(fonte, colunas);
+
+        when(escopo.usuarioLogado()).thenReturn(fatos.unidadeA());
+        assertEquals(java.util.List.of(fatos.historicoA()),
+                historicosLocais.consultar(fatos.pessoa()).eventos().stream().map(EventoLocalDTO::id).toList());
+        assertEquals("CAPS_I", verificador.verificar(fatos.pessoa(), TipoRegistro.AGENDAMENTO,
+                fatos.atendimentoA()).unidadeChave());
+        assertEquals(1, linhaDoTempo.analisar(fatos.pessoa()).eventosComOrigemLocal().size());
+        assertThrows(ResourceNotFoundException.class,
+                () -> verificador.verificar(fatos.pessoa(), TipoRegistro.HISTORICO, fatos.historicoSemOrigem()));
+        assertTrue(pendenciasLocais.listar(fatos.pessoa(), PageRequest.of(0, 10)).isEmpty());
+
+        when(escopo.usuarioLogado()).thenReturn(fatos.unidadeB());
+        assertEquals(java.util.List.of(fatos.historicoB()),
+                historicosLocais.consultar(fatos.pessoa()).eventos().stream().map(EventoLocalDTO::id).toList());
+        assertEquals(1, linhaDoTempo.analisar(fatos.pessoa()).eventosComOrigemLocal().size());
+        assertThrows(ResourceNotFoundException.class,
+                () -> verificador.verificar(fatos.pessoa(), TipoRegistro.AGENDAMENTO, fatos.atendimentoA()));
+        assertThrows(ResourceNotFoundException.class,
+                () -> verificador.verificar(fatos.pessoa(), TipoRegistro.AGENDAMENTO, fatos.atendimentoSemOrigem()));
+        assertThrows(ResourceNotFoundException.class,
+                () -> verificador.verificar(fatos.pessoa(), TipoRegistro.HISTORICO, fatos.historicoSemOrigem()));
+        assertTrue(pendenciasLocais.listar(fatos.pessoa(), PageRequest.of(0, 10)).isEmpty());
+        assertEquals(antes, LegacyMigrationFixture.snapshot(fonte, colunas));
     }
 
     private Cenario prepararCenario() {

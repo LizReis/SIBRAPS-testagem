@@ -15,9 +15,12 @@ final class LegacyMigrationFixture {
         return new DriverManagerDataSource("jdbc:h2:file:" + path.toAbsolutePath(), "sa", UUID.randomUUID().toString());
     }
     static DriverManagerDataSource legacy(Path path) throws Exception {
+        return fromSql(path, "legacy-agenda-v0.sql");
+    }
+    static DriverManagerDataSource fromSql(Path path, String fixture) throws Exception {
         var source = empty(path);
         try (var connection = source.getConnection(); var reader = new InputStreamReader(
-                Objects.requireNonNull(LegacyMigrationFixture.class.getResourceAsStream("/fixtures/legacy-agenda-v0.sql")), StandardCharsets.UTF_8)) {
+                Objects.requireNonNull(LegacyMigrationFixture.class.getResourceAsStream("/fixtures/" + fixture)), StandardCharsets.UTF_8)) {
             RunScript.execute(connection, reader);
         }
         return source;
