@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.pet.buscaativa.entities.AuditoriaCorrecaoFrequencia;
 import com.pet.buscaativa.entities.HistoricoPaciente;
+import com.pet.buscaativa.entities.SessaoGrupo;
 import com.pet.buscaativa.entities.SessaoGrupoParticipante;
 import com.pet.buscaativa.entities.enums.FrequenciaAssistencial;
 import com.pet.buscaativa.entities.enums.StatusPresencaGrupo;
