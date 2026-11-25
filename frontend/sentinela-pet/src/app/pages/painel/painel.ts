@@ -1,3 +1,6 @@
+import { contratoExperimental } from '../../services/configuracao-contrato';
+import { BuscaAtivaLocal } from './busca-ativa-local';
+import { rotuloRiscoLocal } from '../../services/contrato-clinico-local';
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -7,7 +10,7 @@ import { EvolucaoPainel, FiltrosPainel, PainelPayload, PainelService } from '../
 
 type SegmentoDonut = {
   titulo: string;
-  classe: 'green' | 'yellow' | 'red';
+  classe: 'green' | 'yellow' | 'red' | 'unknown';
   quantidade: number;
   percentual: number;
   tamanho: number;
@@ -17,11 +20,12 @@ type SegmentoDonut = {
 
 @Component({
   selector: 'app-painel',
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, BuscaAtivaLocal],
   templateUrl: './painel.html',
   styleUrls: ['./painel.css', './painel-ajustes.css'],
 })
 export class Painel implements OnInit {
+  readonly contratoExperimental = contratoExperimental;
   private readonly painelService = inject(PainelService);
   dados?: PainelPayload;
   carregando = true;
@@ -57,7 +61,7 @@ export class Painel implements OnInit {
   percentual(chave: 'percentualVerdes'|'percentualAmarelos'|'percentualVermelhos'): number { return this.dados?.distribuicaoClassificacao[chave] ?? 0; }
   formatarPercentual(valor: number): string { return new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(valor); }
   iniciais(nome: string): string { return nome.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase(); }
-  rotuloRisco(risco: string): string { return risco === 'VERMELHO' ? 'Busca ativa' : risco === 'AMARELO' ? 'Atenção' : 'Regular'; }
+  readonly rotuloRisco = rotuloRiscoLocal;
 
   get segmentosDonut(): SegmentoDonut[] {
     const distribuicao = this.dados?.distribuicaoClassificacao;
@@ -66,9 +70,13 @@ export class Painel implements OnInit {
       { titulo: 'Atenção', classe: 'yellow' as const, quantidade: distribuicao?.amarelos ?? 0, percentual: distribuicao?.percentualAmarelos ?? 0 },
       { titulo: 'Busca ativa', classe: 'red' as const, quantidade: distribuicao?.vermelhos ?? 0, percentual: distribuicao?.percentualVermelhos ?? 0 },
     ];
-    const somaPercentuais = segmentos.reduce((soma, segmento) => soma + Math.max(0, segmento.percentual), 0);
+    const segmentosComInconclusivos = distribuicao?.naoConfirmados !== undefined
+      ? [...segmentos, {titulo: 'Não confirmado', classe: 'unknown' as const,
+        quantidade: distribuicao.naoConfirmados, percentual: distribuicao.percentualNaoConfirmados ?? 0}]
+      : segmentos;
+    const somaPercentuais = segmentosComInconclusivos.reduce((soma, segmento) => soma + Math.max(0, segmento.percentual), 0);
     let inicio = 0;
-    return segmentos.map(segmento => {
+    return segmentosComInconclusivos.map(segmento => {
       const tamanho = somaPercentuais > 0 ? Math.max(0, segmento.percentual) / somaPercentuais * 100 : 0;
       const resultado = { ...segmento, tamanho, inicio, meio: inicio + tamanho / 2 };
       inicio += tamanho;
@@ -91,7 +99,7 @@ export class Painel implements OnInit {
 
   get maxEvolucao(): number {
     const valores = (this.dados?.evolucao ?? []).flatMap(p => [p.verdes, p.amarelos, p.vermelhos]);
-    return Math.max(1, ...valores);
+    return Math.max(1, ...valores.filter((valor): valor is number => valor !== null));
   }
 
   get maxEvolucaoEscala(): number {
@@ -106,14 +114,25 @@ export class Painel implements OnInit {
     }));
   }
 
-  pontos(campo: keyof Pick<EvolucaoPainel, 'verdes'|'amarelos'|'vermelhos'>): string {
+  pontos(campo: keyof Pick<EvolucaoPainel, 'verdes'|'amarelos'|'vermelhos'>): string[] {
     const serie = this.dados?.evolucao ?? [];
-    if (!serie.length) return '';
-    return serie.map((p, i) => `${this.xPonto(i, serie.length)},${this.yPonto(p[campo])}`).join(' ');
+    const trechos: string[] = [];
+    let trecho: string[] = [];
+    serie.forEach((p, i) => {
+      const valor = p[campo];
+      if (valor === null || !p.disponivel) {
+        if (trecho.length) trechos.push(trecho.join(' '));
+        trecho = [];
+      } else {
+        trecho.push(`${this.xPonto(i, serie.length)},${this.yPonto(valor)}`);
+      }
+    });
+    if (trecho.length) trechos.push(trecho.join(' '));
+    return trechos;
   }
 
   xPonto(indice: number, total: number): number { return total <= 1 ? 50 : 10 + indice * 82 / (total - 1); }
-  yPonto(valor: number): number { return 84 - valor * 70 / this.maxEvolucaoEscala; }
+  yPonto(valor: number | null): number | null { return valor === null ? null : 84 - valor * 70 / this.maxEvolucaoEscala; }
 
   tooltip(p: EvolucaoPainel): string { return `${p.rotulo}: Regular ${p.verdes}, Atenção ${p.amarelos}, Busca ativa ${p.vermelhos}`; }
 

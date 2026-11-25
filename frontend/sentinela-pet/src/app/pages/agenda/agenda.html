@@ -11,6 +11,20 @@
     Carregando...
   </div>
 
+  <section *ngIf="correcao as atendimento" class="card" aria-labelledby="titulo-correcao">
+    <h2 id="titulo-correcao">Revisar atendimento de {{ atendimento.nomePaciente }}</h2>
+    <label *ngIf="atendimento.situacaoReserva === 'CANCELADA' && atendimento.frequenciaAssistencial === 'NAO_REGISTRADA'">
+      Operação
+      <select [(ngModel)]="tipoRegularizacao">
+        <option value="RECUPERAR">Recuperar a reserva</option>
+        <option value="PRESENTE">Regularizar presença</option>
+        <option value="FALTOU">Regularizar falta</option>
+      </select>
+    </label>
+    <label>Justificativa<textarea [(ngModel)]="justificativa" maxlength="2000" rows="3"></textarea></label>
+    <button type="button" (click)="correcao = undefined" [disabled]="atualizandoId === atendimento.id">Cancelar</button>
+    <button type="button" (click)="confirmarCorrecao()" [disabled]="justificativa.trim().length < 10 || atualizandoId === atendimento.id">Salvar revisão</button>
+  </section>
   <div class="alert-erro" *ngIf="erroGeral">
     {{ erroGeral }}
   </div>
@@ -85,7 +99,9 @@
                 <div class="appointment-actions" *ngIf="possuiAcoes(a)">
                   <button type="button" class="action-btn action-presente" *ngIf="podeRegistrarFrequencia(a)" (click)="registrarPresenca(a)" [disabled]="atualizandoId === a.id" [attr.aria-label]="'Registrar presença de ' + a.nomePaciente">Presente</button>
                   <button type="button" class="action-btn action-faltou" *ngIf="podeRegistrarFrequencia(a)" (click)="registrarFalta(a)" [disabled]="atualizandoId === a.id" [attr.aria-label]="'Registrar falta de ' + a.nomePaciente">Faltou</button>
-                  <button type="button" class="action-btn action-presente" *ngIf="podeCorrigirFrequencia(a)" (click)="corrigirFrequencia(a)" [disabled]="atualizandoId === a.id"><i class="bi bi-pencil"></i> Corrigir para {{ a.situacaoAtendimento === 'PRESENTE' ? 'Faltou' : 'Presente' }}</button>
+                  <button type="button" class="action-btn action-presente" *ngIf="podeCorrigirFrequencia(a)" (click)="corrigirFrequencia(a)" [disabled]="atualizandoId === a.id"><i class="bi bi-pencil"></i> Corrigir para {{ (contratoExperimental ? a.frequenciaAssistencial : a.situacaoAtendimento) === 'PRESENTE' ? 'Faltou' : 'Presente' }}</button>
+                  <button type="button" class="action-btn" *ngIf="podeCancelar(a)" (click)="cancelarReserva(a)" [disabled]="atualizandoId === a.id">Cancelar reserva</button>
+                  <button type="button" class="action-btn" *ngIf="podeRegularizar(a)" (click)="corrigirFrequencia(a)">Regularizar</button>
                   <button type="button" class="action-btn action-remarcar" *ngIf="podeRemarcar(a)" (click)="remarcar(a)" [disabled]="atualizandoId === a.id" [attr.aria-label]="'Remarcar atendimento de ' + a.nomePaciente" title="Remarcar atendimento"><span class="material-symbols-outlined" aria-hidden="true">event_repeat</span> Remarcar</button>
                 </div>
               </article>
@@ -111,7 +127,9 @@
                 <div class="appointment-actions" *ngIf="possuiAcoes(a)">
                   <button type="button" class="action-btn action-presente" *ngIf="podeRegistrarFrequencia(a)" (click)="registrarPresenca(a)" [disabled]="atualizandoId === a.id">Presente</button>
                   <button type="button" class="action-btn action-faltou" *ngIf="podeRegistrarFrequencia(a)" (click)="registrarFalta(a)" [disabled]="atualizandoId === a.id">Faltou</button>
-                  <button type="button" class="action-btn action-presente" *ngIf="podeCorrigirFrequencia(a)" (click)="corrigirFrequencia(a)" [disabled]="atualizandoId === a.id"><i class="bi bi-pencil"></i> Corrigir para {{ a.situacaoAtendimento === 'PRESENTE' ? 'Faltou' : 'Presente' }}</button>
+                  <button type="button" class="action-btn action-presente" *ngIf="podeCorrigirFrequencia(a)" (click)="corrigirFrequencia(a)" [disabled]="atualizandoId === a.id"><i class="bi bi-pencil"></i> Corrigir para {{ (contratoExperimental ? a.frequenciaAssistencial : a.situacaoAtendimento) === 'PRESENTE' ? 'Faltou' : 'Presente' }}</button>
+                  <button type="button" class="action-btn" *ngIf="podeCancelar(a)" (click)="cancelarReserva(a)" [disabled]="atualizandoId === a.id">Cancelar reserva</button>
+                  <button type="button" class="action-btn" *ngIf="podeRegularizar(a)" (click)="corrigirFrequencia(a)">Regularizar</button>
                   <button type="button" class="action-btn action-remarcar" *ngIf="podeRemarcar(a)" (click)="remarcar(a)" [disabled]="atualizandoId === a.id" [attr.aria-label]="'Remarcar atendimento de ' + a.nomePaciente"><span class="material-symbols-outlined" aria-hidden="true">event_repeat</span> Remarcar</button>
                 </div>
               </article>

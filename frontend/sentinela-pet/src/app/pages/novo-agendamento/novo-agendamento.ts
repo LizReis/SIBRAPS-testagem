@@ -1,3 +1,4 @@
+import { contratoExperimental } from '../../services/configuracao-contrato';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnDestroy, OnInit } from '@angular/core';
@@ -25,7 +26,7 @@ import {
   VagasPorTurno,
 } from '../../services/agendamento-service';
 import {
-  PacientePayload,
+  PacienteSelecao,
   PacienteService,
 } from '../../services/paciente/paciente-service';
 import {
@@ -42,8 +43,8 @@ import {
 })
 export class NovoAgendamento implements OnInit, OnDestroy {
   termoPesquisaPaciente = '';
-  resultadosPacientes: PacientePayload[] = [];
-  pacienteSelecionado: PacientePayload | null = null;
+  resultadosPacientes: PacienteSelecao[] = [];
+  pacienteSelecionado: PacienteSelecao | null = null;
   buscandoPaciente = false;
   pesquisaRealizada = false;
 
@@ -140,7 +141,7 @@ export class NovoAgendamento implements OnInit, OnDestroy {
 
           if (nomeInvalido || documentoInvalido) {
             this.buscandoPaciente = false;
-            return of<PacientePayload[]>([]);
+            return of<PacienteSelecao[]>([]);
           }
 
           this.buscandoPaciente = true;
@@ -156,7 +157,7 @@ export class NovoAgendamento implements OnInit, OnDestroy {
                   .pipe(map((paciente) => [paciente]));
 
           return consulta.pipe(
-            catchError(() => of<PacientePayload[]>([])),
+            catchError(() => of<PacienteSelecao[]>([])),
             finalize(() => {
               this.buscandoPaciente = false;
               this.pesquisaRealizada = true;
@@ -206,7 +207,7 @@ export class NovoAgendamento implements OnInit, OnDestroy {
     this.pesquisa$.next(this.termoPesquisaPaciente);
   }
 
-  selecionarPaciente(paciente: PacientePayload): void {
+  selecionarPaciente(paciente: PacienteSelecao): void {
     this.pacienteSelecionado = paciente;
     this.resultadosPacientes = [];
     this.termoPesquisaPaciente = '';
@@ -233,11 +234,14 @@ export class NovoAgendamento implements OnInit, OnDestroy {
     });
   }
 
+  private versaoOriginal?: number;
+
   carregarAgendamentoOriginal(id: number): void {
     this.carregandoRemarcacao = true;
 
     this.agendamentoService.buscarPorId(id).subscribe({
       next: (agendamento) => {
+        this.versaoOriginal = agendamento.version;
         this.profissionalSelecionadoId = agendamento.usuarioId;
 
         this.pacienteService.buscarPorId(agendamento.pacienteId).subscribe({
@@ -249,7 +253,7 @@ export class NovoAgendamento implements OnInit, OnDestroy {
               idPublico: agendamento.pacienteId,
               nome: agendamento.nomePaciente,
               tipoAcompanhamento: agendamento.tipoAcompanhamento,
-            } as PacientePayload;
+            } as PacienteSelecao;
           },
         });
 
@@ -377,6 +381,7 @@ export class NovoAgendamento implements OnInit, OnDestroy {
       turnoAgendamento: this.turnoSelecionado!,
       horaAtendimento: this.horaAtendimento,
       agendamentoOriginalId: this.agendamentoOriginalId ?? undefined,
+      ...(contratoExperimental && this.agendamentoOriginalId ? { version: this.versaoOriginal } : {}),
     };
 
     this.agendamentoService.criarAgendamento(payload).subscribe({
@@ -427,7 +432,7 @@ export class NovoAgendamento implements OnInit, OnDestroy {
     );
   }
 
-  labelEnum(valor?: string): string {
+  labelEnum(valor?: string | null): string {
     if (!valor) {
       return 'Não selecionado';
     }

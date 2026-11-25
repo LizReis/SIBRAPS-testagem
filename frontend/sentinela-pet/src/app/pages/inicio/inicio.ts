@@ -1,3 +1,4 @@
+import { contratoExperimental } from '../../services/configuracao-contrato';
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
@@ -19,7 +20,7 @@ export class Inicio implements OnInit {
   readonly indicadores = [
     { titulo: 'Pacientes Cadastrados', descricao: 'Total de pacientes ativos', icone: 'groups', campo: 'totalPacientesAtivos', cor: 'blue' },
     { titulo: 'Agendamentos Hoje', descricao: 'Consultas agendadas', icone: 'calendar_month', campo: 'totalAgendamentosHoje', cor: 'blue' },
-    { titulo: 'Faltas Últimos 7 dias', descricao: 'Pacientes faltaram', icone: 'trending_up', campo: 'totalFaltasUltimosSeteDias', cor: 'green' },
+    { titulo: 'Faltas Últimos 7 dias', descricao: contratoExperimental ? 'Faltas individuais comprovadas na agenda' : 'Pacientes faltaram', icone: 'trending_up', campo: 'totalFaltasUltimosSeteDias', cor: 'green' },
     { titulo: 'Indicadores Atenção', descricao: 'Requerem atenção', icone: 'shield', campo: 'totalPacientesAtencao', cor: 'orange' },
   ] as const;
 

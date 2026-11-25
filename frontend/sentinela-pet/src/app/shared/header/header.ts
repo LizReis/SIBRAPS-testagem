@@ -18,7 +18,7 @@ export class Header implements OnInit {
   userRole = '';
 
   avatarColor = '#e8eef8';
-  totalNotificacoes = 0;
+  totalNotificacoes: number | null = null;
   private colors = ['#e8eef8', '#dbeafe', '#e0f2fe', '#eef2ff'];
 
   ngOnInit(): void {
@@ -31,7 +31,7 @@ export class Header implements OnInit {
       },
       error: () => { this.userInitials = this.getInitials('Usuário'); this.avatarColor = this.getColor('Usuário'); },
     });
-    this.inicioService.buscarResumo().pipe(take(1)).subscribe({ next: r => this.totalNotificacoes = r.totalNotificacoes ?? 0, error: () => this.totalNotificacoes = 0 });
+    this.inicioService.buscarResumo().pipe(take(1)).subscribe({ next: r => this.totalNotificacoes = r.totalNotificacoes, error: () => this.totalNotificacoes = null });
   }
 
   toggleMenu(): void { this.menuToggle.emit(); }

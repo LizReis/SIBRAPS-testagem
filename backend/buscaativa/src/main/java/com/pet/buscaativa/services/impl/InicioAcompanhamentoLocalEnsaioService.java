@@ -53,7 +53,16 @@ public class InicioAcompanhamentoLocalEnsaioService {
 
     @Transactional
     public Resultado iniciar(UUID pacienteId, TipoAcompanhamento tipo, UUID referenciaId) {
-        var contexto = atores.autorizar(false);
+        return iniciar(pacienteId, tipo, referenciaId, atores.autorizar(false));
+    }
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    Resultado iniciarPorCadastro(UUID pacienteId, TipoAcompanhamento tipo, UUID referenciaId) {
+        return iniciar(pacienteId, tipo, referenciaId, atores.autorizarOperacional());
+    }
+
+    private Resultado iniciar(UUID pacienteId, TipoAcompanhamento tipo, UUID referenciaId,
+            AtoresEstadoClinicoLocalEnsaio.Contexto contexto) {
         String unidade = contexto.unidade();
         if (pacienteId == null) throw new ResourceNotFoundException("Paciente não encontrado.");
         if (tipo == null) throw new ValidationException("Tipo de acompanhamento obrigatório.");

@@ -21,6 +21,9 @@ import {
 import {
     UsuarioLogadoService
 } from '../../services/usuario-logado-service';
+import { contratoExperimental } from '../../services/configuracao-contrato';
+import { ProfissionalService, UsuarioReferencia } from '../../services/profissional/profissional-service';
+import { inject } from '@angular/core';
 import { podeEditarPaciente } from '../../auth/permissoes';
 
 @Component({
@@ -36,6 +39,15 @@ export class DetalhePaciente implements OnInit {
     carregando = true;
     erro = '';
     modal: '' | 'encerrar' | 'busca' = '';
+    acaoAdministrativa: '' | 'configurar' | 'reativar' | 'inativar' = '';
+    readonly contratoExperimental = contratoExperimental;
+    podeAdministrar = false;
+    modalidade = '';
+    referencia: string | null | undefined;
+    referenciasDisponiveis = false;
+    referencias: UsuarioReferencia[] = [];
+    motivoReativacao = '';
+    private readonly profissionais = contratoExperimental ? inject(ProfissionalService) : null;
     motivo = '';
     descricao = '';
     salvando = false;
@@ -47,6 +59,7 @@ export class DetalhePaciente implements OnInit {
         usuario.obterUsuarioLogado().subscribe(u => {
             this.podeGerenciar = ['ADMINISTRADOR', 'PROFISSIONAL'].includes(u.tipoUsuario);
             this.podeEditar = podeEditarPaciente(u.tipoUsuario);
+            this.podeAdministrar = contratoExperimental && u.tipoUsuario === 'ADMINISTRADOR';
         })
     }
     ngOnInit() {
@@ -86,7 +99,7 @@ export class DetalhePaciente implements OnInit {
         if (h < new Date(h.getFullYear(), n.getMonth(), n.getDate())) i--;
         return i
     }
-    label(v?: string) {
+    label(v?: string | null) {
         return (v || 'Não informado').replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, x => x.toUpperCase())
     }
     data(v?: string) {
@@ -99,7 +112,7 @@ export class DetalhePaciente implements OnInit {
     encerrar() {
         if (!this.motivo || this.motivo === 'OUTRO' && !this.descricao.trim()) return;
         this.salvando = true;
-        this.service.encerrar(this.id, this.motivo, this.descricao).subscribe({
+        this.service.encerrar(this.id, this.motivo, this.descricao, this.p?.local).subscribe({
             next: () => {
                 this.modal = '';
                 this.salvando = false;
@@ -110,6 +123,47 @@ export class DetalhePaciente implements OnInit {
                 this.salvando = false
             }
         })
+    }
+
+    abrirAcaoAdministrativa(acao: 'configurar' | 'reativar' | 'inativar'): void {
+        this.acaoAdministrativa = acao;
+        this.erroModal = '';
+        this.modalidade = this.p?.tipoAcompanhamento ?? '';
+        this.referencia = this.detalhe?.referenciaInconclusiva
+            ? undefined : this.p?.profissionalReferencia?.idPublico ?? null;
+        this.referenciasDisponiveis = false;
+        this.referencias = [];
+        this.motivoReativacao = '';
+        if (acao === 'configurar') this.profissionais?.listarElegiveisParaReferencia().subscribe({
+            next: referencias => { this.referencias = referencias; this.referenciasDisponiveis = true; },
+            error: () => this.erroModal = 'Não foi possível consultar profissionais de referência.',
+        });
+    }
+
+    salvarAcaoAdministrativa(): void {
+        const acao = this.acaoAdministrativa;
+        const local = this.p?.local;
+        if (!acao || !local || this.salvando || !this.podeAdministrar) return;
+        if ((acao === 'configurar' && (!this.modalidade || !this.referenciasDisponiveis || this.referencia === undefined)) || (acao === 'reativar' && !this.motivoReativacao.trim())) return;
+        const comando = acao === 'configurar'
+            ? this.service.configurarAcompanhamento(this.id, this.modalidade, this.referencia ?? null, local)
+            : acao === 'reativar'
+                ? this.service.reativarAcompanhamento(this.id, this.motivoReativacao.trim(), local)
+                : this.service.inativarPaciente(this.id, local);
+        this.salvando = true;
+        this.erroModal = '';
+        comando.subscribe({
+            next: () => {
+                this.salvando = false;
+                this.acaoAdministrativa = '';
+                this.sucesso = 'Acompanhamento atualizado.';
+                this.carregar();
+            },
+            error: erro => {
+                this.salvando = false;
+                this.erroModal = erro.error?.message ?? 'Não foi possível atualizar o vínculo.';
+            },
+        });
     }
 
     abrirBuscaAtiva(): void {
@@ -130,7 +184,7 @@ export class DetalhePaciente implements OnInit {
 
         this.salvando = true;
 
-        this.service.registrarBuscaAtiva(this.id, descricao).subscribe({
+        this.service.registrarBuscaAtiva(this.id, descricao, this.p?.local).subscribe({
             next: () => {
                 this.modal = '';
                 this.descricao = '';
@@ -153,7 +207,8 @@ export class DetalhePaciente implements OnInit {
         this.router.navigate(['/pacientes/detalhes', this.id, 'historico'])
     }
     @HostListener('document:keydown.escape') escape() {
-        this.modal = ''
+        this.modal = '';
+        if (!this.salvando) this.acaoAdministrativa = '';
     }
 
 

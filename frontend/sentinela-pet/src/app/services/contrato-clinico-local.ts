@@ -24,8 +24,10 @@ export interface IdentificacaoLocal {
 }
 export interface PacienteLocal extends IdentificacaoLocal {
   unidade: string;
+  versaoCadastro: number;
   cpf: string | null;
   cns: string | null;
+  dataNascimento: string;
   indicadores: IndicadoresLocais;
 }
 export type AcaoBuscaLocal = 'REVISAO_HISTORICA' | 'VISITA_DOMICILIAR' | 'PONTO_REFERENCIA'
@@ -107,6 +109,7 @@ export interface PendenciaLocal {
   ticket: string; paciente: string; vinculo: string; nome: string;
   tipoRegistro: string; solicitadoEm: string; estado: EstadoRevisaoLocal;
   decisao: string | null; decididaEm: string | null;
+  versaoVinculo: number; registro: number; justificativaSolicitacao: string | null; justificativaDecisao: string | null;
 }
 export interface PaginaPendenciasLocal {
   pendentes: number; aprovadas: number; rejeitadas: number;
@@ -118,4 +121,42 @@ export function rotuloRevisaoLocal(estado: EstadoRevisaoLocal): string {
     case 'APROVADA': return 'Decisão aprovada — sem aplicação automática';
     case 'REJEITADA': return 'Decisão rejeitada';
   }
+}
+
+export interface PacienteLocalDetalhe {
+  paciente: PacienteLocal;
+  cadastro: {
+    nomeMae: string;
+    dataNascimento: string;
+    sexo: string;
+    racacor: string;
+    telefone: string;
+    endereco: import('./paciente/paciente-service').EnderecoPayload | null;
+    situacaoRua: boolean;
+    usfReferenciaId: number | null;
+    nomeUsfReferencia: string | null;
+    capsReferencia: string;
+  };
+  profissionalReferencia: import('./paciente/paciente-service').UsuarioReferencia | null;
+  referenciaInconclusiva: boolean;
+  proximoAgendamento: import('./paciente/paciente-service').ProximoAgendamento | null;
+}
+
+export interface ProntuarioLocal {
+  paciente: PacienteLocal;
+  atendimentos: import('./paciente/paciente-service').AgendamentoPaciente[];
+  sessoes: { sessao: number; grupo: number; tema: string; data: string; hora: string; status: string; frequencia: string | null }[];
+  historico: (Omit<import('./paciente/paciente-service').HistoricoPacienteEvento, 'titulo' | 'situacaoAtendimento'> & {
+    situacao: string | null;
+    unidadeOrigem: string;
+  })[];
+  presencasComprovadas: number;
+  faltasComprovadas: number;
+  historicoLocalRequerConferencia: boolean;
+}
+
+export interface VersoesPacienteLocal {
+  vinculo: string;
+  versao: number;
+  versaoCadastro: number;
 }

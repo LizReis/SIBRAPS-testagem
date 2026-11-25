@@ -103,20 +103,24 @@ class EscritoresLocaisHttpTests extends SecurityTestSupport {
     @Test
     void cadastraConfirmaEmOutraUsfEEditaSomenteDadosCompartilhados() throws Exception {
         String clinicoA = login(profissional);
-        String clinicoB = login(profissionalB);
         String operadorA = login(recepcao);
         String operadorB = login(recepcaoB);
         var dados = cadastro("52998224725", "700000000000005", "Primeira", usfA);
         enviar(post(RAIZ + "/pacientes"), null, dados).andExpect(status().isUnauthorized());
-        enviar(post(RAIZ + "/pacientes"), operadorA, dados).andExpect(status().isForbidden());
         enviar(post("/api/pacientes"), clinicoA, dados).andExpect(status().isNotFound());
         enviar(get("/api/pacientes/busca-ativa"), clinicoA, null).andExpect(status().isNotFound());
-        var criada = criarCadastro(clinicoA, dados);
+        var criada = criarCadastro(operadorA, dados);
         UUID pessoa = uuid(criada, "paciente");
         UUID localA = uuid(criada, "vinculo");
         var confirmacao = confirmacao(dados);
+        var conferencia = Map.of("cpf", dados.get("cpf"), "cns", dados.get("cns"));
+        enviar(post(RAIZ + "/pacientes/cadastro-unico/conferencia"), operadorB, conferencia)
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.nome").value(dados.get("nome")))
+                .andExpect(jsonPath("$.idPublico").doesNotExist());
+        enviar(get(RAIZ + "/pacientes/{paciente}/detalhe", pessoa), operadorB, null).andExpect(status().isNotFound());
         for (int i = 0; i < 2; i++) {
-            enviar(post(RAIZ + "/pacientes/cadastro-unico/confirmar-vinculo"), clinicoB, confirmacao)
+            enviar(post(RAIZ + "/pacientes/cadastro-unico/confirmar-vinculo"), operadorB, confirmacao)
                     .andExpect(status().isNoContent()).andExpect(header().string("Cache-Control", "no-store"))
                     .andExpect(content().string(""));
         }
@@ -127,12 +131,27 @@ class EscritoresLocaisHttpTests extends SecurityTestSupport {
         assertThat(localB.getTipoAcompanhamento().name()).isEqualTo("GRUPO_TERAPEUTICO");
         dados.put("telefone", "81999990002");
         dados.put("statusPaciente", "INATIVO");
+        dados.remove("tipoAcompanhamento");
         enviar(put(caminho(localA, pessoa) + "/cadastro").param("versaoCadastro", "0"), operadorB, dados)
                 .andExpect(status().isNotFound());
         enviar(put(caminho(localB.getIdPublico(), pessoa) + "/cadastro").param("versaoCadastro", "0"), operadorB, dados)
                 .andExpect(status().isOk()).andExpect(jsonPath("$.versaoCadastro").value(1))
                 .andExpect(jsonPath("$.versaoVinculo").value(localB.getVersion()));
         assertThat(pacientes.findByIdPublico(pessoa).orElseThrow().getTelefone()).isEqualTo("81999990002");
+        enviar(get(RAIZ + "/pacientes/{paciente}/detalhe", pessoa), operadorB, null)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.paciente.vinculo").value(localB.getIdPublico().toString()))
+                .andExpect(jsonPath("$.paciente.versaoCadastro").value(1))
+                .andExpect(jsonPath("$.paciente.indicadores.tipoAcompanhamento").value("GRUPO_TERAPEUTICO"));
+        dados.put("telefone", "81999990004");
+        for (var ator : List.of(administracao, profissional)) {
+            String token = login(ator);
+            int versao = pacientes.findByIdPublico(pessoa).orElseThrow().getVersion();
+            enviar(put(caminho(localA, pessoa) + "/cadastro").param("versaoCadastro", Integer.toString(versao)), token, dados)
+                    .andExpect(status().isOk());
+            enviar(patch(caminho(localB.getIdPublico(), pessoa) + "/acompanhamento").param("version", "0"),
+                    operadorB, Map.of("tipoAcompanhamento", "AMBOS")).andExpect(status().isForbidden());
+            dados.put("telefone", "81999990005");
+        }
         assertClinicaGlobalAusente(pessoa);
         assertThat(vinculos.findByIdPublico(localA).orElseThrow().getVersion()).isEqualTo(criada.path("versaoVinculo").asInt());
         assertThat(vinculos.findByIdPublico(localB.getIdPublico()).orElseThrow().getVersion()).isEqualTo(localB.getVersion());
@@ -143,6 +162,25 @@ class EscritoresLocaisHttpTests extends SecurityTestSupport {
         assertThat(pacientes.findByCpf("11144477735")).isEmpty();
         assertThat(contexto.containsBean(TaskManagementConfigUtils.SCHEDULED_ANNOTATION_PROCESSOR_BEAN_NAME)).isFalse();
         assertThat(contexto.containsBean("agendaMigratedIndicatorsInitializer")).isFalse();
+
+        var adminB = tx.execute(ignorado -> usuario(TipoUsuario.ADMINISTRADOR, em.find(UsfReferencia.class, usfB.getId())));
+        var perfisOrigem = List.of(profissional, administracao);
+        var perfisDestino = List.of(profissionalB, adminB);
+        var cpfs = List.of("41687237042", "87121863090");
+        var cartoes = List.of("707000000000010", "907000000000013");
+        for (int i = 0; i < perfisOrigem.size(); i++) {
+            var novo = cadastro(cpfs.get(i), cartoes.get(i), "Papel " + i, usfA);
+            var criado = criarCadastro(login(perfisOrigem.get(i)), novo);
+            var tokenDestino = login(perfisDestino.get(i));
+            enviar(post(RAIZ + "/pacientes/cadastro-unico/conferencia"), tokenDestino,
+                    Map.of("cpf", novo.get("cpf"), "cns", novo.get("cns"))).andExpect(status().isOk());
+            enviar(post(RAIZ + "/pacientes/cadastro-unico/confirmar-vinculo"), tokenDestino, confirmacao(novo))
+                    .andExpect(status().isNoContent());
+            enviar(get(RAIZ + "/pacientes/{paciente}/detalhe", uuid(criado, "paciente")), tokenDestino, null)
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.paciente.indicadores.tipoAcompanhamento")
+                            .value("GRUPO_TERAPEUTICO"));
+        }
+
     }
 
     @Test
@@ -193,6 +231,37 @@ class EscritoresLocaisHttpTests extends SecurityTestSupport {
                 "justificativa", JUSTIFICATIVA);
         enviar(post(outraRota + "/regularizacao-cancelamento/frequencia"), clinico, regularizacao)
                 .andExpect(status().isOk()).andExpect(jsonPath("$.frequenciaAssistencial").value("FALTOU"));
+        var lista = get(RAIZ + "/agendamentos/agenda/{dia}", HOJE);
+        enviar(lista, operador, null).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(3));
+        enviar(get(RAIZ + "/agendamentos/agenda/{dia}", HOJE), login(profissionalB), null)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+        enviar(get(RAIZ + "/pacientes/{paciente}/prontuario", pessoa), clinico, null)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.faltasComprovadas").value(2))
+                .andExpect(jsonPath("$.paciente.indicadores.statusPaciente").value("ATIVO"));
+        enviar(get(RAIZ + "/painel/resumo"), clinico, null).andExpect(status().isOk())
+                .andExpect(jsonPath("$.distribuicaoClassificacao").exists());
+        enviar(get(RAIZ + "/inicio/resumo"), clinico, null).andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalFaltasUltimosSeteDias").value(2));
+        var idVinculo = uuid(criada, "vinculo");
+        tx.executeWithoutResult(ignorado -> vinculos.findByIdPublico(idVinculo).orElseThrow().sinalizarIndicadoresLocaisPendentes());
+        var antes = vinculos.findByIdPublico(idVinculo).orElseThrow();
+        String revisoes = caminho(idVinculo, pessoa) + "/revisoes";
+        String versaoLocal = antes.getVersion().toString();
+        String ticket = resposta(enviar(post(revisoes).param("version", versaoLocal), clinico,
+                Map.of("tipo", "AGENDAMENTO", "registro", outraFrequencia.path("id").asLong(), "justificativa", JUSTIFICATIVA))
+                .andExpect(status().isOk())).asString();
+        String admin = login(administracao);
+        enviar(get(RAIZ + "/relatorios/pendencias").param("estado", "PENDENTE"), admin, null)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.itens[0].ticket").value(ticket))
+                .andExpect(jsonPath("$.itens[0].justificativaSolicitacao").value(JUSTIFICATIVA));
+        enviar(post(revisoes + "/" + ticket + "/decisao").param("version", versaoLocal), admin,
+                Map.of("decisao", "APROVAR", "justificativa", JUSTIFICATIVA)).andExpect(status().isOk());
+        enviar(get(RAIZ + "/relatorios/pendencias").param("estado", "APROVADA"), admin, null)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.itens[0].justificativaDecisao").value(JUSTIFICATIVA));
+        var apos = vinculos.findByIdPublico(idVinculo).orElseThrow();
+        assertThat(apos.getVersion()).isEqualTo(antes.getVersion());
+        assertThat(apos.getIndicadoresPendentes()).isTrue();
+        assertThat(apos.getCountFaltas()).isEqualTo(antes.getCountFaltas());
         assertClinicaGlobalAusente(pessoa);
     }
 
@@ -213,6 +282,10 @@ class EscritoresLocaisHttpTests extends SecurityTestSupport {
                 "tema", "Oficina sintética", "coordenadorId", profissional.getIdPublico(),
                 "recorrencia", "UNICA", "dataPrimeiraSessao", HOJE.plusDays(1),
                 "horario", "09:00", "participantesIds", List.of(pessoa))).andExpect(status().isOk()));
+        long grupoId = grupo.path("grupo").asLong();
+        enviar(get(RAIZ + "/grupos/{id}", grupoId), clinico, null).andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(grupoId));
+        enviar(get(RAIZ + "/grupos/{id}", grupoId), externo, null).andExpect(status().isNotFound());
         String sessao = RAIZ + "/grupos/sessoes/" + grupo.path("sessoes").get(0).asLong();
         var inicial = resposta(enviar(patch(sessao + "/status").param("novoStatus", "AGENDADA"), clinico, null)
                 .andExpect(status().isOk()));
@@ -259,6 +332,27 @@ class EscritoresLocaisHttpTests extends SecurityTestSupport {
         }
         var identificada = pacientes.findByCpf("39053344705").orElseThrow();
         assertThat(vinculos.findByPacienteId(identificada.getId())).hasSize(1);
+    }
+
+    @Test
+    void relatoriosExportamEAuditoriaDaListaPermaneceLocal() throws Exception {
+        String admin = login(administracao);
+        String operador = login(recepcao);
+        var requisicao = UUID.randomUUID().toString();
+        for (int i = 0; i < 2; i++) {
+            enviar(get(RAIZ + "/pacientes/busca-ativa").param("requisicao", requisicao), operador, null)
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.selecaoIndeterminada").exists());
+        }
+        enviar(get(RAIZ + "/auditoria/busca-ativa"), admin, null).andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1));
+        enviar(get(RAIZ + "/auditoria/busca-ativa"), operador, null).andExpect(status().isForbidden());
+        enviar(get(RAIZ + "/relatorios/pendencias"), admin, null).andExpect(status().isOk())
+                .andExpect(jsonPath("$.pendentes").value(0));
+        enviar(get(RAIZ + "/relatorios/pendencias"), operador, null).andExpect(status().isForbidden());
+        enviar(get(RAIZ + "/relatorios/busca-ativa/pdf"), operador, null).andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_PDF));
+        enviar(get(RAIZ + "/relatorios/frequencia-grupos/excel"), admin, null).andExpect(status().isOk())
+                .andExpect(content().contentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
     }
 
     @Test

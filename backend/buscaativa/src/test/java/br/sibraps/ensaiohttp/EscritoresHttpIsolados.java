@@ -79,7 +79,7 @@ import lombok.RequiredArgsConstructor;
 @TestConfiguration
 @Profile("test & ensaio-estado-local & escritores-http-local & !dev")
 @Import({EscritoresHttpIsolados.Cadastro.class, EscritoresHttpIsolados.Individual.class,
-        EscritoresHttpIsolados.Coletivo.class})
+        EscritoresHttpIsolados.Coletivo.class, ConsultasHttpIsoladas.class})
 public class EscritoresHttpIsolados {
     public static final String RAIZ = "/api/ensaio-escritores";
     public static final String BANCO = "jdbc:h2:mem:escritores-http-6b1";
@@ -124,8 +124,16 @@ public class EscritoresHttpIsolados {
                         if (handler instanceof HandlerMethod metodo) {
                             var tipo = metodo.getBeanType();
                             if (Cadastro.class.isAssignableFrom(tipo) || Individual.class.isAssignableFrom(tipo)
-                                    || Coletivo.class.isAssignableFrom(tipo)
-                                    || AuthController.class.isAssignableFrom(tipo) && metodo.getMethod().getName().equals("login"))
+                                    || Coletivo.class.isAssignableFrom(tipo) || ConsultasHttpIsoladas.class.isAssignableFrom(tipo)
+                                    || AuthController.class.isAssignableFrom(tipo) && metodo.getMethod().getName().equals("login")
+                                    || com.pet.buscaativa.controllers.UsuarioController.class.isAssignableFrom(tipo)
+                                    && Set.of("me", "listarProfissionaisParaSelecao", "listarUsuariosElegiveisParaReferencia")
+                                            .contains(metodo.getMethod().getName())
+                                    || com.pet.buscaativa.controllers.DisponibilidadeController.class.isAssignableFrom(tipo)
+                                    || com.pet.buscaativa.controllers.DisponibilidadeExcecaoController.class.isAssignableFrom(tipo)
+                                    || com.pet.buscaativa.controllers.BloqueioAgendaController.class.isAssignableFrom(tipo)
+                                    || com.pet.buscaativa.controllers.UsfReferenciaController.class.isAssignableFrom(tipo)
+                                    && metodo.getMethod().getName().equals("listar"))
                                 return true;
                         }
                         resp.setStatus(HttpStatus.NOT_FOUND.value());
@@ -153,7 +161,7 @@ public class EscritoresHttpIsolados {
         public record Decidir(@NotNull DecisaoRevisaoProveniencia.Decisao decisao, String justificativa) {}
 
         @PostMapping
-        @PreAuthorize(CLINICO)
+        @PreAuthorize(OPERACIONAL)
         public ResponseEntity<CadastroAcompanhamentoLocalEnsaioService.CadastroLocal> cadastrar(
                 @RequestBody @Valid PacienteDTO dados, @RequestParam(defaultValue = "false") boolean ignorarSimilaridade) {
             return ResponseEntity.status(HttpStatus.CREATED)
@@ -161,7 +169,7 @@ public class EscritoresHttpIsolados {
         }
 
         @PostMapping("/cadastro-unico/confirmar-vinculo")
-        @PreAuthorize(CLINICO)
+        @PreAuthorize(OPERACIONAL)
         public ResponseEntity<Void> confirmar(@RequestBody @Valid Confirmacao dados) {
             cadastro.confirmarEVincular(dados.cpf(), dados.cns(), dados.nome(), dados.nomeMae(), dados.dataNascimento(),
                     dados.tipoAcompanhamento(), dados.referencia());
@@ -169,11 +177,11 @@ public class EscritoresHttpIsolados {
         }
 
         @PutMapping("/{paciente}/vinculos/{vinculo}/cadastro")
-        @PreAuthorize(CADASTRAL)
+        @PreAuthorize(OPERACIONAL)
         public CadastroAcompanhamentoLocalEnsaioService.CadastroLocal editar(@PathVariable UUID paciente,
-                @PathVariable UUID vinculo, @RequestParam Integer versaoCadastro, @RequestBody @Valid PacienteDTO dados,
+                @PathVariable UUID vinculo, @RequestParam Integer versaoCadastro, @RequestBody @Valid CadastroCompartilhadoHttp dados,
                 @RequestParam(defaultValue = "false") boolean ignorarSimilaridade) {
-            return cadastro.editarCadastro(paciente, vinculo, versaoCadastro, dados, ignorarSimilaridade);
+            return cadastro.editarCadastro(paciente, vinculo, versaoCadastro, dados.dados(), ignorarSimilaridade);
         }
 
         @PatchMapping("/{paciente}/vinculos/{vinculo}/acompanhamento")
@@ -285,17 +293,25 @@ public class EscritoresHttpIsolados {
         private final ComandosAssistenciaisLocaisEnsaioService comandos;
         private final DtosAssistenciaisLocaisEnsaioService dtos;
 
+        public record SerieHttp(@com.fasterxml.jackson.annotation.JsonUnwrapped
+                com.pet.buscaativa.entities.dto.GrupoTerapeuticoDTO dados, Long grupo,
+                Integer versaoGrupo, java.util.List<Long> sessoes) {}
+
+        private SerieHttp resposta(SerieGruposLocaisEnsaioService.Resultado resultado) {
+            return new SerieHttp(dtos.grupo(resultado.grupo()), resultado.grupo(), resultado.versaoGrupo(), resultado.sessoes());
+        }
+
         @PostMapping
         @PreAuthorize(OPERACIONAL)
-        public SerieGruposLocaisEnsaioService.Resultado criar(@RequestBody @Valid CriarGrupoDTO dados) {
-            return series.criar(dados);
+        public SerieHttp criar(@RequestBody @Valid CriarGrupoDTO dados) {
+            return resposta(series.criar(dados));
         }
 
         @PutMapping("/{grupo}")
         @PreAuthorize(OPERACIONAL)
-        public SerieGruposLocaisEnsaioService.Resultado editar(@PathVariable Long grupo,
+        public SerieHttp editar(@PathVariable Long grupo,
                 @RequestBody @Valid AtualizarGrupoTerapeuticoDTO dados) {
-            return series.atualizar(grupo, dados);
+            return resposta(series.atualizar(grupo, dados));
         }
 
         @PostMapping("/sessoes")

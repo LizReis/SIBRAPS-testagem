@@ -1,3 +1,4 @@
+import { raizClinica } from './configuracao-contrato';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
@@ -8,16 +9,19 @@ export interface AgendamentoDTO {
   nomeProfissional: string;
   pacienteId: string;
   nomePaciente: string;
-  tipoAcompanhamento: string;
+  tipoAcompanhamento: string | null;
   dataAgendamento: string;
   turnoAgendamento: string;
   horaAtendimento: string;
   situacaoAtendimento: string;
   agendamentoOriginalId?: number;
   version: number;
+  frequenciaAssistencial?: 'NAO_REGISTRADA' | 'PRESENTE' | 'FALTOU';
+  situacaoReserva?: 'AGENDADA' | 'REMARCADA' | 'CANCELADA' | 'SUBSTITUIDA';
 }
 
 export interface NovoAgendamentoPayload {
+  version?: number;
   id?: number;
   usuarioId: string;
   pacienteId: string;
@@ -61,7 +65,7 @@ export interface ValidationError extends StandardError {
   providedIn: 'root',
 })
 export class AgendamentoService {
-  private readonly apiUrl = '/api/agendamentos';
+  private readonly apiUrl = `${raizClinica}/agendamentos`;
 
   constructor(private http: HttpClient) {}
 
@@ -93,6 +97,20 @@ export class AgendamentoService {
     const params = new HttpParams().set('novoStatus', novoStatus).set('version', String(version));
 
     return this.http.patch<AgendamentoDTO>(`${this.apiUrl}/${id}/status`, null, { params });
+  }
+
+  corrigirFrequencia(id: number, novaFrequencia: 'PRESENTE' | 'FALTOU', version: number, justificativa: string): Observable<AgendamentoDTO> {
+    return this.http.patch<AgendamentoDTO>(`${this.apiUrl}/${id}/frequencia/correcao`, { novaFrequencia, version, justificativa });
+  }
+
+  recuperarReserva(id: number, version: number, justificativa: string): Observable<AgendamentoDTO> {
+    return this.http.post<AgendamentoDTO>(`${this.apiUrl}/${id}/regularizacao-cancelamento/recuperar-reserva`, { version, justificativa });
+  }
+
+  regularizarCancelamento(id: number, novaFrequencia: 'PRESENTE' | 'FALTOU', version: number,
+      justificativa: string): Observable<AgendamentoDTO> {
+    return this.http.post<AgendamentoDTO>(`${this.apiUrl}/${id}/regularizacao-cancelamento/frequencia`,
+      { novaFrequencia, version, justificativa });
   }
 
   consultarVagas(usuarioId: string, data: string): Observable<VagasPorTurno> {

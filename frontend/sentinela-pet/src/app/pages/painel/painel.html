@@ -79,13 +79,15 @@
           <svg viewBox="0 0 100 100" role="img" aria-labelledby="evolution-title evolution-description" preserveAspectRatio="none">
             <title id="evolution-title">Evolução histórica das classificações</title><desc id="evolution-description">Séries mensais reais reconstruídas a partir da auditoria de pacientes.</desc>
             @for (tick of ticksEvolucao; track tick.valor) {<line x1="10" [attr.y1]="tick.y" x2="92" [attr.y2]="tick.y" class="grid-line" />}
-            <polyline [attr.points]="pontos('vermelhos')" class="series red"/><polyline [attr.points]="pontos('amarelos')" class="series yellow"/><polyline [attr.points]="pontos('verdes')" class="series green"/>
+            @for (trecho of pontos('vermelhos'); track $index) {<polyline [attr.points]="trecho" class="series red"/>}
+            @for (trecho of pontos('amarelos'); track $index) {<polyline [attr.points]="trecho" class="series yellow"/>}
+            @for (trecho of pontos('verdes'); track $index) {<polyline [attr.points]="trecho" class="series green"/>}
           </svg>
           <div class="markers-layer" aria-hidden="true">
             @for (p of dados.evolucao; track p.mes; let i = $index) {
-              <span class="chart-marker red" [style.left.%]="xPonto(i,dados.evolucao.length)" [style.top.%]="yPonto(p.vermelhos)" [title]="tooltip(p)"></span>
-              <span class="chart-marker yellow" [style.left.%]="xPonto(i,dados.evolucao.length)" [style.top.%]="yPonto(p.amarelos)" [title]="tooltip(p)"></span>
-              <span class="chart-marker green" [style.left.%]="xPonto(i,dados.evolucao.length)" [style.top.%]="yPonto(p.verdes)" [title]="tooltip(p)"></span>
+              <span *ngIf="p.disponivel && p.vermelhos !== null" class="chart-marker red" [style.left.%]="xPonto(i,dados.evolucao.length)" [style.top.%]="yPonto(p.vermelhos)" [title]="tooltip(p)"></span>
+              <span *ngIf="p.disponivel && p.amarelos !== null" class="chart-marker yellow" [style.left.%]="xPonto(i,dados.evolucao.length)" [style.top.%]="yPonto(p.amarelos)" [title]="tooltip(p)"></span>
+              <span *ngIf="p.disponivel && p.verdes !== null" class="chart-marker green" [style.left.%]="xPonto(i,dados.evolucao.length)" [style.top.%]="yPonto(p.verdes)" [title]="tooltip(p)"></span>
             }
           </div>
         </div>
@@ -96,8 +98,9 @@
 
     <article class="panel-card priority"><div class="priority-heading"><h2><span class="material-symbols-outlined">stars</span> Pacientes prioritários</h2><a routerLink="/pacientes">Ver todos <span class="material-symbols-outlined">chevron_right</span></a></div>
       @if (dados.pacientesPrioritarios.length === 0) {<div class="empty-state"><span class="material-symbols-outlined">verified</span><p>Nenhum paciente necessita de busca ativa ou atenção no momento.</p></div>}
-      @else {<div class="priority-list">@for (paciente of dados.pacientesPrioritarios; track paciente.idPublico) {<div class="patient-row"><span class="avatar">{{ iniciais(paciente.nome) }}</span><div class="patient-name"><strong>{{ paciente.nome }}</strong><small>{{ paciente.idade === null ? 'Idade não informada' : paciente.idade + ' anos' }}</small></div><span [class]="'risk-badge ' + paciente.classificacaoRisco.toLowerCase()"><span class="material-symbols-outlined">warning</span>{{ rotuloRisco(paciente.classificacaoRisco) }}</span><div class="needed"><span class="material-symbols-outlined">notification_important</span>{{ paciente.acaoNecessaria }}</div><a class="patient-button" [routerLink]="['/pacientes/detalhes', paciente.idPublico]">Ver paciente</a></div>}</div>}
+      @else {<div class="priority-list">@for (paciente of dados.pacientesPrioritarios; track paciente.idPublico) {<div class="patient-row"><span class="avatar">{{ iniciais(paciente.nome) }}</span><div class="patient-name"><strong>{{ paciente.nome }}</strong><small>{{ paciente.idade === null ? 'Idade não informada' : paciente.idade + ' anos' }}</small></div><span [class]="'risk-badge ' + (paciente.classificacaoRisco?.toLowerCase() ?? 'unknown')"><span class="material-symbols-outlined">warning</span>{{ rotuloRisco(paciente.classificacaoRisco) }}</span><div class="needed"><span class="material-symbols-outlined">notification_important</span>{{ paciente.acaoNecessaria }}</div><a class="patient-button" [routerLink]="['/pacientes/detalhes', paciente.idPublico]">Ver paciente</a></div>}</div>}
     </article>
     <footer class="info-footer"><span class="material-symbols-outlined">info</span>Os dados são dinâmicos e atualizados conforme os filtros selecionados.</footer>
   }
 </section>
+@if (contratoExperimental) { <app-busca-ativa-local /> }

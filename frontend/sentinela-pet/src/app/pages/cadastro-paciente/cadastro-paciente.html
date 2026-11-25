@@ -146,7 +146,7 @@
             </small>
           </label>
 
-          <label for="tipoAcompanhamento">Tipo de acompanhamento *
+          <label *ngIf="!edicaoSomenteCadastral" for="tipoAcompanhamento">Tipo de acompanhamento *
             <select id="tipoAcompanhamento" name="patient-follow-up" autocomplete="off"
               formControlName="tipoAcompanhamento">
               <option value="" disabled>Selecione</option>
@@ -159,7 +159,7 @@
             </small>
           </label>
 
-          <label for="profissionalReferenciaId">Profissional de referência (opcional)
+          <label *ngIf="!edicaoSomenteCadastral" for="profissionalReferenciaId">Profissional de referência (opcional)
             <select id="profissionalReferenciaId" name="patient-reference-user"
               formControlName="profissionalReferenciaId">
               <option [ngValue]="null">Nenhum profissional de referência</option>

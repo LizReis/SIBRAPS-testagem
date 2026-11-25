@@ -31,7 +31,9 @@
     <article><small>PACIENTES ATIVOS</small><strong>{{dados.resumo.pacientesAtivos}}</strong></article>
     <article><small>EM ATENÇÃO</small><strong class="yellow">{{dados.resumo.emAtencao}}</strong></article>
     <article><small>BUSCA ATIVA</small><strong class="red">{{dados.resumo.buscaAtiva}}</strong></article>
-    <article><small>SEM PRESENÇA RECENTE</small><strong>{{dados.resumo.semPresencaRecente}}</strong></article>
+    <article><small>SEM PRESENÇA RECENTE</small><strong>{{dados.resumo.semPresencaRecente}}</strong>
+      <small *ngIf="dados.resumo.semPresencaIndeterminada">{{dados.resumo.semPresencaIndeterminada}} não confirmados</small>
+    </article>
   </section>
   <section class="list">
     <h2>Lista de pacientes <small>{{dados?.totalRegistros || 0}} registros</small></h2>
@@ -58,9 +60,9 @@
             </td>
             <td data-label="Documento">{{documento(p)}}</td>
             <td data-label="Unidade">{{p.unidade || 'Não informada'}}</td>
-            <td data-label="Faltas">{{p.countFaltas}}</td>
+            <td data-label="Faltas">{{p.countFaltas ?? 'Não confirmado'}}</td>
             <td data-label="Classificação"><span class="badge"
-                [class]="'badge '+p.classificacaoRisco.toLowerCase()">{{label(p.classificacaoRisco)}}</span></td>
+                [class]="'badge '+(p.classificacaoRisco?.toLowerCase() ?? 'unknown')">{{label(p.classificacaoRisco)}}</span></td>
             <td data-label="Última presença">{{p.dataUltimaPresenca ? (p.dataUltimaPresenca|date:'dd/MM/yyyy') : 'Sem
               presença registrada'}}</td>
             <td data-label="Ações" class="actions"><button

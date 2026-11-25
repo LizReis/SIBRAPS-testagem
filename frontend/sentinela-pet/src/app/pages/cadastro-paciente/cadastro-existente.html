@@ -7,7 +7,7 @@
 
   <p class="status-sucesso" role="status" *ngIf="concluido">
     Vínculo com a sua unidade confirmado. Não foi criado outro cadastro.
-    A visualização do acompanhamento clínico depende da migração das consultas locais.
+    <span *ngIf="!contratoExperimental">A visualização do acompanhamento clínico depende da migração das consultas locais.</span>
   </p>
 
   <form *ngIf="!concluido" [formGroup]="documentosForm" (ngSubmit)="conferir()" autocomplete="off">
@@ -43,8 +43,17 @@
           [disabled]="vinculando">
         Conferi os três dados com o paciente ou documento confiável e confirmo que se trata da mesma pessoa.
       </label>
+      <label *ngIf="contratoExperimental" for="modalidade-vinculo">Modalidade do novo acompanhamento
+        <select id="modalidade-vinculo" [value]="modalidade" (change)="modalidade = $any($event.target).value"
+          [disabled]="vinculando">
+          <option value="">Selecione</option>
+          <option value="INDIVIDUAL">Individual</option>
+          <option value="GRUPO_TERAPEUTICO">Grupo terapêutico</option>
+          <option value="AMBOS">Ambos</option>
+        </select>
+      </label>
       <button type="button" class="confirmar"
-        [disabled]="!confirmouIdentidade || vinculando"
+        [disabled]="!confirmouIdentidade || vinculando || (contratoExperimental && !modalidade)"
         (click)="confirmarVinculoLocal()">
         {{ vinculando ? 'Vinculando…' : 'Confirmar e vincular à minha unidade' }}
       </button>

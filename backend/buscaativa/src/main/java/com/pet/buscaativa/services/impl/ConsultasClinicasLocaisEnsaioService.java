@@ -47,8 +47,8 @@ public class ConsultasClinicasLocaisEnsaioService {
             ClassificacaoRisco classificacaoRisco, Boolean gatilhoVisitaAcionado,
             Boolean indicadoresPendentes, boolean revisaoNecessaria, Set<Motivo> motivos) {}
 
-    public record Item(UUID idPublico, UUID vinculo, Integer versao, String unidade, String nome,
-            String cpf, String cns, Indicadores indicadores) {}
+    public record Item(UUID idPublico, UUID vinculo, Integer versao, Integer versaoCadastro, String unidade, String nome,
+            String cpf, String cns, LocalDate dataNascimento, Indicadores indicadores) {}
     public record Pagina(List<Item> pacientes, int paginaAtual, int tamanhoPagina, long totalRegistros, int totalPaginas) {}
 
     public record EnderecoLeitura(String cidade, String estado, String bairro, String logradouro,
@@ -243,7 +243,7 @@ public class ConsultasClinicasLocaisEnsaioService {
                 c.risco().valor().orElse(null),status==null?null:c.visita().valor().orElse(null),
                 v.getIndicadoresPendentes(),!motivos.isEmpty(),Set.copyOf(motivos));
         var p=v.getPaciente();
-        return new Leitura(v,c,new Item(p.getIdPublico(),v.getIdPublico(),v.getVersion(),v.getUnidadeChave(),
-                p.getNome(),p.getCpf(),p.getCns(),indicadores));
+        return new Leitura(v,c,new Item(p.getIdPublico(),v.getIdPublico(),v.getVersion(),p.getVersion(),v.getUnidadeChave(),
+                p.getNome(),p.getCpf(),p.getCns(),p.getDataNascimento(),indicadores));
     }
 }

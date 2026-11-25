@@ -4,14 +4,12 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 import org.springframework.context.annotation.Profile;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.pet.buscaativa.entities.VinculoAssistencial;
 import com.pet.buscaativa.entities.dto.PacienteDTO;
 import com.pet.buscaativa.entities.enums.TipoAcompanhamento;
-import com.pet.buscaativa.entities.enums.TipoUsuario;
 import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
 import com.pet.buscaativa.services.exceptions.ValidationException;
 
@@ -37,18 +35,18 @@ public class CadastroAcompanhamentoLocalEnsaioService {
 
     @Transactional
     public PacienteDTO cadastrarNovo(PacienteDTO dados, boolean ignorarSimilaridade) {
-        atores.autorizar(false);
+        atores.autorizarOperacional();
         if (dados == null || dados.idPublico() != null || dados.tipoAcompanhamento() == null)
             throw new ValidationException("Cadastro novo com tipo de acompanhamento obrigatório.");
         documentos.bloquear(dados.cpf(), dados.cns());
         return cadastro.salvarNovoComVinculacao(dados, ignorarSimilaridade,
-                id -> inicio.iniciar(id, dados.tipoAcompanhamento(), dados.profissionalReferenciaId()));
+                id -> inicio.iniciarPorCadastro(id, dados.tipoAcompanhamento(), dados.profissionalReferenciaId()));
     }
 
     @Transactional
     public CadastroLocal cadastrarNovoComIdentificadores(PacienteDTO dados, boolean ignorarSimilaridade) {
         var novo = cadastrarNovo(dados, ignorarSimilaridade);
-        var contexto = atores.autorizar(false);
+        var contexto = atores.autorizarOperacional();
         var local = vinculos.findByPacienteIdPublicoAndUnidadeChave(novo.idPublico(), contexto.unidade()).orElseThrow();
         return resposta(local);
     }
@@ -57,8 +55,6 @@ public class CadastroAcompanhamentoLocalEnsaioService {
     public CadastroLocal editarCadastro(UUID paciente, UUID vinculo, Integer versaoCadastro,
             PacienteDTO dados, boolean ignorarSimilaridade) {
         var contexto = atores.autorizarOperacional();
-        if (contexto.perfil() == TipoUsuario.PROFISSIONAL)
-            throw new AccessDeniedException("Perfil sem permissão para editar cadastro.");
         if (dados == null || dados.idPublico() != null && !dados.idPublico().equals(paciente))
             throw new ValidationException("Dados cadastrais incompatíveis.");
         documentos.bloquear(dados.cpf(), dados.cns());
@@ -79,7 +75,7 @@ public class CadastroAcompanhamentoLocalEnsaioService {
     public VinculacaoIdentidadeExistenteService.Resultado confirmarEVincular(
             String cpf, String cns, String nome, String mae, LocalDate nascimento,
             TipoAcompanhamento tipo, UUID referencia) {
-        atores.autorizar(false);
+        atores.autorizarOperacional();
         if (tipo == null) throw new ValidationException("Tipo de acompanhamento obrigatório.");
         documentos.bloquear(cpf, cns);
         return confirmacao.confirmarComVinculacao(cpf, cns, nome, mae, nascimento,
@@ -87,7 +83,7 @@ public class CadastroAcompanhamentoLocalEnsaioService {
     }
 
     private VinculoAssistencial criar(UUID id, TipoAcompanhamento tipo, UUID referencia) {
-        var resultado = inicio.iniciar(id, tipo, referencia);
+        var resultado = inicio.iniciarPorCadastro(id, tipo, referencia);
         return vinculos.findByIdPublico(resultado.vinculo()).orElseThrow();
     }
 }

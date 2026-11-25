@@ -39,7 +39,7 @@
 
             <span
               class="risk"
-              [class]="'risk ' + d.classificacaoRisco.toLowerCase()"
+              [class]="'risk ' + (d.classificacaoRisco?.toLowerCase() ?? 'unknown')"
             >
               {{ label(d.classificacaoRisco) }}
             </span>

@@ -1,0 +1,50 @@
+<section aria-labelledby="busca-local">
+  <h2 id="busca-local">Busca ativa da unidade</h2>
+  <button type="button" (click)="carregar()" [disabled]="consultando">Atualizar alertas</button>
+  @if (consultando) { <p role="status">Consultando alertas…</p> }
+  @if (erro) { <p role="alert">{{ erro }}</p> }
+  @if (mensagem) { <p role="status">{{ mensagem }}</p> }
+  @if (busca; as dados) {
+    @if (dados.selecaoIndeterminada || dados.estadoNaoConfirmado) {
+      <p>{{ dados.selecaoIndeterminada }} seleção(ões) inconclusiva(s) · {{ dados.estadoNaoConfirmado }} estado(s) não confirmado(s).</p>
+    }
+    @if (!dados.alertas.length) { <p>Nenhum alerta confirmado.</p> }
+    <ul>
+      @for (alerta of dados.alertas; track alerta.vinculo) {
+        <li>
+          <strong>{{ alerta.nome }}</strong> · {{ risco(alerta.classificacaoRisco) }} · Faltas {{ faltas(alerta.faltasConsecutivas) }}
+          <p>{{ alerta.alerta }}</p>
+          @if (alerta.localBusca) { <p>{{ alerta.localBusca }}</p> }
+          @if (alerta.avisoAdicional) { <p>{{ alerta.avisoAdicional }}</p> }
+          <button type="button" (click)="visualizar(alerta)" [disabled]="registrando">Ver paciente</button>
+          @if (podeEncaminhar && alerta.acao !== 'REVISAO_HISTORICA') {
+            <button type="button" (click)="preparar(alerta)" [disabled]="registrando">Registrar encaminhamento</button>
+          }
+        </li>
+      }
+    </ul>
+  }
+  @if (selecionado; as alerta) {
+    <form (ngSubmit)="encaminhar()">
+      <h3>Encaminhamento de {{ alerta.nome }}</h3>
+      <label>Destino<input name="destino" [(ngModel)]="destino" maxlength="200" required></label>
+      <label>Descrição<textarea name="descricao" [(ngModel)]="descricao" maxlength="1000" rows="3" required></textarea></label>
+      <button type="button" (click)="selecionado = undefined" [disabled]="registrando">Cancelar</button>
+      <button type="submit" [disabled]="!destino.trim() || descricao.trim().length < 10 || registrando">Salvar encaminhamento</button>
+    </form>
+  }
+  @if (podeAuditar) {
+    <button type="button" (click)="carregarAuditoria(0)">Consultar auditoria</button>
+    @if (auditoria; as dados) {
+      <ul>
+        @for (evento of dados.content; track evento.id) {
+          <li>{{ evento.ocorridoEm | date:'dd/MM/yyyy HH:mm' }} · {{ evento.tipoEvento.replaceAll('_', ' ') }} · {{ evento.perfil }} {{ evento.destino }}</li>
+        } @empty {
+          <li>Nenhum evento nesta página.</li>
+        }
+      </ul>
+      <button type="button" (click)="carregarAuditoria(pagina - 1)" [disabled]="pagina === 0">Anterior</button>
+      <button type="button" (click)="carregarAuditoria(pagina + 1)" [disabled]="pagina + 1 >= dados.totalPages">Próxima</button>
+    }
+  }
+</section>

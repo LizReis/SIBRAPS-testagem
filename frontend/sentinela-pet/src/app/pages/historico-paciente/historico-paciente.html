@@ -22,7 +22,7 @@
       <div class="titulo-linha">
         <span class="avatar" aria-hidden="true">{{ iniciais() }}</span>
         <h1>{{ historico.nomePaciente }}</h1>
-        <span class="risco-badge" [class]="'risco-badge risco-' + historico.classificacaoAtual.toLowerCase()">
+        <span class="risco-badge" [class]="'risco-badge risco-' + (historico.classificacaoAtual?.toLowerCase() ?? 'unknown')">
           {{ formatarEnum(historico.classificacaoAtual) }}
         </span>
       </div>
@@ -41,7 +41,7 @@
         <div><span>Situação</span><strong>{{ formatarEnum(historico.statusPaciente) }}</strong></div>
         <div><span>Classificação</span><strong>{{ formatarEnum(historico.classificacaoAtual) }}</strong></div>
         <div><span>Tipo de acompanhamento</span><strong>{{ formatarEnum(historico.tipoAcompanhamento) }}</strong></div>
-        <div><span>Faltas consecutivas</span><strong>{{ historico.quantidadeFaltasAtual }}</strong></div>
+        <div><span>Faltas consecutivas</span><strong>{{ historico.quantidadeFaltasAtual ?? 'Não confirmado' }}</strong></div>
         <div>
           <span>Última presença</span>
           <strong>{{ historico.dataUltimaPresenca ? formatarDataHora(historico.dataUltimaPresenca) : 'Nenhuma presença registrada' }}</strong>
@@ -54,6 +54,7 @@
     </section>
 
     <section class="indicadores" aria-label="Resumo do histórico">
+      <p *ngIf="historico.historicoLocalRequerConferencia" role="status">Histórico local requer conferência. Os totais exibidos incluem somente registros comprovados.</p>
       <article class="indicador"><strong>{{ historico.totalConsultasAgendadas }}</strong><span>Consultas agendadas</span></article>
       <article class="indicador"><strong>{{ historico.totalPresencas }}</strong><span>Presenças</span></article>
       <article class="indicador"><strong>{{ historico.totalFaltas }}</strong><span>Faltas</span></article>
@@ -87,6 +88,15 @@
           </article>
         </li>
       </ol>
+    </section>
+    <section *ngIf="historico.sessoesLocais?.length" class="card">
+      <h2>Participações em sessões</h2>
+      <ul>
+        <li *ngFor="let sessao of historico.sessoesLocais">
+          {{ sessao.tema }} · {{ sessao.data | date:'dd/MM/yyyy' }} · {{ sessao.hora.slice(0, 5) }}
+          · {{ formatarEnum(sessao.status) }} · {{ sessao.frequencia ? formatarEnum(sessao.frequencia) : 'Frequência não confirmada' }}
+        </li>
+      </ul>
     </section>
   </ng-container>
 </main>

@@ -1,0 +1,57 @@
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { TestBed } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { podeEditarPaciente } from '../auth/permissoes';
+import { AgendamentoService } from './agendamento-service';
+import { contratoExperimental, raizClinica } from './configuracao-contrato';
+import { PacientePayload, PacienteService } from './paciente/paciente-service';
+import { RelatorioService } from './relatorio-service';
+
+describe('Contratos HTTP do pacote 6B.2', () => {
+  let http: HttpTestingController;
+  beforeEach(() => {
+    TestBed.configureTestingModule({providers: [provideHttpClient(), provideHttpClientTesting()]});
+    http = TestBed.inject(HttpTestingController);
+  });
+  afterEach(() => http.verify());
+
+  it('reserva a ampliação cadastral ao build experimental', () => {
+    expect(podeEditarPaciente('ADMINISTRADOR')).toBe(true);
+    expect(podeEditarPaciente('RECEPCAO')).toBe(true);
+    expect(podeEditarPaciente('PROFISSIONAL')).toBe(contratoExperimental);
+    expect(raizClinica).toBe(contratoExperimental ? '/api/ensaio-escritores' : '/api');
+  });
+
+  it('envia a versão do cadastro e omite campos clínicos na edição local', () => {
+    const cadastro = {telefone: '81900000000', tipoAcompanhamento: 'AMBOS'} as PacientePayload;
+    TestBed.inject(PacienteService).atualizarPaciente('pessoa', cadastro,
+      {vinculo: 'vinculo', versaoCadastro: 2, versao: 6}).subscribe();
+    const req = http.expectOne(r => r.method === 'PUT');
+    expect(req.request.url).toBe(contratoExperimental
+      ? `${raizClinica}/pacientes/pessoa/vinculos/vinculo/cadastro` : '/api/pacientes/pessoa');
+    expect(req.request.params.get('versaoCadastro')).toBe(contratoExperimental ? '2' : null);
+    expect(req.request.body.tipoAcompanhamento).toBe(contratoExperimental ? undefined : 'AMBOS');
+    req.flush({});
+  });
+
+  it('usa a versão do atendimento e mantém a justificativa da correção', () => {
+    TestBed.inject(AgendamentoService).corrigirFrequencia(14, 'FALTOU', 3, 'Correção sintética confirmada.').subscribe();
+    const req = http.expectOne(`${raizClinica}/agendamentos/14/frequencia/correcao`);
+    expect(req.request.body).toEqual({novaFrequencia: 'FALTOU', version: 3, justificativa: 'Correção sintética confirmada.'});
+    req.flush({});
+  });
+
+  it('usa a versão do vínculo ao registrar somente a decisão de revisão', () => {
+    TestBed.inject(RelatorioService).decidir({
+      paciente: 'pessoa', vinculo: 'vinculo', ticket: 'ticket', versaoVinculo: 7,
+      nome: 'Sintético', tipoRegistro: 'AGENDAMENTO', registro: 14, estado: 'PENDENTE',
+      solicitadoEm: '', decididaEm: null, decisao: null, justificativaSolicitacao: null, justificativaDecisao: null,
+    }, 'APROVAR', 'Justificativa sintética.').subscribe();
+    const req = http.expectOne(r => r.method === 'POST');
+    expect(req.request.url).toBe(`${raizClinica}/pacientes/pessoa/vinculos/vinculo/revisoes/ticket/decisao`);
+    expect(req.request.params.get('version')).toBe('7');
+    expect(req.request.body).toEqual({decisao: 'APROVAR', justificativa: 'Justificativa sintética.'});
+    req.flush('decisao');
+  });
+});

@@ -1,3 +1,4 @@
+import { raizClinica } from '../configuracao-contrato';
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
@@ -21,6 +22,7 @@ export interface IdentidadeCadastralMinima {
 }
 
 export interface ConfirmacaoCadastroUnico extends DocumentosCadastroUnico {
+  tipoAcompanhamento?: string;
   nome: string;
   nomeMae: string;
   dataNascimento: string; // yyyy-MM-dd
@@ -28,7 +30,7 @@ export interface ConfirmacaoCadastroUnico extends DocumentosCadastroUnico {
 
 @Injectable({ providedIn: 'root' })
 export class CadastroUnicoService {
-  private readonly baseUrl = '/api/pacientes/cadastro-unico';
+  private readonly baseUrl = `${raizClinica}/pacientes/cadastro-unico`;
 
   constructor(private readonly http: HttpClient) {}
 

@@ -1,3 +1,4 @@
+import { contratoExperimental } from '../../services/configuracao-contrato';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit } from '@angular/core';
@@ -134,8 +135,10 @@ export class DetalheGrupoTerapeutico implements OnInit {
   removerParticipante(): void { if (!this.participanteParaRemover) return; this.salvando = true; this.grupos.removerParticipanteDoGrupo(this.grupoId, this.participanteParaRemover.pacienteId).subscribe({ next: () => { this.salvando = false; this.participanteParaRemover = null; this.sucesso = 'Participante removido das próximas sessões.'; this.carregarParticipantesGrupo(); this.carregarSessao(this.sessao!.dataSessao); }, error: e => { this.salvando = false; this.tratarErro(e); } }); }
   iniciarCorrecao(): void { this.editandoFrequencia = true; this.frequencias = {}; this.sessao?.participantes.forEach(p => this.frequencias[p.pacienteId] = p.statusPresenca); }
   cancelarCorrecao(): void { this.editandoFrequencia = false; this.confirmandoCorrecao = false; this.frequencias = {}; this.sessao?.participantes.forEach(p => this.frequencias[p.pacienteId] = p.statusPresenca); }
-  solicitarCorrecao(): void { this.confirmandoCorrecao = true; }
-  salvarCorrecoes(): void { if (!this.sessao) return; const alteradas = this.sessao.participantes.filter(p => this.frequencias[p.pacienteId] !== p.statusPresenca).map(p => ({ pacienteId: p.pacienteId, statusPresenca: this.frequencias[p.pacienteId]! })); if (!alteradas.length) return this.cancelarCorrecao(); this.salvando = true; this.grupos.corrigirFrequencias(this.sessao.id, alteradas, this.sessao.version).subscribe({ next: s => { this.sessao = s; this.salvando = false; this.editandoFrequencia = false; this.confirmandoCorrecao = false; this.sucesso = 'Frequências corrigidas com sucesso.'; }, error: e => { this.salvando = false; this.tratarErro(e); } }); }
+  readonly contratoExperimental = contratoExperimental;
+  justificativaCorrecao = '';
+  solicitarCorrecao(): void { this.justificativaCorrecao = ''; this.confirmandoCorrecao = true; }
+  salvarCorrecoes(): void { if (!this.sessao || (contratoExperimental && this.justificativaCorrecao.trim().length < 10)) return; const alteradas = this.sessao.participantes.filter(p => this.frequencias[p.pacienteId] !== p.statusPresenca).map(p => ({ pacienteId: p.pacienteId, statusPresenca: this.frequencias[p.pacienteId]! })); if (!alteradas.length) return this.cancelarCorrecao(); this.salvando = true; this.grupos.corrigirFrequencias(this.sessao.id, alteradas, this.sessao.version, contratoExperimental ? this.justificativaCorrecao.trim() : undefined).subscribe({ next: s => { this.sessao = s; this.salvando = false; this.editandoFrequencia = false; this.confirmandoCorrecao = false; this.sucesso = 'Frequências corrigidas com sucesso.'; }, error: e => { this.salvando = false; this.tratarErro(e); } }); }
   confirmarOcorrencia(): void {
     if (!this.sessao || this.somenteLeitura) return;
     this.salvando = true; this.erro = '';

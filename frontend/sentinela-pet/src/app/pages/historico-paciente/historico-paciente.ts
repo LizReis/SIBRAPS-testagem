@@ -58,7 +58,7 @@ export class HistoricoPaciente implements OnInit {
     if (this.idPublico) this.router.navigate(['/pacientes/detalhes', this.idPublico]);
   }
 
-  formatarEnum(valor?: string): string {
+  formatarEnum(valor?: string | null): string {
     if (!valor) return 'Não informado';
     return valor.replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, (letra) => letra.toUpperCase());
   }

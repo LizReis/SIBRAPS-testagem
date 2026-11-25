@@ -1,3 +1,4 @@
+import { contratoExperimental, raizClinica } from './configuracao-contrato';
 import { HttpClient, HttpParams } from "@angular/common/http";
 import { Injectable } from "@angular/core";
 import { Observable } from "rxjs";
@@ -111,7 +112,7 @@ export interface NovaSessaoPayload {
   providedIn: "root",
 })
 export class GrupoTerapeuticoService {
-  private readonly apiUrl = "/api/grupos";
+  private readonly apiUrl = `${raizClinica}/grupos`;
 
   constructor(private readonly http: HttpClient) {}
 
@@ -147,11 +148,13 @@ export class GrupoTerapeuticoService {
     sessaoId: number,
     frequencias: { pacienteId: string; statusPresenca: StatusPresencaGrupo }[],
     version: number,
+    justificativa?: string,
   ): Observable<SessaoGrupoPayload> {
-    return this.http.patch<SessaoGrupoPayload>(`${this.apiUrl}/sessoes/${sessaoId}/frequencias`, { frequencias, version });
+    return this.http.patch<SessaoGrupoPayload>(`${this.apiUrl}/sessoes/${sessaoId}/frequencias`, { frequencias, version, justificativa });
   }
 
   sugerirProximaData(grupoId: number): Observable<string> {
+    if (contratoExperimental) return this.http.get<string>(`${this.apiUrl}/${grupoId}/proxima-data-sugerida`);
     return this.http.get(`${this.apiUrl}/${grupoId}/proxima-data-sugerida`, {
       responseType: "text",
     });
@@ -189,19 +192,23 @@ export class GrupoTerapeuticoService {
   adicionarParticipante(
     sessaoId: number,
     pacienteId: string,
+    version?: number,
   ): Observable<SessaoGrupoPayload> {
     return this.http.post<SessaoGrupoPayload>(
       `${this.apiUrl}/sessoes/${sessaoId}/participantes`,
       { pacienteId },
+      {params: contratoExperimental && version !== undefined ? {version} : {}},
     );
   }
 
   removerParticipante(
     sessaoId: number,
     pacienteId: string,
+    version?: number,
   ): Observable<SessaoGrupoPayload> {
     return this.http.delete<SessaoGrupoPayload>(
       `${this.apiUrl}/sessoes/${sessaoId}/participantes/${pacienteId}`,
+      {params: contratoExperimental && version !== undefined ? {version} : {}},
     );
   }
 

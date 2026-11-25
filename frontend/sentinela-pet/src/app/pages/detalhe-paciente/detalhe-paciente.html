@@ -16,13 +16,17 @@
     </div>
     <div class="head-actions"><a routerLink="/pacientes">Voltar</a><a *ngIf="podeEditar"
         [routerLink]="['/pacientes/editar',id]" class="primary">Editar dados</a><button *ngIf="ativo&&podeGerenciar"
-        class="danger" (click)="modal='encerrar'">Encerrar acompanhamento</button></div>
+        class="danger" (click)="modal='encerrar'">Encerrar acompanhamento</button>
+      <button *ngIf="ativo && podeAdministrar" (click)="abrirAcaoAdministrativa('configurar')">Configurar acompanhamento</button>
+      <button *ngIf="ativo && podeAdministrar" (click)="abrirAcaoAdministrativa('inativar')">Inativar vínculo</button>
+      <button *ngIf="p?.statusPaciente && !ativo && podeAdministrar" (click)="abrirAcaoAdministrativa('reativar')">Reativar vínculo</button>
+    </div>
   </header>
   <section class="summary">
     <div><small>CLASSIFICAÇÃO ATUAL</small><b
-        [class]="d.classificacaoRisco.toLowerCase()">{{label(d.classificacaoRisco)}}</b></div>
-    <div><small>FALTAS</small><b>{{p?.countFaltas}}</b></div>
-    <div><small>ÚLTIMA PRESENÇA</small><b>{{data(p?.dataUltimaPresenca)}}</b></div>
+        [class]="(d.classificacaoRisco?.toLowerCase() ?? 'unknown')">{{label(d.classificacaoRisco)}}</b></div>
+    <div><small>FALTAS</small><b>{{p?.countFaltas ?? 'Não confirmado'}}</b></div>
+    <div><small>ÚLTIMA PRESENÇA</small><b>{{p?.indicadoresLocais?.ultimaPresencaConclusiva === false ? 'Não confirmada' : data(p?.dataUltimaPresenca)}}</b></div>
     <div><small>PRÓXIMO ATENDIMENTO</small><b>{{d.proximoAgendamento ? (d.proximoAgendamento.data|date:'dd/MM')+' •
         '+d.proximoAgendamento.hora.slice(0,5) : 'Nenhum agendamento'}}</b></div>
     <div><small>ATENÇÃO NECESSÁRIA</small><b>{{d.atencaoNecessaria}}</b></div>
@@ -90,7 +94,7 @@
           </div>
           <div>
             <dt>Profissional de referência</dt>
-            <dd>{{p?.profissionalReferencia?.nome || 'Não informado'}}</dd>
+            <dd>{{d.referenciaInconclusiva ? 'Referência não confirmada' : (p?.profissionalReferencia?.nome || 'Não informado')}}</dd>
           </div>
         </dl>
       </section>
@@ -131,8 +135,7 @@
         <h3 [class.regular]="ativo && d.classificacaoRisco === 'VERDE'"
           [class.alerta]="!(ativo && d.classificacaoRisco === 'VERDE')">{{d.atencaoNecessaria}}</h3>
         <p>{{d.classificacaoRisco==='VERMELHO'?'Faltas recorrentes ou ausência conforme critérios do
-          sistema.':d.classificacaoRisco==='AMARELO'?'Acompanhe presença e próximos atendimentos.':'Sem alerta de busca
-          ativa no momento.'}}</p><button *ngIf="ativo&&d.classificacaoRisco==='VERMELHO'&&podeGerenciar"
+          sistema.':d.classificacaoRisco==='AMARELO'?'Acompanhe presença e próximos atendimentos.':d.classificacaoRisco === null ? 'Classificação inconclusiva.' : 'Sem alerta de busca ativa no momento.'}}</p><button *ngIf="ativo&&d.classificacaoRisco==='VERMELHO'&&podeGerenciar"
           class="primary" (click)="abrirBuscaAtiva()">
           Registrar busca ativa
         </button>
@@ -155,7 +158,7 @@
           <option value="ALTA_TERAPEUTICA">Alta terapêutica</option>
           <option value="TRANSFERENCIA_OUTRA_UNIDADE">Transferência para outra unidade</option>
           <option value="ABANDONO_TRATAMENTO">Abandono de tratamento</option>
-          <option value="OBITO">Óbito</option>
+          <option *ngIf="!contratoExperimental" value="OBITO">Óbito</option>
           <option value="OUTRO">Outro</option>
         </select></label></ng-container><label *ngIf="modal==='busca'||motivo==='OUTRO'">
       Descrição do registro
@@ -178,5 +181,39 @@
         : 'Registrar'
         }}
       </button></div>
+  </section>
+</div>
+
+<div class="backdrop" *ngIf="acaoAdministrativa" role="dialog" aria-modal="true" aria-labelledby="acao-vinculo">
+  <section class="modal">
+    <h2 id="acao-vinculo">{{ acaoAdministrativa === 'configurar' ? 'Configurar acompanhamento' :
+      acaoAdministrativa === 'reativar' ? 'Reativar vínculo' : 'Inativar vínculo' }}</h2>
+    <ng-container *ngIf="acaoAdministrativa === 'configurar'">
+      <label>Modalidade
+        <select [(ngModel)]="modalidade">
+          <option value="">Selecione</option>
+          <option value="INDIVIDUAL">Individual</option>
+          <option value="GRUPO_TERAPEUTICO">Grupo terapêutico</option>
+          <option value="AMBOS">Ambos</option>
+        </select>
+      </label>
+      <label>Profissional de referência
+        <select [(ngModel)]="referencia" [disabled]="!referenciasDisponiveis">
+          <option [ngValue]="undefined" disabled>Selecione uma referência</option>
+          <option [ngValue]="null">Sem referência</option>
+          <option *ngFor="let profissional of referencias" [ngValue]="profissional.idPublico">{{ profissional.nome }}</option>
+        </select>
+      </label>
+    </ng-container>
+    <label *ngIf="acaoAdministrativa === 'reativar'">Motivo da reativação
+      <textarea [(ngModel)]="motivoReativacao" maxlength="2000" rows="3"></textarea>
+    </label>
+    <p *ngIf="acaoAdministrativa === 'inativar'">Confirme a inativação do acompanhamento nesta unidade.</p>
+    <p *ngIf="erroModal" class="modal-error" role="alert">{{ erroModal }}</p>
+    <div>
+      <button type="button" (click)="acaoAdministrativa=''" [disabled]="salvando">Cancelar</button>
+      <button type="button" class="primary" [disabled]="salvando || (acaoAdministrativa === 'configurar' && (!referenciasDisponiveis || referencia === undefined || !modalidade))"
+        (click)="salvarAcaoAdministrativa()">Confirmar</button>
+    </div>
   </section>
 </div>

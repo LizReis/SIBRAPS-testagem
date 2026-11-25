@@ -52,6 +52,15 @@
                 }
               }
             },
+            "ensaio": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true,
+              "fileReplacements": [{
+                "replace": "src/app/services/configuracao-contrato.ts",
+                "with": "src/app/services/configuracao-contrato.ensaio.ts"
+              }]
+            },
             "development": {
               "optimization": false,
               "extractLicenses": false,
@@ -69,6 +78,9 @@
             "production": {
               "buildTarget": "sentinela-pet:build:production"
             },
+            "ensaio": {
+              "buildTarget": "sentinela-pet:build:ensaio"
+            },
             "development": {
               "buildTarget": "sentinela-pet:build:development"
             }
@@ -76,7 +88,12 @@
           "defaultConfiguration": "development"
         },
         "test": {
-          "builder": "@angular/build:unit-test"
+          "builder": "@angular/build:unit-test",
+          "configurations": {
+            "ensaio": {
+              "buildTarget": "sentinela-pet:build:ensaio"
+            }
+          }
         }
       }
     }

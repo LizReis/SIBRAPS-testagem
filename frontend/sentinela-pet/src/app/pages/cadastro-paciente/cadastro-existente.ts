@@ -1,3 +1,4 @@
+import { contratoExperimental } from '../../services/configuracao-contrato';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectorRef, Component, EventEmitter, OnDestroy, Output } from '@angular/core';
@@ -115,9 +116,13 @@ export class CadastroExistente implements OnDestroy {
     });
   }
 
+  readonly contratoExperimental = contratoExperimental;
+  modalidade = '';
+
   confirmarVinculoLocal(): void {
     if (this.concluido || this.vinculando || this.buscando
-        || !this.confirmouIdentidade || !this.identidade || !this.documentosConsultados) return;
+        || !this.confirmouIdentidade || !this.identidade || !this.documentosConsultados
+        || (contratoExperimental && !this.modalidade)) return;
 
     const atual = this.documentosForm.getRawValue();
     // Confere novamente se o operador nao alterou os documentos desde a
@@ -138,6 +143,7 @@ export class CadastroExistente implements OnDestroy {
     this.cdr.markForCheck();
     this.vinculoAtual = this.cadastro.confirmarVinculo({
       ...this.documentosConsultados,
+      ...(contratoExperimental ? { tipoAcompanhamento: this.modalidade } : {}),
       nome: this.identidade.nome,
       nomeMae: this.identidade.nomeMae,
       dataNascimento: this.identidade.dataNascimento,

@@ -1,3 +1,4 @@
+import { contratoExperimental } from './services/configuracao-contrato';
 import { Routes } from '@angular/router';
 import { Login } from './pages/login/login';
 import { AuthLayout } from './layouts/auth-layout/auth-layout';
@@ -52,7 +53,7 @@ export const routes: Routes = [
       { path: 'pacientes/detalhes/:id/historico', component: HistoricoPaciente, canActivate: [roleGuard], data: { roles: TODOS } },
       { path: 'pacientes/detalhes/:id/agendamentos', component: AgendamentosPaciente, canActivate: [roleGuard], data: { roles: TODOS } },
       { path: 'pacientes/novo', component: CadastroPaciente, canActivate: [roleGuard], data: { roles: CADASTRO_PACIENTE } },
-      { path: 'pacientes/editar/:id', component: CadastroPaciente, canActivate: [roleGuard], data: { roles: ADMIN_RECEPCAO } },
+      { path: 'pacientes/editar/:id', component: CadastroPaciente, canActivate: [roleGuard], data: { roles: contratoExperimental ? TODOS : ADMIN_RECEPCAO } },
       { path: 'profissionais', component: Profissionais, canActivate: [roleGuard], data: { roles: ADMIN_RECEPCAO } },
       { path: 'profissionais/novo', component: CadastroProfissional, canActivate: [roleGuard], data: { roles: ADMIN } },
       { path: 'profissionais/detalhes/:id', component: DetalheProfissional, canActivate: [roleGuard], data: { roles: ADMIN_RECEPCAO } },

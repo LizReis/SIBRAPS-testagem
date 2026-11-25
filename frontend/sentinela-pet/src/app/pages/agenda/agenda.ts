@@ -1,3 +1,4 @@
+import { contratoExperimental } from '../../services/configuracao-contrato';
 import {
     CommonModule
 } from '@angular/common';
@@ -368,15 +369,33 @@ export class Agenda implements OnInit, OnDestroy {
     podeRegistrarFrequencia(a: AgendamentoDTO): boolean {
         return a.dataAgendamento <= this.formatarDataISO(new Date()) && ['AGENDADO', 'REMARCADO'].includes(a.situacaoAtendimento);
     }
+    podeCancelar(a: AgendamentoDTO): boolean {
+        const u = this.usuarioLogado;
+        return contratoExperimental && !!u && (u.tipoUsuario !== 'PROFISSIONAL' || u.idPublico === a.usuarioId)
+            && a.frequenciaAssistencial === 'NAO_REGISTRADA'
+            && (a.situacaoReserva === 'AGENDADA' || a.situacaoReserva === 'REMARCADA');
+    }
+    cancelarReserva(a: AgendamentoDTO): void {
+        if (this.podeCancelar(a)) this.marcarStatus(a, 'CANCELADO');
+    }
+    podeRegularizar(a: AgendamentoDTO): boolean {
+        const u = this.usuarioLogado;
+        return contratoExperimental && a.situacaoReserva === 'CANCELADA' && a.frequenciaAssistencial === 'NAO_REGISTRADA'
+            && !!u && (u.tipoUsuario === 'ADMINISTRADOR'
+                || (u.tipoUsuario === 'PROFISSIONAL' && u.idPublico === a.usuarioId));
+    }
+
     podeCorrigirFrequencia(a: AgendamentoDTO): boolean {
         return !!this.usuarioLogado && ['ADMINISTRADOR', 'PROFISSIONAL'].includes(this.usuarioLogado.tipoUsuario)
-            && a.dataAgendamento <= this.formatarDataISO(new Date()) && ['PRESENTE', 'FALTOU'].includes(a.situacaoAtendimento);
+            && (this.usuarioLogado.tipoUsuario !== 'PROFISSIONAL' || this.usuarioLogado.idPublico === a.usuarioId)
+            && a.dataAgendamento <= this.formatarDataISO(new Date())
+            && ['PRESENTE', 'FALTOU'].includes(contratoExperimental ? a.frequenciaAssistencial ?? '' : a.situacaoAtendimento);
     }
     podeRemarcar(a: AgendamentoDTO): boolean {
         return this.podeCriarAgendamento && ['AGENDADO', 'REMARCADO', 'FALTOU'].includes(a.situacaoAtendimento) && a.situacaoAtendimento !== 'REMARCADO_ORIGEM' && a.tipoAcompanhamento !== 'GRUPO_TERAPEUTICO';
     }
     possuiAcoes(a: AgendamentoDTO): boolean {
-        return this.podeRegistrarFrequencia(a) || this.podeCorrigirFrequencia(a) || this.podeRemarcar(a);
+        return this.podeCancelar(a) || this.podeRegistrarFrequencia(a) || this.podeCorrigirFrequencia(a) || this.podeRemarcar(a) || this.podeRegularizar(a);
     }
     toggleMenu(event: Event, id: number): void {
         event.stopPropagation();
@@ -388,8 +407,47 @@ export class Agenda implements OnInit, OnDestroy {
     registrarFalta(a: AgendamentoDTO): void {
         this.marcarStatus(a, 'FALTOU');
     }
+    readonly contratoExperimental = contratoExperimental;
+    correcao?: AgendamentoDTO;
+    justificativa = '';
+    tipoRegularizacao: 'RECUPERAR' | 'PRESENTE' | 'FALTOU' = 'RECUPERAR';
+
     corrigirFrequencia(a: AgendamentoDTO): void {
+        if (contratoExperimental) {
+            this.correcao = a;
+            this.justificativa = '';
+            this.tipoRegularizacao = 'RECUPERAR';
+            this.menuAbertoId = null;
+            return;
+        }
         this.marcarStatus(a, a.situacaoAtendimento === 'PRESENTE' ? 'FALTOU' : 'PRESENTE');
+    }
+    confirmarCorrecao(): void {
+        const a = this.correcao;
+        const justificativa = this.justificativa.trim();
+        if (!a || justificativa.length < 10) return;
+        const destino = a.frequenciaAssistencial === 'PRESENTE' ? 'FALTOU' : 'PRESENTE';
+        const comando = a.situacaoReserva === 'CANCELADA' && a.frequenciaAssistencial === 'NAO_REGISTRADA'
+            ? this.tipoRegularizacao === 'RECUPERAR'
+                ? this.agendamentoService.recuperarReserva(a.id, a.version, justificativa)
+                : this.agendamentoService.regularizarCancelamento(a.id, this.tipoRegularizacao, a.version, justificativa)
+            : this.agendamentoService.corrigirFrequencia(a.id, destino, a.version, justificativa);
+        this.atualizandoId = a.id;
+        comando.subscribe({
+            next: () => {
+                this.correcao = undefined;
+                this.atualizandoId = null;
+                this.carregarAgenda(true);
+            },
+            error: (erro: HttpErrorResponse) => {
+                this.atualizandoId = null;
+                this.erroGeral = erro.error?.message ?? 'Não foi possível atualizar a frequência.';
+                if (erro.status === 409 || (erro.status === 422 && this.erroGeral?.includes('Versão local divergente'))) {
+                    this.correcao = undefined;
+                    this.carregarAgenda(true);
+                }
+            },
+        });
     }
     remarcar(a: AgendamentoDTO): void {
         this.router.navigate(['/agenda/novo'], {
@@ -411,7 +469,7 @@ export class Agenda implements OnInit, OnDestroy {
             },
             error: (erro: HttpErrorResponse) => {
                 this.atualizandoId = null;
-                if (erro.status === 409) {
+                if (erro.status === 409 || erro.error?.message?.includes("Versão local divergente")) {
                     this.erroGeral = 'Este agendamento foi alterado por outra pessoa. A agenda foi atualizada — confira antes de tentar novamente.';
                     this.carregarAgenda(true);
                     return;
@@ -434,7 +492,7 @@ export class Agenda implements OnInit, OnDestroy {
     descricaoSituacao(s: string): string | null {
         return this.statusUi[s]?.descricao ?? null;
     }
-    labelTipoAcompanhamento(v: string): string {
+    labelTipoAcompanhamento(v: string | null): string {
         return v?.replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, (l) => l.toUpperCase()) ?? '-';
     }
     formatarHora(h: string): string {

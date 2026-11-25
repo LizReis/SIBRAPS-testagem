@@ -70,7 +70,7 @@ export class AgendamentosPaciente implements OnInit {
       .toUpperCase();
   }
 
-  label(valor?: string): string {
+  label(valor?: string | null): string {
     return (valor ?? 'Não informado')
       .replaceAll('_', ' ')
       .toLowerCase()

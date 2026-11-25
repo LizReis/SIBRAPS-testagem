@@ -1,3 +1,4 @@
+import { raizClinica } from './configuracao-contrato';
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
@@ -5,23 +6,23 @@ import { Observable } from 'rxjs';
 export interface PacientePrioritarioPayload {
   idPublico: string;
   nome: string;
-  classificacaoRisco: 'VERDE' | 'AMARELO' | 'VERMELHO';
-  quantidadeFaltas: number;
+  classificacaoRisco: 'VERDE' | 'AMARELO' | 'VERMELHO' | null;
+  quantidadeFaltas: number | null;
   dataUltimaPresenca?: string;
 }
 
 export interface ResumoInicioPayload {
   totalPacientesAtivos: number;
   totalAgendamentosHoje: number;
-  totalFaltasUltimosSeteDias: number;
+  totalFaltasUltimosSeteDias: number | null;
   totalPacientesAtencao: number;
-  totalNotificacoes: number;
+  totalNotificacoes: number | null;
   pacientesPrioritarios: PacientePrioritarioPayload[];
 }
 
 @Injectable({ providedIn: 'root' })
 export class InicioService {
-  private readonly apiUrl = '/api/inicio/resumo';
+  private readonly apiUrl = `${raizClinica}/inicio/resumo`;
 
   constructor(private readonly http: HttpClient) {}
 

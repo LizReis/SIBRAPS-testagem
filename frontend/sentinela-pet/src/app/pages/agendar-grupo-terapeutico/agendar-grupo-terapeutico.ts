@@ -20,7 +20,7 @@ import {
   RecorrenciaGrupo,
 } from "../../services/grupo-terapeutico-service";
 import {
-  PacientePayload,
+  PacienteSelecao,
   PacienteService,
 } from "../../services/paciente/paciente-service";
 import {
@@ -57,9 +57,9 @@ export class AgendarGrupoTerapeutico implements OnInit, OnDestroy {
   });
 
   profissionais: ProfissionalPayload[] = [];
-  participantes: PacientePayload[] = [];
-  resultados: PacientePayload[] = [];
-  pacienteSelecionado: PacientePayload | null = null;
+  participantes: PacienteSelecao[] = [];
+  resultados: PacienteSelecao[] = [];
+  pacienteSelecionado: PacienteSelecao | null = null;
   termoPesquisa = "";
   buscando = false;
   pesquisaRealizada = false;
@@ -145,7 +145,7 @@ export class AgendarGrupoTerapeutico implements OnInit, OnDestroy {
     this.pesquisa$.next(termo);
   }
 
-  selecionarPaciente(p: PacientePayload): void {
+  selecionarPaciente(p: PacienteSelecao): void {
     this.pacienteSelecionado = p;
     this.termoPesquisa = p.nome;
     this.resultados = [];
@@ -312,7 +312,7 @@ export class AgendarGrupoTerapeutico implements OnInit, OnDestroy {
           ) {
             this.buscando = false;
             this.pesquisaRealizada = false;
-            return of<PacientePayload[]>([]);
+            return of<PacienteSelecao[]>([]);
           }
           this.buscando = true;
           this.pesquisaRealizada = false;
@@ -322,7 +322,7 @@ export class AgendarGrupoTerapeutico implements OnInit, OnDestroy {
             ? this.pacientes.buscarPorCpf(digitos).pipe(map((p) => [p]))
             : this.pacientes.buscarPorCns(digitos).pipe(map((p) => [p]));
           return req.pipe(
-            catchError(() => of<PacientePayload[]>([])),
+            catchError(() => of<PacienteSelecao[]>([])),
             finalize(() => {
               this.buscando = false;
               this.pesquisaRealizada = true;
@@ -361,7 +361,7 @@ export class AgendarGrupoTerapeutico implements OnInit, OnDestroy {
     )}-${String(d.getDate()).padStart(2, "0")}`;
   }
 
-  documento(p: PacientePayload): string {
+  documento(p: PacienteSelecao): string {
     const cpf = (p.cpf || "").replace(/\D/g, "");
     if (cpf.length === 11)
       return `CPF •••.${cpf.slice(3, 6)}.${cpf.slice(6, 9)}-••`;

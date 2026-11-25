@@ -21,7 +21,8 @@ public class PainelPendenciasLocalEnsaioService {
     private final EntityManager em;
     public enum Estado { PENDENTE, APROVADA, REJEITADA }
     public record Item(UUID ticket,UUID paciente,UUID vinculo,String nome,PendenciaRevisaoProveniencia.TipoRegistro tipoRegistro,
-            Instant solicitadoEm,Estado estado,UUID decisao,Instant decididaEm) {}
+            Instant solicitadoEm,Estado estado,UUID decisao,Instant decididaEm,
+            Integer versaoVinculo, Long registro, String justificativaSolicitacao, String justificativaDecisao) {}
     public record Pagina(long pendentes,long aprovadas,long rejeitadas,java.util.List<Item> itens,long total,int pagina,int tamanho) {}
 
     public Pagina listar(Estado filtro,int pagina,int tamanho) {
@@ -51,7 +52,8 @@ public class PainelPendenciasLocalEnsaioService {
                     return new Item(p.getId(),v.getPaciente().getIdPublico(),v.getIdPublico(),v.getPaciente().getNome(),
                             p.getTipoRegistro(),p.getSolicitadoEm(),d==null?Estado.PENDENTE:
                             d.getDecisao()==DecisaoRevisaoProveniencia.Decisao.APROVAR?Estado.APROVADA:Estado.REJEITADA,
-                            d==null?null:d.getId(),d==null?null:d.getDecididaEm());
+                            d==null?null:d.getId(),d==null?null:d.getDecididaEm(), v.getVersion(),
+                            p.getRegistroId(), p.getJustificativa(), d==null?null:d.getJustificativa());
                 }).toList();
         return new Pagina(pendentes,aprovadas,rejeitadas,itens,total,pagina,tamanho);
     }

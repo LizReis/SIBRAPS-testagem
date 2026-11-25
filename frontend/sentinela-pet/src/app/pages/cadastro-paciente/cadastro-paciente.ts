@@ -1,3 +1,5 @@
+import { contratoExperimental } from '../../services/configuracao-contrato';
+import { VersoesPacienteLocal } from '../../services/contrato-clinico-local';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
@@ -62,10 +64,13 @@ export class CadastroPaciente implements OnInit {
     'nome', 'nomeMae', 'dataNascimento', 'sexo', 'racacor', 'situacaoRua',
   ];
 
-  readonly camposDocumentos = [
-    'cpf', 'cns', 'telefone', 'usfReferencia', 'capsReferencia',
-    'tipoAcompanhamento',
-  ];
+  private versoesLocais?: VersoesPacienteLocal;
+  get edicaoSomenteCadastral(): boolean { return contratoExperimental && this.modoEdicao; }
+
+  get camposDocumentos(): string[] {
+    return ['cpf', 'cns', 'telefone', 'usfReferencia', 'capsReferencia',
+      ...(this.edicaoSomenteCadastral ? [] : ['tipoAcompanhamento'])];
+  }
 
   readonly camposEndereco = [
     'endereco.cep', 'endereco.estado', 'endereco.cidade', 'endereco.bairro',
@@ -157,7 +162,12 @@ export class CadastroPaciente implements OnInit {
     this.modoEdicao = !!this.idPublico;
 
     this.carregarUnidadesSaude();
-    this.carregarReferencias();
+    if (this.edicaoSomenteCadastral) {
+      this.pacienteForm.controls.tipoAcompanhamento.disable();
+      this.pacienteForm.controls.profissionalReferenciaId.disable();
+    } else {
+      this.carregarReferencias();
+    }
     this.pacienteForm.controls.situacaoRua.valueChanges.subscribe((rua) => {
       this.atualizarValidadoresEndereco(rua === true);
     });
@@ -208,6 +218,7 @@ export class CadastroPaciente implements OnInit {
 
     this.pacienteService.buscarPorId(idPublico).subscribe({
       next: (paciente) => {
+        this.versoesLocais = paciente.local;
         const unidadeCorrespondente =
           this.unidadesSaude.find((u) => u.id === paciente.usfReferencia?.id) ?? null;
 
@@ -312,7 +323,7 @@ export class CadastroPaciente implements OnInit {
     };
 
     const request$ = this.modoEdicao
-      ? this.pacienteService.atualizarPaciente(this.idPublico!, paciente)
+      ? this.pacienteService.atualizarPaciente(this.idPublico!, paciente, this.versoesLocais)
       : this.pacienteService.cadastrarPaciente(paciente);
 
     request$.subscribe({

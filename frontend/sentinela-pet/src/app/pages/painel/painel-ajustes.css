@@ -145,3 +145,6 @@
         flex-wrap: wrap;
     }
 }
+
+.risk-badge.unknown { color: #444; background: #eee; }
+.donut-segment.unknown { stroke: #718096; }

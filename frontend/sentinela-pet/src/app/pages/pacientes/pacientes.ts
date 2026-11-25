@@ -1,3 +1,4 @@
+import { contratoExperimental } from '../../services/configuracao-contrato';
 import {
     CommonModule
 } from '@angular/common';
@@ -43,7 +44,7 @@ export class Pacientes implements OnInit, OnDestroy {
     readonly Math = Math;
     termo = '';
     classificacao = '';
-    status = 'ATIVO';
+    status = contratoExperimental ? '' : 'ATIVO';
     acompanhamento = '';
     pagina = 0;
     tamanho = 10;
@@ -107,7 +108,7 @@ export class Pacientes implements OnInit, OnDestroy {
     limpar() {
         this.termo = '';
         this.classificacao = '';
-        this.status = 'ATIVO';
+        this.status = contratoExperimental ? '' : 'ATIVO';
         this.acompanhamento = '';
         this.pagina = 0;
         this.carregar();
@@ -125,8 +126,8 @@ export class Pacientes implements OnInit, OnDestroy {
         const d = (p.cpf || '').replace(/\D/g, '');
         return d.length === 11 ? `CPF •••.${d.slice(3,6)}.${d.slice(6,9)}-••` : `CNS •••••••••${(p.cns||'').slice(-4)}`
     }
-    label(v ? : string) {
-        return (v || '').replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, x => x.toUpperCase())
+    label(v?: string | null) {
+        return (v || 'Não confirmado').replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, x => x.toUpperCase())
     }
     @HostListener('document:click') fechar() {
         this.menu = undefined

@@ -1,33 +1,37 @@
 import { CommonModule } from '@angular/common';
 import { HttpResponse } from '@angular/common/http';
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { finalize } from 'rxjs';
+import { finalize, Subscription } from 'rxjs';
+import { contratoExperimental } from '../../services/configuracao-contrato';
+import { EstadoRevisaoLocal, PaginaPendenciasLocal, PendenciaLocal, rotuloRevisaoLocal } from '../../services/contrato-clinico-local';
+import { UsuarioLogadoService } from '../../services/usuario-logado-service';
 import { GrupoTerapeuticoPayload, GrupoTerapeuticoService } from '../../services/grupo-terapeutico-service';
 import { ProfissionalService, UsuarioReferencia } from '../../services/profissional/profissional-service';
 import { FiltroPeriodo, FiltrosBuscaAtiva, FiltrosFrequenciaGrupos, RelatorioService } from '../../services/relatorio-service';
 
-type TipoRelatorio = 'buscaAtiva' | 'frequenciaGrupo';
+type TipoRelatorio = 'buscaAtiva' | 'frequenciaGrupo' | 'pendencias';
 type FormatoExportacao = 'PDF' | 'Excel' | 'CSV';
 
-interface PacienteBuscaAtivaMock {
+interface PacienteBuscaAtivaRelatorio {
   nome: string;
   documento: string;
   dataUltimoAtendimento: string;
-  faltasConsecutivas: number;
-  tipoAcompanhamento: 'Individual' | 'Grupo terapêutico';
+  faltasConsecutivas: number | null;
+  tipoAcompanhamento: string;
   telefone: string;
   profissional: string;
 }
 
-interface SessaoFrequenciaMock {
+interface SessaoFrequenciaRelatorio {
   id: number;
   grupo: string;
   data: string;
   profissionalResponsavel: string;
   presentes: string[];
   ausentes: string[];
+  taxaLocal?: number | null;
 }
 
 export function converterPeriodo(periodo: string, hoje = new Date()): FiltroPeriodo {
@@ -66,6 +70,23 @@ export class Relatorios implements OnInit {
   profissionais: UsuarioReferencia[] = [];
   grupos: GrupoTerapeuticoPayload[] = [];
 
+  readonly contratoExperimental = contratoExperimental;
+  readonly rotuloRevisao = rotuloRevisaoLocal;
+  private readonly usuario = contratoExperimental ? inject(UsuarioLogadoService) : null;
+  podeRevisar = false;
+  buscandoRelatorio = false;
+  erroConsulta = '';
+  private consulta?: Subscription;
+  private buscaLocal: PacienteBuscaAtivaRelatorio[] = [];
+  private frequenciaLocal: SessaoFrequenciaRelatorio[] = [];
+  quantidadeEmConferencia?: number;
+  mediaLocal: number | null = null;
+  pendencias?: PaginaPendenciasLocal;
+  estadoPendencia: EstadoRevisaoLocal | '' = '';
+  selecionada?: PendenciaLocal;
+  justificativaDecisao = '';
+  salvandoDecisao = false;
+
   constructor(
     private readonly relatorioService: RelatorioService,
     private readonly profissionalService: ProfissionalService,
@@ -77,6 +98,8 @@ export class Relatorios implements OnInit {
       next: (profissionais) => this.profissionais = profissionais,
       error: () => this.profissionais = [],
     });
+    this.usuario?.obterUsuarioLogado().subscribe({next: u => this.podeRevisar = u.tipoUsuario === 'ADMINISTRADOR'});
+    this.carregarPrevia();
     this.grupoService.listarGrupos().subscribe({
       next: (grupos) => this.grupos = grupos,
       error: () => this.grupos = [],
@@ -94,7 +117,7 @@ export class Relatorios implements OnInit {
 
 
   // TODO RF21: substituir dados mockados por dados reais da API de relatórios.
-  readonly pacientesBuscaAtiva: PacienteBuscaAtivaMock[] = [
+  readonly pacientesBuscaAtiva: PacienteBuscaAtivaRelatorio[] = [
     {
       nome: 'Luciana Almeida', documento: '708 4012 3456 7890', dataUltimoAtendimento: '12/06/2026',
       faltasConsecutivas: 4, tipoAcompanhamento: 'Individual', telefone: '(81) 99812-4471',
@@ -108,7 +131,7 @@ export class Relatorios implements OnInit {
   ];
 
   // TODO RF21: substituir mock de frequência pela API de relatório de grupos.
-  readonly sessoesFrequencia: SessaoFrequenciaMock[] = [
+  readonly sessoesFrequencia: SessaoFrequenciaRelatorio[] = [
     { id: 1, grupo: 'Grupo de Convivência', data: '05/06/2026', profissionalResponsavel: 'João Ferreira', presentes: ['Ana B. Souza', 'Cleide Ferreira', 'Rafael Torres', 'Lúcia Almeida', 'Pedro Ramos', 'Bruna Alves', 'Caio Lima', 'Sara Melo'], ausentes: ['Marcos V. Lima', 'João P. Nogueira'] },
     { id: 2, grupo: 'Grupo de Convivência', data: '19/06/2026', profissionalResponsavel: 'Ana Oliveira', presentes: ['Ana B. Souza', 'Cleide Ferreira', 'Lúcia Almeida', 'Pedro Ramos', 'Bruna Alves', 'Sara Melo'], ausentes: ['Rafael Torres', 'Marcos V. Lima', 'Caio Lima', 'João P. Nogueira'] },
     { id: 3, grupo: 'Grupo de Cuidado em Álcool e Drogas', data: '10/07/2026', profissionalResponsavel: 'Dra. Marina Costa', presentes: ['Rafael Torres', 'João P. Nogueira', 'Caio Lima', 'Pedro Ramos', 'Bruna Alves', 'Sara Melo', 'Lúcia Almeida', 'Ana B. Souza', 'Marcos V. Lima'], ausentes: ['Cleide Ferreira'] },
@@ -117,7 +140,8 @@ export class Relatorios implements OnInit {
     { id: 6, grupo: 'Grupo de Familiares', data: '21/08/2026', profissionalResponsavel: 'João Ferreira', presentes: ['Helena Lima', 'Marta Souza', 'Célia Torres', 'Alice Melo', 'Mauro Alves'], ausentes: ['Paulo Ramos', 'Sônia Nunes', 'Ricardo Lima'] },
   ];
 
-  get pacientesFiltrados(): PacienteBuscaAtivaMock[] {
+  get pacientesFiltrados(): PacienteBuscaAtivaRelatorio[] {
+    if (contratoExperimental) return this.buscaLocal;
     return this.pacientesBuscaAtiva.filter((paciente) => {
       const profissional = this.profissionais.find((item) => item.idPublico === this.profissionalSelecionado);
       const profissionalCorresponde = !profissional || paciente.profissional === profissional.nome;
@@ -127,20 +151,91 @@ export class Relatorios implements OnInit {
     });
   }
 
-  get sessoesFiltradas(): SessaoFrequenciaMock[] {
+  get sessoesFiltradas(): SessaoFrequenciaRelatorio[] {
+    if (contratoExperimental) return this.frequenciaLocal;
     return this.sessoesFrequencia.filter((sessao) =>
       this.grupoSelecionado === null || sessao.grupo === this.grupos.find((grupo) => grupo.id === this.grupoSelecionado)?.tema,
     );
   }
 
-  get mediaPresenca(): number {
+  get mediaPresenca(): number | null {
+    if (contratoExperimental) return this.mediaLocal;
     if (this.sessoesFiltradas.length === 0) return 0;
-    const total = this.sessoesFiltradas.reduce((soma, sessao) => soma + this.calcularTaxa(sessao), 0);
+    const total = this.sessoesFiltradas.reduce((soma, sessao) => soma + (this.calcularTaxa(sessao) ?? 0), 0);
     return total / this.sessoesFiltradas.length;
   }
 
   selecionarAba(aba: TipoRelatorio): void {
     this.abaAtiva = aba;
+    if (aba === 'pendencias') this.carregarPendencias(0);
+    else this.carregarPrevia();
+  }
+
+  carregarPrevia(): void {
+    if (!contratoExperimental || this.abaAtiva === 'pendencias') return;
+    this.consulta?.unsubscribe();
+    this.buscandoRelatorio = true;
+    this.erroConsulta = '';
+    this.quantidadeEmConferencia = undefined;
+    this.buscaLocal = [];
+    this.frequenciaLocal = [];
+    this.mediaLocal = null;
+    if (this.abaAtiva === 'buscaAtiva') {
+      this.consulta = this.relatorioService.consultarBusca(this.filtrosBuscaAtiva()).pipe(finalize(() => this.buscandoRelatorio = false)).subscribe({
+        next: resposta => {
+          this.buscaLocal = resposta.dados.map(p => ({
+            nome: p.nomeCompleto, documento: p.cnsCpf, dataUltimoAtendimento: p.dataUltimoAtendimentoFormatada,
+            faltasConsecutivas: p.faltasConsecutivas, tipoAcompanhamento: p.tipoAcompanhamento,
+            telefone: p.telefone, profissional: p.profissionalReferencia,
+          }));
+          this.quantidadeEmConferencia = resposta.revisaoOuSelecaoInconclusiva;
+        },
+        error: () => this.erroConsulta = 'Não foi possível consultar a busca ativa da unidade.',
+      });
+    } else {
+      this.consulta = this.relatorioService.consultarGrupos(this.filtrosFrequencia()).pipe(finalize(() => this.buscandoRelatorio = false)).subscribe({
+        next: resposta => {
+          this.frequenciaLocal = resposta.dados.map((s, indice) => ({
+            id: indice, data: s.dataFormatada, grupo: s.grupo, profissionalResponsavel: s.coordenador,
+            presentes: s.nomesPresentes, ausentes: s.nomesAusentes, taxaLocal: s.taxaPresenca,
+          }));
+          this.mediaLocal = resposta.media;
+          this.quantidadeEmConferencia = resposta.sessoesPendentes;
+        },
+        error: () => this.erroConsulta = 'Não foi possível consultar a frequência dos grupos da unidade.',
+      });
+    }
+  }
+
+  carregarPendencias(pagina: number): void {
+    if (!this.podeRevisar || pagina < 0) return;
+    this.consulta?.unsubscribe();
+    this.buscandoRelatorio = true;
+    this.erroConsulta = '';
+    this.selecionada = undefined;
+    this.pendencias = undefined;
+    this.consulta = this.relatorioService.pendencias(pagina, this.estadoPendencia || undefined)
+      .pipe(finalize(() => this.buscandoRelatorio = false)).subscribe({
+        next: dados => this.pendencias = dados,
+        error: () => this.erroConsulta = 'Não foi possível consultar as pendências da unidade.',
+      });
+  }
+
+  detalhar(p: PendenciaLocal): void {
+    this.selecionada = p;
+    this.justificativaDecisao = '';
+  }
+
+  decidir(decisao: 'APROVAR' | 'REJEITAR'): void {
+    const item = this.selecionada;
+    if (this.salvandoDecisao || item?.estado !== 'PENDENTE' || this.justificativaDecisao.trim().length < 10) return;
+    this.salvandoDecisao = true;
+    this.erroConsulta = '';
+    this.relatorioService.decidir(item, decisao, this.justificativaDecisao.trim())
+      .pipe(finalize(() => this.salvandoDecisao = false)).subscribe({
+        next: () => this.carregarPendencias(this.pendencias?.pagina ?? 0),
+        error: e => this.erroConsulta = e.error?.message ?? 'Não foi possível registrar a decisão.',
+      });
   }
 
   selecionarFormato(formato: FormatoExportacao): void {
@@ -220,13 +315,14 @@ export class Relatorios implements OnInit {
     try { return decodeURIComponent(valor.trim()); } catch { return valor.trim(); }
   }
 
-  calcularTaxa(sessao: SessaoFrequenciaMock): number {
+  calcularTaxa(sessao: SessaoFrequenciaRelatorio): number | null {
+    if (contratoExperimental) return sessao.taxaLocal ?? null;
     const total = sessao.presentes.length + sessao.ausentes.length;
     return total === 0 ? 0 : (sessao.presentes.length / total) * 100;
   }
 
-  formatarPercentual(valor: number): string {
-    return valor.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  formatarPercentual(valor: number | null): string {
+    return valor === null ? 'Não confirmada' : valor.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
   }
 
   resumirNomes(nomes: string[]): string {

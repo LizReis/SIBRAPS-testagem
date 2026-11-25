@@ -57,8 +57,8 @@
               @for (paciente of resumo?.pacientesPrioritarios; track paciente.idPublico) {
                 <tr>
                   <td>{{ paciente.nome }}</td>
-                  <td><span class="risk-badge" [class]="'risk-badge risk-' + paciente.classificacaoRisco.toLowerCase()">{{ paciente.classificacaoRisco }}</span></td>
-                  <td>{{ paciente.quantidadeFaltas }}</td>
+                  <td><span class="risk-badge" [class]="'risk-badge risk-' + (paciente.classificacaoRisco?.toLowerCase() ?? 'unknown')">{{ paciente.classificacaoRisco ?? 'Não confirmado' }}</span></td>
+                  <td>{{ paciente.quantidadeFaltas ?? 'Não confirmado' }}</td>
                   <td>{{ paciente.dataUltimaPresenca ? (paciente.dataUltimaPresenca | date: 'dd/MM/yyyy') : 'Sem presença registrada' }}</td>
                   <td>
                     <a class="view-button" [routerLink]="['/pacientes/detalhes', paciente.idPublico]" [attr.aria-label]="'Visualizar paciente ' + paciente.nome">
