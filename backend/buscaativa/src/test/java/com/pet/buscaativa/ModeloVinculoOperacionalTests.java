@@ -70,6 +70,23 @@ class ModeloVinculoOperacionalTests {
     }
 
     @Test
+    void inicializacaoRecusaV18RegistradaComEstruturaIncompleta() throws Exception {
+        var banco = LegacyMigrationFixture.legacy(temp.resolve("v18-incompleta"));
+        AgendaMigrationTool.migrar(banco);
+        AgendaMigrationTool.migrarIdentidade(banco);
+        AgendaMigrationTool.migrarTransicao(banco);
+        var sql = new JdbcTemplate(banco);
+        sql.execute("alter table tb_fechamento_historico_vinculo drop column indicadores");
+        var antes = LegacyMigrationFixture.columns(banco);
+        assertThatThrownBy(() -> {
+            try (var app = iniciar(banco)) {
+                assertThat(app.isActive()).isFalse();
+            }
+        }).hasRootCauseMessage("Banco operacional com estrutura V18 incompleta ou incompatível.");
+        assertThat(LegacyMigrationFixture.columns(banco)).isEqualTo(antes);
+    }
+
+    @Test
     void instalacaoPadraoPublicaSomenteVinculoECoordenaDuasInstancias() throws Exception {
         var banco = LegacyMigrationFixture.legacy(temp.resolve("operacional"));
         var sql = new JdbcTemplate(banco);
@@ -81,6 +98,7 @@ class ModeloVinculoOperacionalTests {
         String recepcao = ator(sql, unidadeA, 3, "recepcao");
         String profissional = ator(sql, unidadeA, 2, "profissional");
         String administrador = ator(sql, unidadeB, 1, "administrador");
+        String profissionalB = ator(sql, unidadeB, 2, "profissional-b");
 
         try (var primeira = iniciar(banco); var segunda = iniciar(banco)) {
             for (String bean : List.of("pacienteController", "agendamentoController", "grupoTerapeuticoController",
@@ -100,6 +118,11 @@ class ModeloVinculoOperacionalTests {
             var tokenRecepcao = login(primeira, recepcao);
             var tokenProfissional = login(segunda, profissional);
             var tokenAdmin = login(segunda, administrador);
+            var marcoSemV18 = http(segunda, "POST", "/api/painel/historico/marco", tokenAdmin, null);
+            assertThat(marcoSemV18.statusCode()).isEqualTo(409);
+            assertThat(json(segunda, marcoSemV18).path("message").asString()).contains("V18");
+            validarCadastroConcorrenteEntreUnidades(primeira, segunda, tokenProfissional,
+                    login(segunda, profissionalB), sql, unidadeA, unidadeB);
             assertThat(http(primeira, "GET", "/api/pacientes/pesquisa", null, null).statusCode()).isEqualTo(401);
             assertThat(http(primeira, "GET", "/api/ensaio-escritores/pacientes/pesquisa", tokenRecepcao, null)
                     .statusCode()).isEqualTo(404);
@@ -153,6 +176,28 @@ class ModeloVinculoOperacionalTests {
             validarReservaRf26EntreInstancias(primeira, segunda, sql, profissional, unidadeA);
             assertThat(sql.queryForObject("select status_paciente from tb_paciente where id_publico=?", Integer.class, UUID.fromString(pessoa)))
                     .isNull();
+        }
+    }
+
+    private void validarCadastroConcorrenteEntreUnidades(ConfigurableApplicationContext a,
+            ConfigurableApplicationContext b, String tokenA, String tokenB, JdbcTemplate sql,
+            long unidadeA, long unidadeB) throws Exception {
+        String cpf = "39053344705";
+        String cns = "800000000000028";
+        var inicio = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var reqA = executor.submit(() -> concorrer(a, tokenA, cadastro(cpf, cns, "Identidade", unidadeA), inicio));
+            var reqB = executor.submit(() -> concorrer(b, tokenB, cadastro(cpf, cns, "Identidade", unidadeB), inicio));
+            inicio.countDown();
+            var respostaA = reqA.get(15, TimeUnit.SECONDS);
+            var respostaB = reqB.get(15, TimeUnit.SECONDS);
+            assertThat(List.of(respostaA.statusCode(), respostaB.statusCode())).containsExactlyInAnyOrder(201, 409);
+            assertThat(sql.queryForObject("select count(*) from tb_paciente where cpf_normalizado=? and cns_normalizado=?",
+                    Integer.class, cpf, cns)).isEqualTo(1);
+            assertThat(sql.queryForList("""
+                    select v.unidade_chave from tb_vinculo_assistencial v join tb_paciente p on p.id=v.paciente_id
+                    where p.cpf_normalizado=?
+                    """, String.class, cpf)).containsExactly("USF:" + (respostaA.statusCode() == 201 ? unidadeA : unidadeB));
         }
     }
 
@@ -260,6 +305,7 @@ class ModeloVinculoOperacionalTests {
         long unidadeA = usf(sql, "Histórico A");
         long unidadeB = usf(sql, "Histórico B");
         String adminA = ator(sql, unidadeA, 1, "transicao-a");
+        String segundoAdminA = ator(sql, unidadeA, 1, "transicao-a2");
         String adminB = ator(sql, unidadeB, 1, "transicao-b");
         String profissional = ator(sql, unidadeA, 2, "transicao-prof");
         UUID destinatario = sql.queryForObject("select id_publico from tb_usuario where email=?", UUID.class, profissional);
@@ -297,8 +343,29 @@ class ModeloVinculoOperacionalTests {
             assertThat(json(app, http(app, "POST", marco, a, null)).path("iniciadoEm").asString()).isEqualTo(limite);
             var divergente = Map.of("vinculos", List.of(9999L), "evidenciaSha256", sha);
             assertThat(http(app, "PUT", fechamento + "2026-12", a, divergente).statusCode()).isEqualTo(409);
-            var resumo = http(app, "PUT", fechamento + "2026-12", a, manifesto);
+            var largada = new CountDownLatch(1);
+            var segundoToken = login(app, segundoAdminA);
+            HttpResponse<String> resumo;
+            HttpResponse<String> concorrente;
+            try (var executor = Executors.newFixedThreadPool(2)) {
+                var uma = executor.submit(() -> {
+                    if (!largada.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("Largada excedida.");
+                    return http(app, "PUT", fechamento + "2026-12", a, manifesto);
+                });
+                var duas = executor.submit(() -> {
+                    if (!largada.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("Largada excedida.");
+                    return http(app, "PUT", fechamento + "2026-12", segundoToken, manifesto);
+                });
+                largada.countDown();
+                var primeira = uma.get(15, TimeUnit.SECONDS);
+                var segunda = duas.get(15, TimeUnit.SECONDS);
+                resumo = primeira.statusCode() == 200 ? primeira : segunda;
+                concorrente = primeira.statusCode() == 200 ? segunda : primeira;
+            }
             assertThat(resumo.statusCode()).isEqualTo(200);
+            assertThat(concorrente.statusCode()).isIn(200, 409);
+            if (concorrente.statusCode() == 200) assertThat(concorrente.body()).isEqualTo(resumo.body());
+            assertThat(sql.queryForObject("select count(*) from tb_fechamento_historico_vinculo", Integer.class)).isEqualTo(1);
             assertThat(json(app, resumo).path("situacao").asString()).isEqualTo("COMPROVADO");
             assertThat(json(app, resumo).path("vermelhos").asLong()).isZero();
             assertThat(http(app, "PUT", fechamento + "2026-12", a, manifesto).body()).isEqualTo(resumo.body());

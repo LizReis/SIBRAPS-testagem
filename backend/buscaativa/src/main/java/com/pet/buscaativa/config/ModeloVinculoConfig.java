@@ -17,6 +17,7 @@ import org.springframework.util.ClassUtils;
 import br.sibraps.modelovinculo.ConsultasVinculoController;
 import br.sibraps.modelovinculo.EscritoresVinculoController;
 import com.pet.buscaativa.migration.IdentidadeDocumentalPreflight;
+import com.pet.buscaativa.migration.TransicaoLocalSchemaGuard;
 
 @Configuration(proxyBeanMethods = false)
 public class ModeloVinculoConfig {
@@ -61,7 +62,10 @@ public class ModeloVinculoConfig {
             return new BeanPostProcessor() {
                 @Override
                 public Object postProcessAfterInitialization(Object bean, String nome) {
-                    if (bean instanceof DataSource fonte) IdentidadeDocumentalPreflight.verificarOperacional(fonte);
+                    if (bean instanceof DataSource fonte) {
+                        IdentidadeDocumentalPreflight.verificarOperacional(fonte);
+                        TransicaoLocalSchemaGuard.verificar(fonte);
+                    }
                     return bean;
                 }
             };

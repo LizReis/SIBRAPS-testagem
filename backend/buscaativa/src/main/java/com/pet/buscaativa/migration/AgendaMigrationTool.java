@@ -60,6 +60,7 @@ public final class AgendaMigrationTool {
         }
         var result = flyway.migrate();
         if (!destino.equals("16")) IdentidadeDocumentalPreflight.verificarRestricoes(source);
+        if (destino.equals("18")) TransicaoLocalSchemaGuard.verificar(source);
         CanonicalAgendaGuard.verificar(source);
         AuditoriaSchemaGuard.verificar(source);
         ResponsabilidadeSessaoGuard.verificar(source);
