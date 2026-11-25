@@ -137,6 +137,11 @@ public final class AgendaMigrationTool {
                     + "; vínculos=" + marco.vinculos());
             return;
         }
+        if (args.length == 1 && "--diagnostico-cobertura-historica".equals(args[0])) {
+            EvidenciaClinicaSchemaGuard.verificar(source);
+            System.out.println(ReconciliacaoEvidenciaClinica.diagnosticar(source));
+            return;
+        }
         if (args.length > 1) throw new IllegalArgumentException("Argumento desconhecido.");
         var result = switch (args.length == 0 ? "" : args[0]) {
             case "" -> migrar(source);
