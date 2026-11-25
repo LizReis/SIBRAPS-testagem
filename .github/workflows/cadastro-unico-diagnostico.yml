@@ -74,7 +74,7 @@ jobs:
         run: npm run build -- --configuration ensaio
 
   frontend-permissoes:
-    name: Cadastro unico - Teste direcionado Angular de permissoes
+    name: Cadastro unico - Suite Angular completa e contrato experimental
     runs-on: ubuntu-latest
     timeout-minutes: 12
     defaults:
@@ -91,17 +91,7 @@ jobs:
           cache-dependency-path: frontend/sentinela-pet/package-lock.json
       - run: npm install --global npm@11.6.2
       - run: npm ci
-      - name: Teste de permissoes do cadastro
-        run: npm test -- --watch=false --include=src/app/auth/permissoes.spec.ts
-      - name: Teste do contrato HTTP Angular do cadastro unico
-        run: npm test -- --watch=false --include=src/app/services/paciente/cadastro-unico-service.spec.ts
-      - name: Testes da interface de conferencia e do cadastro legado
-        run: |
-          npm test -- --watch=false --include=src/app/pages/cadastro-paciente/cadastro-existente.spec.ts
-          npm test -- --watch=false --include=src/app/pages/cadastro-paciente/cadastro-paciente.spec.ts
-      - name: Teste dos contratos clinicos locais experimentais
-        run: npm test -- --watch=false --include=src/app/services/contrato-clinico-local.spec.ts
-      - name: Contratos HTTP integrados (padrao e ensaio)
-        run: |
-          npm test -- --watch=false --include=src/app/services/contrato-clinico-integrado.spec.ts
-          npm test -- --watch=false --configuration ensaio --include=src/app/services/contrato-clinico-integrado.spec.ts
+      - name: Suite Angular completa (contrato padrao)
+        run: npm test -- --watch=false
+      - name: Contrato HTTP integrado experimental
+        run: npm test -- --watch=false --configuration ensaio --include=src/app/services/contrato-clinico-integrado.spec.ts
