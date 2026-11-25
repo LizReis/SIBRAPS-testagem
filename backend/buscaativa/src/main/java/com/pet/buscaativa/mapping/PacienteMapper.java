@@ -13,6 +13,21 @@ public interface PacienteMapper {
         return new PacienteDTO(pacienteEntity);
     }
 
+    /** Campos compartilhados no modelo local. Estado e referência clínica não passam por este mapa. */
+    @org.mapstruct.BeanMapping(ignoreByDefault = true)
+    @Mapping(target = "nome", source = "nome")
+    @Mapping(target = "nomeMae", source = "nomeMae")
+    @Mapping(target = "dataNascimento", source = "dataNascimento")
+    @Mapping(target = "sexo", source = "sexo")
+    @Mapping(target = "racacor", source = "racacor")
+    @Mapping(target = "cns", source = "cns")
+    @Mapping(target = "cpf", source = "cpf")
+    @Mapping(target = "telefone", source = "telefone")
+    @Mapping(target = "situacaoRua", source = "situacaoRua")
+    @Mapping(target = "capsReferencia", source = "capsReferencia")
+    @Mapping(target = "usfReferencia", source = "usfReferencia")
+    void aplicarCadastroCompartilhado(PacienteDTO dados, @MappingTarget Paciente pessoa);
+
     @Mapping(target = "idPublico", ignore = true)
     @Mapping(target = "indicadoresPendentes", ignore = true)
     @Mapping(target = "profissionalReferencia", ignore = true)

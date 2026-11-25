@@ -66,12 +66,6 @@ public class PacienteServiceImpl implements PacienteService{
     private jakarta.persistence.EntityManager em;
 
 
-    @Override
-    @Transactional
-    public PacienteDTO save(PacienteDTO pacienteDTO, boolean ignorarSimilaridade) {
-        return salvar(pacienteDTO, ignorarSimilaridade, vinculoAssistencialService::vincularExplicitamente);
-    }
-
     // Somente chamador interno transacional; o ensaio substitui a criação
     // do vínculo antes de persistir qualquer default clínico local.
     @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
@@ -79,14 +73,55 @@ public class PacienteServiceImpl implements PacienteService{
             java.util.function.Consumer<UUID> criarVinculo) {
         if (dados == null || dados.idPublico() != null)
             throw new ValidationException("Cadastro novo obrigatório.");
-        return salvar(dados, ignorarSimilaridade, criarVinculo);
+        rejeitarContadorInformado(dados);
+        validarPacienteDuplicado(dados, ignorarSimilaridade);
+        var pessoa = new Paciente();
+        pessoa.setClassificacaoRisco(null);
+        pessoa.setIndicadoresPendentes(null);
+        pessoa.setGatilhoVisitaAcionado(null);
+        aplicarDadosCompartilhados(dados, pessoa);
+        escopoUnidadeService.validarEscopoDoNovoCadastro(pessoa);
+        pacienteRepository.saveAndFlush(pessoa);
+        criarVinculo.accept(pessoa.getIdPublico());
+        return pacienteMapper.toPacienteDTO(pessoa);
     }
 
-    private PacienteDTO salvar(PacienteDTO pacienteDTO, boolean ignorarSimilaridade,
-            java.util.function.Consumer<UUID> criarVinculo) {
-        if (pacienteDTO.countFaltas() != null) {
-            throw new ValidationException("O contador de faltas é calculado pelo sistema e não pode ser informado.");
+    @Transactional(Transactional.TxType.MANDATORY)
+    void editarCadastroCompartilhado(PacienteDTO dados, Paciente pessoa, boolean ignorarSimilaridade) {
+        rejeitarContadorInformado(dados);
+        validarPacienteDuplicado(dados, pessoa.getIdPublico(), ignorarSimilaridade,
+                encontrado -> {
+                    // O vínculo já foi autorizado, inclusive para a identidade em múltiplas unidades.
+                    if (!encontrado.getIdPublico().equals(pessoa.getIdPublico()))
+                        escopoUnidadeService.validarAcesso(encontrado);
+                });
+        aplicarDadosCompartilhados(dados, pessoa);
+        pacienteRepository.saveAndFlush(pessoa);
+    }
+
+    private void aplicarDadosCompartilhados(PacienteDTO dados, Paciente pessoa) {
+        pacienteMapper.aplicarCadastroCompartilhado(dados, pessoa);
+        if (dados.usfReferencia() != null && dados.usfReferencia().getId() != null) {
+            var usf = em.find(com.pet.buscaativa.entities.UsfReferencia.class, dados.usfReferencia().getId());
+            if (usf == null) throw new ValidationException("USF de referência não encontrada.");
+            pessoa.setUsfReferencia(usf);
         }
+        var e = dados.endereco();
+        pessoa.setEndereco(e == null ? null : new com.pet.buscaativa.entities.Endereco(null, e.getCidade(),
+                e.getEstado(), e.getBairro(), e.getLogradouro(), e.getNumero(), e.getComplemento(), e.getCep()));
+        pessoa.setCpf(DocumentoUtil.normalizarCPF(dados.cpf()));
+        pessoa.setCns(DocumentoUtil.normalizarCNS(dados.cns()));
+    }
+
+    private static void rejeitarContadorInformado(PacienteDTO dados) {
+        if (dados.countFaltas() != null)
+            throw new ValidationException("O contador de faltas é calculado pelo sistema e não pode ser informado.");
+    }
+
+    @Override
+    @Transactional
+    public PacienteDTO save(PacienteDTO pacienteDTO, boolean ignorarSimilaridade) {
+        rejeitarContadorInformado(pacienteDTO);
         
         escopoUnidadeService.validarUnidadeConfigurada();
         Paciente pacienteSalvar = null;
@@ -135,7 +170,7 @@ public class PacienteServiceImpl implements PacienteService{
             // esse vinculo, na mesma transacao: nunca associar uma unidade a
             // partir de usfReferencia/capsReferencia (referencias territoriais).
             // Caso a vinculacao falhe, o cadastro tambem deve ser revertido.
-            criarVinculo.accept(pacienteSalvar.getIdPublico());
+            vinculoAssistencialService.vincularExplicitamente(pacienteSalvar.getIdPublico());
         }
         // Atualizar identidade existente nao altera/cria vinculos assistenciais.
         // Consultas clinicas legadas permanecem isoladas pelo modelo atual
@@ -238,6 +273,11 @@ public class PacienteServiceImpl implements PacienteService{
             PacienteDTO pacienteDTO,
             boolean ignorarSimilaridade
     ) {
+        validarPacienteDuplicado(pacienteDTO, pacienteDTO.idPublico(), ignorarSimilaridade, escopoUnidadeService::validarAcesso);
+    }
+
+    private void validarPacienteDuplicado(PacienteDTO pacienteDTO, UUID idPublico, boolean ignorarSimilaridade,
+            java.util.function.Consumer<Paciente> validarAcesso) {
         boolean possuiDoc = false;
 
         if (pacienteDTO.cpf() != null && !pacienteDTO.cpf().isBlank()) {
@@ -247,10 +287,10 @@ public class PacienteServiceImpl implements PacienteService{
                     DocumentoUtil.normalizarCPF(pacienteDTO.cpf());
 
             pacienteRepository.findByCpf(cpfNormalizado).ifPresent(p -> {
-                escopoUnidadeService.validarAcesso(p);
+                validarAcesso.accept(p);
                 if (!Objects.equals(
                         p.getIdPublico(),
-                        pacienteDTO.idPublico()
+                        idPublico
                 )) {
                     throw new RecursoDuplicadoException(
                             "Já existe um paciente com este CPF."
@@ -266,10 +306,10 @@ public class PacienteServiceImpl implements PacienteService{
                     DocumentoUtil.normalizarCNS(pacienteDTO.cns());
 
             pacienteRepository.findByCns(cnsNormalizado).ifPresent(p -> {
-                escopoUnidadeService.validarAcesso(p);
+                validarAcesso.accept(p);
                 if (!Objects.equals(
                         p.getIdPublico(),
-                        pacienteDTO.idPublico()
+                        idPublico
                 )) {
                     throw new RecursoDuplicadoException(
                             "Já existe um paciente com este CNS."
@@ -288,7 +328,7 @@ public class PacienteServiceImpl implements PacienteService{
 
             similares.removeIf(p -> Objects.equals(
                     p.getIdPublico(),
-                    pacienteDTO.idPublico()
+                    idPublico
             ));
             similares.removeIf(p -> !escopoUnidadeService.pacientePertenceAoEscopo(p));
 

@@ -94,15 +94,18 @@ public class FrequenciaIndividualLocalEnsaioService {
 
     private Resultado frequencia(Long id, int versao, FrequenciaAssistencial destino, String justificativa, Operacao operacao) {
         if (destino != PRESENTE && destino != FALTOU) throw new ValidationException("Informe presença ou falta.");
-        var contexto = atores.autorizar(false);
+        var contexto = operacao == Operacao.PATCH ? atores.autorizarOperacional() : atores.autorizar(false);
         var bloqueados = coordenacao.bloquear(() -> descobrir(id, contexto), contexto, null);
         var fato = bloqueados.agenda().get(id);
         var ator = bloqueados.atores().ator();
         var local = bloqueados.vinculos().get(fato.getPaciente().getIdPublico());
-        autorizar(fato, ator, contexto.unidade());
+        var antes = fato.getFrequenciaAssistencial();
+        if (operacao == Operacao.PATCH && antes == NAO_REGISTRADA)
+            autorizarReserva(fato, ator, contexto.unidade());
+        else
+            autorizar(fato, ator, contexto.unidade());
         CoordenacaoEscritaClinicaEnsaio.validarVersao(versao, fato.getVersion());
 
-        var antes = fato.getFrequenciaAssistencial();
         boolean cancelado = fato.getSituacaoReserva() == SituacaoReserva.CANCELADA;
         if (operacao == Operacao.PATCH) {
             if (cancelado) throw new ConflictException("Atendimento cancelado exige regularização específica.");

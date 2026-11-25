@@ -217,6 +217,18 @@ public class FrequenciaColetivaLocalEnsaioService {
     }
 
     @Transactional
+    public void conferirStatusAgendado(Long id, Integer versao, StatusSessaoGrupo destino) {
+        var contexto = atores.autorizar(false);
+        var recursos = coordenacao.bloquear(() -> descobrir(id, contexto), contexto, null);
+        var sessao = recursos.sessoes().get(id);
+        conferirSessaoAgendada(sessao, contexto);
+        exigirResponsavelDaSessao(sessao, recursos.atores().ator());
+        if (versao != null) CoordenacaoEscritaClinicaEnsaio.validarVersao(versao, sessao.getVersion());
+        if (destino != StatusSessaoGrupo.AGENDADA)
+            throw new ValidationException("Use a confirmação de ocorrência para realizar ou cancelar uma sessão.");
+    }
+
+    @Transactional
     public int cancelar(Long id, int versao, String motivo) {
         if (motivo != null && motivo.length() > 1000) throw new ValidationException("Motivo de cancelamento excede o limite.");
         var contexto = atores.autorizar(false);
