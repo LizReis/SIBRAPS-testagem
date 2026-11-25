@@ -50,6 +50,7 @@ public class FechamentoHistoricoLocalService {
     public Marco iniciar() {
         var ator = atores.autorizar(true);
         estrutura.exigir();
+        exigirModoManual();
         atores.validar(ator, null, Map.of(ator.ator(), locks.travarUsuario(ator.ator())));
         var existente = marcos(ator.unidade(), false);
         if (!existente.isEmpty()) return existente.getFirst();
@@ -73,6 +74,7 @@ public class FechamentoHistoricoLocalService {
     public Evolucao fechar(String referencia, Manifesto manifesto) {
         var ator = atores.autorizar(true);
         estrutura.exigir();
+        exigirModoManual();
         var mes = mes(referencia);
         var ids = ids(manifesto);
         var sha = manifesto.evidenciaSha256().toLowerCase(java.util.Locale.ROOT);
@@ -115,12 +117,25 @@ public class FechamentoHistoricoLocalService {
         return indicadores.get(chave(null, null));
     }
 
+    private void exigirModoManual() {
+        if (com.pet.buscaativa.migration.FechamentoAutomaticoSchemaGuard.instalada(jdbc))
+            throw new ConflictException("O fechamento histórico é automático nesta instalação.");
+    }
+
     List<Evolucao> ler(String unidade, List<YearMonth> meses, TipoAcompanhamento tipo, Boolean rua) {
         return meses.stream().map(mes -> {
             if (!mes.isBefore(YearMonth.now(clock))) return HistoricoRiscoVinculoEnsaioService.semCobertura(mes);
             var registro = fechado(unidade, mes);
-            return registro.isEmpty() ? HistoricoRiscoVinculoEnsaioService.semCobertura(mes)
-                    : indicador(registro.getFirst(), tipo, rua);
+            if (!registro.isEmpty()) return indicador(registro.getFirst(), tipo, rua);
+            if (com.pet.buscaativa.migration.FechamentoAutomaticoSchemaGuard.instalada(jdbc)) {
+                var automaticos = jdbc.queryForList("""
+                        select indicadores from tb_observacao_historico_mensal
+                        where unidade=? and mes=? and fase='FECHADO'
+                        """, String.class, unidade, mes.atDay(1));
+                if (!automaticos.isEmpty())
+                    return json.readValue(automaticos.getFirst(), Series.class).valores().get(chave(tipo,rua));
+            }
+            return HistoricoRiscoVinculoEnsaioService.semCobertura(mes);
         }).toList();
     }
 
@@ -141,7 +156,7 @@ public class FechamentoHistoricoLocalService {
                 """, (rs, linha) -> new Fechamento(rs.getString(1), rs.getString(2), rs.getString(3)), unidade, mes.atDay(1));
     }
 
-    private static String chave(TipoAcompanhamento tipo, Boolean rua) {
+    static String chave(TipoAcompanhamento tipo, Boolean rua) {
         return String.valueOf(tipo) + "/" + rua;
     }
 
