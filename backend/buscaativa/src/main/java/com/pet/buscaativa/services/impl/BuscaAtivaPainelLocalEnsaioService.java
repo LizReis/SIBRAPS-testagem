@@ -45,7 +45,14 @@ public class BuscaAtivaPainelLocalEnsaioService {
             double percentualVerdes,double percentualAmarelos,double percentualVermelhos,double percentualNaoConfirmados) {}
     public record Prioritario(UUID idPublico,UUID vinculo,Integer versao,String nome,Integer idade,
             ClassificacaoRisco classificacaoRisco,Integer quantidadeFaltas,String acaoNecessaria) {}
-    public record Evolucao(String mes,String rotulo,Long verdes,Long amarelos,Long vermelhos,boolean disponivel) {}
+    public enum SituacaoHistorica { SEM_COBERTURA, INDISPONIVEL, COMPROVADO }
+    public record Evolucao(String mes,String rotulo,Long verdes,Long amarelos,Long vermelhos,boolean disponivel,
+            SituacaoHistorica situacao) {
+        public Evolucao(String mes,String rotulo,Long verdes,Long amarelos,Long vermelhos,boolean disponivel) {
+            this(mes, rotulo, verdes, amarelos, vermelhos, disponivel,
+                    disponivel ? SituacaoHistorica.COMPROVADO : SituacaoHistorica.INDISPONIVEL);
+        }
+    }
     /** Totais de fatos com origem comprovada dos vínculos ativos selecionados, não totais completos do universo clínico. */
     public record Atividade(long reservasIndividuaisComprovadas,long sessoesDistintasComprovadas,
             long presencasComprovadas,long faltasComprovadas,long vinculosComRevisao,

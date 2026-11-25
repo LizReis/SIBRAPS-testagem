@@ -30,6 +30,8 @@ public class ConsultasVinculoController {
     private final PainelPendenciasLocalEnsaioService pendencias;
     private final AuditoriaBuscaLocalEnsaioService auditoria;
     private final Clock clock;
+    private final FechamentoHistoricoLocalService fechamentoHistorico;
+    private final RevisaoEntregaRf26Service revisaoRf26;
 
     record Documentos(String cpf, String cns) {}
     record Auditoria(UUID requisicao, Integer version, String destino, String descricao) {}
@@ -211,5 +213,33 @@ public class ConsultasVinculoController {
         return ResponseEntity.ok().cacheControl(noStore()).contentType(excel
                 ? MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 : MediaType.APPLICATION_PDF).body(bytes);
+    }
+    @PostMapping("/painel/historico/marco")
+    @PreAuthorize("hasRole('ADMINISTRADOR')")
+    FechamentoHistoricoLocalService.Marco iniciarHistorico() {
+        return fechamentoHistorico.iniciar();
+    }
+
+    @PutMapping("/painel/historico/fechamentos/{mes}")
+    @PreAuthorize("hasRole('ADMINISTRADOR')")
+    BuscaAtivaPainelLocalEnsaioService.Evolucao fecharHistorico(@PathVariable String mes,
+            @RequestBody FechamentoHistoricoLocalService.Manifesto manifesto) {
+        return fechamentoHistorico.fechar(mes, manifesto);
+    }
+
+    public record EncerramentoRf26(String justificativa) {}
+
+    @GetMapping("/auditoria/rf26/ocorrencias")
+    @PreAuthorize("hasRole('ADMINISTRADOR')")
+    List<RevisaoEntregaRf26Service.Incidente> ocorrenciasRf26(@RequestParam LocalDate dia) {
+        return revisaoRf26.listar(dia);
+    }
+
+    @PostMapping("/auditoria/rf26/ocorrencias/{dia}/{destinatario}/encerrar")
+    @PreAuthorize("hasRole('ADMINISTRADOR')")
+    ResponseEntity<Void> encerrarRf26(@PathVariable LocalDate dia, @PathVariable UUID destinatario,
+            @RequestBody EncerramentoRf26 dados) {
+        revisaoRf26.encerrarSemReenvio(dia, destinatario, dados.justificativa());
+        return ResponseEntity.noContent().build();
     }
 }

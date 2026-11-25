@@ -134,7 +134,12 @@ export class Painel implements OnInit {
   xPonto(indice: number, total: number): number { return total <= 1 ? 50 : 10 + indice * 82 / (total - 1); }
   yPonto(valor: number | null): number | null { return valor === null ? null : 84 - valor * 70 / this.maxEvolucaoEscala; }
 
-  tooltip(p: EvolucaoPainel): string { return `${p.rotulo}: Regular ${p.verdes}, Atenção ${p.amarelos}, Busca ativa ${p.vermelhos}`; }
+  tooltip(p: EvolucaoPainel): string {
+    if (!p.disponivel) {
+      return `${p.rotulo}: ${p.situacao === 'SEM_COBERTURA' ? 'Sem cobertura certificada' : 'Indicadores indisponíveis'}`;
+    }
+    return `${p.rotulo}: Regular ${p.verdes}, Atenção ${p.amarelos}, Busca ativa ${p.vermelhos}`;
+  }
 
   private tetoEscala(valor: number): number {
     if (valor <= 0) return 5;

@@ -21,11 +21,12 @@ import lombok.RequiredArgsConstructor;
 /** Planejamento RF26 somente técnico. Sem SMTP, sem scheduler, sem endpoint.
  * Chave estável é identidade lógica da entrega, não garantia de deduplicação persistente. */
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 @Transactional(readOnly=true,isolation=Isolation.SERIALIZABLE)
 public class NotificacoesLocaisEnsaioService {
     private final UsuarioRepository usuarios;
+    private final AgendaAssistencialLocks locks;
     private final CalculoIndicadoresVinculo calculo;
     private final EvidenciaStatusVinculo evidencia;
     private final EntityManager em;
@@ -67,6 +68,33 @@ public class NotificacoesLocaisEnsaioService {
                 .filter(u->AtoresEstadoClinicoLocalEnsaio.elegivel(u,chave.unidade(),false))
                 .filter(u->u.getEmail()!=null&&!u.getEmail().isBlank())
                 .map(u->new Entrega(chave,u.getNome(),u.getEmail(),vermelhos(chave.unidade(),chave.data())));
+    }
+
+    /** Mantém sujeitos e lotação estáveis até a conclusão da tentativa técnica. */
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public Optional<Entrega> revalidarParaTentativa(Chave chave) {
+        if (SecurityContextHolder.getContext().getAuthentication()!=null)
+            throw new AccessDeniedException("Revalidação técnica exige contexto sem autenticação.");
+        var descobertos = pacientesDaUnidade(chave.unidade());
+        for (UUID paciente : descobertos) locks.travarPaciente(paciente);
+        Usuario u;
+        try {
+            u = locks.travarUsuario(chave.destinatario());
+        } catch (com.pet.buscaativa.services.exceptions.ResourceNotFoundException ausente) {
+            return Optional.empty();
+        }
+        if (!diaTecnico().equals(chave.data()) || !AtoresEstadoClinicoLocalEnsaio.elegivel(u, chave.unidade(), false)
+                || u.getEmail()==null || u.getEmail().isBlank()
+                || !descobertos.equals(pacientesDaUnidade(chave.unidade()))) return Optional.empty();
+        var pacientes = vermelhos(chave.unidade(), chave.data());
+        return diaTecnico().equals(chave.data()) ? Optional.of(new Entrega(chave, u.getNome(), u.getEmail(), pacientes))
+                : Optional.empty();
+    }
+
+    private List<UUID> pacientesDaUnidade(String unidade) {
+        return em.createQuery("""
+                select distinct v.paciente.idPublico from VinculoAssistencial v where v.unidadeChave=:unidade
+                """, UUID.class).setParameter("unidade", unidade).getResultList().stream().sorted().toList();
     }
 
     private LocalDate diaTecnico() {

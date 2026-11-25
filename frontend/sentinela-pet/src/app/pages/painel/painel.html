@@ -73,11 +73,11 @@
       <article class="panel-card evolution">
         <div class="card-heading"><h2>Evolução</h2><span>Últimos {{ filtros.periodoMeses }} meses</span></div>
         <div class="legend"><span class="red">Busca ativa</span><span class="yellow">Atenção</span><span class="green">Regular</span></div>
-        @if (!dados.historicoDisponivel) {<p class="history-note">Períodos sem auditoria suficiente são apresentados como indisponíveis, sem estimativas.</p>}
+        @if (!dados.historicoDisponivel) {<p class="history-note">O gráfico mostra apenas fechamentos com cobertura e indicadores comprovados.</p>}
         <div class="evolution-chart">
           <div class="y-labels" aria-hidden="true">@for (tick of ticksEvolucao; track tick.valor) {<span [style.top.%]="tick.y">{{ tick.valor }}</span>}</div>
           <svg viewBox="0 0 100 100" role="img" aria-labelledby="evolution-title evolution-description" preserveAspectRatio="none">
-            <title id="evolution-title">Evolução histórica das classificações</title><desc id="evolution-description">Séries mensais reais reconstruídas a partir da auditoria de pacientes.</desc>
+            <title id="evolution-title">Evolução histórica das classificações</title><desc id="evolution-description">Fechamentos mensais por unidade com evidência temporal.</desc>
             @for (tick of ticksEvolucao; track tick.valor) {<line x1="10" [attr.y1]="tick.y" x2="92" [attr.y2]="tick.y" class="grid-line" />}
             @for (trecho of pontos('vermelhos'); track $index) {<polyline [attr.points]="trecho" class="series red"/>}
             @for (trecho of pontos('amarelos'); track $index) {<polyline [attr.points]="trecho" class="series yellow"/>}
@@ -91,7 +91,7 @@
             }
           </div>
         </div>
-        <div class="x-labels">@for (p of dados.evolucao; track p.mes) {<span [class.unavailable]="!p.disponivel">{{ p.rotulo }}{{ p.disponivel ? '' : '*' }}</span>}</div>
+        <div class="x-labels">@for (p of dados.evolucao; track p.mes) {<span [class.unavailable]="!p.disponivel" [title]="tooltip(p)">{{ p.rotulo }}{{ p.disponivel ? '' : '*' }}</span>}</div>
         <ul class="sr-only">@for (p of dados.evolucao; track p.mes) {<li>{{ tooltip(p) }}</li>}</ul>
       </article>
     </div>

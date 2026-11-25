@@ -10,15 +10,20 @@ public final class AgendaMigrationTool {
     private AgendaMigrationTool() {}
 
     public static MigrateResult migrar(DataSource source) throws java.sql.SQLException {
-        return migrar(source, false);
+        return migrar(source, "16");
     }
 
     /** V17 explicitamente autorizada, somente sobre V16 concluída e banco offline. */
     public static MigrateResult migrarIdentidade(DataSource source) throws java.sql.SQLException {
-        return migrar(source, true);
+        return migrar(source, "17");
     }
 
-    private static MigrateResult migrar(DataSource source, boolean identidade) throws java.sql.SQLException {
+    /** Instala somente as estruturas prospectivas, após V17 e sem definir marco. */
+    public static MigrateResult migrarTransicao(DataSource source) throws java.sql.SQLException {
+        return migrar(source, "18");
+    }
+
+    private static MigrateResult migrar(DataSource source, String destino) throws java.sql.SQLException {
         try (var connection = source.getConnection()) {
             if (!"H2".equals(connection.getMetaData().getDatabaseProductName())
                     || connection.getMetaData().getURL().startsWith("jdbc:h2:mem:"))
@@ -36,19 +41,25 @@ public final class AgendaMigrationTool {
         }
         var flyway = Flyway.configure().dataSource(source).table("sibraps_agenda_schema_history")
                 .locations("classpath:agenda-migration/h2").javaMigrations(new V2__identificar_frequencias_legadas(), new V6__identificar_responsabilidade_historica())
-                .baselineOnMigrate(true).baselineVersion("0").target(identidade ? "17" : "16").cleanDisabled(true).load();
-        if (identidade) {
+                .baselineOnMigrate(true).baselineVersion("0").target(destino).cleanDisabled(true).load();
+        if (!destino.equals("16")) {
             var atual = flyway.info().current();
-            if (atual == null || !java.util.Set.of("16", "17").contains(atual.getVersion().getVersion()))
+            var versao = atual == null ? "" : atual.getVersion().getVersion();
+            if (destino.equals("18")) {
+                if (!java.util.Set.of("17", "18").contains(versao))
+                    throw new IllegalStateException("V18 requer V17 concluída.");
+                IdentidadeDocumentalPreflight.verificarOperacional(source);
+            } else if (!java.util.Set.of("16", "17", "18").contains(versao)) {
                 throw new IllegalStateException("V17 requer V16 concluída antes do diagnóstico documental.");
-            if (atual.getVersion().getVersion().equals("16")) {
+            }
+            if (versao.equals("16")) {
                 var diagnostico = IdentidadeDocumentalPreflight.analisar(source);
                 if (diagnostico.bloqueiaV17())
                     throw new IllegalStateException("V17 recusada: documentos duplicados ou inconclusivos. Revisão cadastral explícita necessária. " + diagnostico);
             }
         }
         var result = flyway.migrate();
-        if (identidade) IdentidadeDocumentalPreflight.verificarRestricoes(source);
+        if (!destino.equals("16")) IdentidadeDocumentalPreflight.verificarRestricoes(source);
         CanonicalAgendaGuard.verificar(source);
         AuditoriaSchemaGuard.verificar(source);
         ResponsabilidadeSessaoGuard.verificar(source);
@@ -82,9 +93,13 @@ public final class AgendaMigrationTool {
             System.out.println(IdentidadeDocumentalPreflight.analisar(source));
             return;
         }
-        if (args.length > 1 || args.length == 1 && !"--identidade".equals(args[0]))
-            throw new IllegalArgumentException("Argumento desconhecido.");
-        var result = args.length == 1 ? migrarIdentidade(source) : migrar(source);
+        if (args.length > 1) throw new IllegalArgumentException("Argumento desconhecido.");
+        var result = switch (args.length == 0 ? "" : args[0]) {
+            case "" -> migrar(source);
+            case "--identidade" -> migrarIdentidade(source);
+            case "--transicao" -> migrarTransicao(source);
+            default -> throw new IllegalArgumentException("Argumento desconhecido.");
+        };
         System.out.println("Migrações de agenda executadas: " + result.migrationsExecuted);
     }
     private static String required(String name) {

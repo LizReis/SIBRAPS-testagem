@@ -10,6 +10,7 @@ import java.net.http.HttpResponse;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.util.Base64;
 import java.util.List;
@@ -44,9 +45,9 @@ class ModeloVinculoOperacionalTests {
     @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
             name = "sibraps.test.relogio-operacional", havingValue = "true")
     static class Relogio {
-        @Bean @Primary Clock clockOperacionalSintetico() {
-            var zona = ZoneId.of("America/Bahia");
-            return Clock.fixed(HOJE.atTime(19, 0).atZone(zona).toInstant(), zona);
+        @Bean @Primary Clock clockOperacionalSintetico(
+                @org.springframework.beans.factory.annotation.Value("${sibraps.test.instante:2026-11-24T22:00:00Z}") String instante) {
+            return Clock.fixed(Instant.parse(instante), ZoneId.of("America/Bahia"));
         }
     }
 
@@ -84,9 +85,15 @@ class ModeloVinculoOperacionalTests {
         try (var primeira = iniciar(banco); var segunda = iniciar(banco)) {
             for (String bean : List.of("pacienteController", "agendamentoController", "grupoTerapeuticoController",
                     "agendaMigratedIndicatorsInitializer", "monitoramentoBuscaAtiva", "alertaPacientesVermelhosScheduler",
-                    "alertaPacientesVermelhosService", "emailService", "controleNotificacoesEnsaioService"))
+                    "alertaPacientesVermelhosService", "emailService"))
                 assertThat(primeira.containsBean(bean)).as(bean).isFalse();
             assertThat(primeira.getBean(MonitoramentoVinculosEnsaioService.class)).isNotNull();
+            assertThat(primeira.containsBean("monitoramentoVinculoAgendado")).isTrue();
+            var tarefas = primeira.getBean(org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor.class)
+                    .getScheduledTasks();
+            var tarefa = tarefas.stream().filter(t -> t.toString().contains("MonitoramentoVinculoAgendado"))
+                    .findFirst().orElseThrow();
+            tarefa.getTask().getRunnable().run();
             assertThatThrownBy(() -> primeira.getBean(PacienteService.class).listarPacientesEmBuscaAtiva())
                     .isInstanceOf(IllegalStateException.class).hasMessage("Operação clínica global desativada.");
 
@@ -143,6 +150,7 @@ class ModeloVinculoOperacionalTests {
                     .isNull();
             validarEdicaoConcorrente(primeira, segunda, tokenRecepcao, tokenProfissional, dados, unidadeA, pessoa, localA);
             validarFluxoAssistencial(primeira, tokenRecepcao, tokenProfissional, tokenAdmin, profissional, sql, pessoa);
+            validarReservaRf26EntreInstancias(primeira, segunda, sql, profissional, unidadeA);
             assertThat(sql.queryForObject("select status_paciente from tb_paciente where id_publico=?", Integer.class, UUID.fromString(pessoa)))
                     .isNull();
         }
@@ -206,15 +214,127 @@ class ModeloVinculoOperacionalTests {
                 .statusCode()).isEqualTo(200);
     }
 
+    private void validarReservaRf26EntreInstancias(ConfigurableApplicationContext a, ConfigurableApplicationContext b,
+            JdbcTemplate sql, String profissional, long unidade) throws Exception {
+        var um = a.getBean(com.pet.buscaativa.services.impl.ControleNotificacoesEnsaioService.class);
+        var dois = b.getBean(com.pet.buscaativa.services.impl.ControleNotificacoesEnsaioService.class);
+        UUID id = sql.queryForObject("select id_publico from tb_usuario where email=?", UUID.class, profissional);
+        var chave = new com.pet.buscaativa.services.impl.NotificacoesLocaisEnsaioService.Chave(HOJE, id, "USF:" + unidade);
+        var entrou = new CountDownLatch(1);
+        var fechar = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var envio = executor.submit(() -> um.executar(chave, entrega -> {
+                assertThat(entrega.chave()).isEqualTo(chave);
+                assertThat(entrega.email()).isEqualTo(profissional);
+                entrou.countDown();
+                try {
+                    if (!fechar.await(10, TimeUnit.SECONDS)) throw new AssertionError("Simulador não liberado");
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new AssertionError(e);
+                }
+            }));
+            try {
+                assertThat(entrou.await(10, TimeUnit.SECONDS)).isTrue();
+                assertThat(executor.submit(() -> dois.executar(chave, e -> { throw new AssertionError("Duplicata"); }))
+                        .get(10, TimeUnit.SECONDS).name()).isEqualTo("DUPLICADA");
+            } finally {
+                fechar.countDown();
+            }
+            assertThat(envio.get(10, TimeUnit.SECONDS).name()).isEqualTo("SIMULADA");
+        }
+    }
+
     private static String rotaEdicao(String pessoa, String vinculo, int versao) {
         return "/api/pacientes/" + pessoa + "/vinculos/" + vinculo + "/cadastro?versaoCadastro=" + versao;
     }
 
+    @Test
+    void marcoComMesmoLimiteERevisaoRf26SobrevivemAReinicioERestauracao() throws Exception {
+        var banco = LegacyMigrationFixture.legacy(temp.resolve("transicao"));
+        AgendaMigrationTool.migrar(banco);
+        AgendaMigrationTool.migrarIdentidade(banco);
+        assertThat(AgendaMigrationTool.migrarTransicao(banco).migrationsExecuted).isEqualTo(1);
+        assertThat(AgendaMigrationTool.migrarTransicao(banco).migrationsExecuted).isZero();
+        var sql = new JdbcTemplate(banco);
+        long unidadeA = usf(sql, "Histórico A");
+        long unidadeB = usf(sql, "Histórico B");
+        String adminA = ator(sql, unidadeA, 1, "transicao-a");
+        String adminB = ator(sql, unidadeB, 1, "transicao-b");
+        String profissional = ator(sql, unidadeA, 2, "transicao-prof");
+        UUID destinatario = sql.queryForObject("select id_publico from tb_usuario where email=?", UUID.class, profissional);
+        String sha = "a".repeat(64);
+        var manifesto = Map.of("vinculos", List.of(), "evidenciaSha256", sha);
+        String marco = "/api/painel/historico/marco";
+        String fechamento = "/api/painel/historico/fechamentos/";
+        String painel = "/api/painel/resumo?periodoMeses=3";
+        LocalDate dia = LocalDate.of(2026, 12, 1);
+        String incidente = "/api/auditoria/rf26/ocorrencias/" + dia + "/" + destinatario + "/encerrar";
+        String limite = "2026-12-01T03:00:00Z";
+
+        try (var app = iniciar(banco, limite)) {
+            var a = login(app, adminA);
+            var p = login(app, profissional);
+            assertThat(http(app, "POST", marco, p, null).statusCode()).isEqualTo(403);
+            var registro = http(app, "POST", marco, a, null);
+            assertThat(registro.statusCode()).isEqualTo(200);
+            assertThat(json(app, registro).path("iniciadoEm").asString()).isEqualTo(limite);
+            assertThat(http(app, "PUT", fechamento + "2026-11", a, manifesto).statusCode()).isEqualTo(409);
+            assertThat(http(app, "PUT", fechamento + "2026-12", a, manifesto).statusCode()).isEqualTo(409);
+            sql.update("""
+                    insert into tb_entrega_rf26(dia,destinatario,unidade,estado,reservada_em)
+                    values (?,?,?,'RESERVADA',current_timestamp)
+                    """, dia, destinatario, "USF:" + unidadeA);
+            var motivo = Map.of("justificativa", "Conferência sintética sem reenvio.");
+            assertThat(http(app, "POST", incidente, p, motivo).statusCode()).isEqualTo(403);
+            assertThat(http(app, "POST", incidente, login(app, adminB), motivo).statusCode()).isEqualTo(404);
+            assertThat(http(app, "POST", incidente, a, motivo).statusCode()).isEqualTo(204);
+            assertThat(http(app, "POST", incidente, a, motivo).statusCode()).isEqualTo(409);
+        }
+        String depois = "2027-01-01T03:00:00Z";
+        try (var app = iniciar(banco, depois)) {
+            var a = login(app, adminA);
+            assertThat(json(app, http(app, "POST", marco, a, null)).path("iniciadoEm").asString()).isEqualTo(limite);
+            var divergente = Map.of("vinculos", List.of(9999L), "evidenciaSha256", sha);
+            assertThat(http(app, "PUT", fechamento + "2026-12", a, divergente).statusCode()).isEqualTo(409);
+            var resumo = http(app, "PUT", fechamento + "2026-12", a, manifesto);
+            assertThat(resumo.statusCode()).isEqualTo(200);
+            assertThat(json(app, resumo).path("situacao").asString()).isEqualTo("COMPROVADO");
+            assertThat(json(app, resumo).path("vermelhos").asLong()).isZero();
+            assertThat(http(app, "PUT", fechamento + "2026-12", a, manifesto).body()).isEqualTo(resumo.body());
+            assertThat(http(app, "PUT", fechamento + "2026-12", a,
+                    Map.of("vinculos", List.of(), "evidenciaSha256", "b".repeat(64))).statusCode()).isEqualTo(409);
+        }
+        var arquivo = temp.resolve("backup-v18.sql");
+        LegacyMigrationFixture.backup(banco, arquivo);
+        var restaurado = LegacyMigrationFixture.restore(temp.resolve("restaurado-v18"), arquivo);
+        var estadoRestaurado = new JdbcTemplate(restaurado);
+        assertThat(estadoRestaurado.queryForObject("select count(*) from tb_revisao_entrega_rf26", Integer.class)).isEqualTo(1);
+        try (var app = iniciar(restaurado, depois)) {
+            var a = login(app, adminA);
+            var evolucao = json(app, http(app, "GET", painel, a, null)).path("evolucao");
+            assertThat(evolucao.get(0).path("situacao").asString()).isEqualTo("SEM_COBERTURA");
+            assertThat(evolucao.get(1).path("situacao").asString()).isEqualTo("COMPROVADO");
+            assertThat(evolucao.get(1).path("verdes").asLong()).isZero();
+            assertThat(evolucao.get(2).path("situacao").asString()).isEqualTo("SEM_COBERTURA");
+            var outra = json(app, http(app, "GET", painel, login(app, adminB), null));
+            assertThat(outra.path("evolucao").get(1).path("situacao").asString()).isEqualTo("SEM_COBERTURA");
+            var controle = app.getBean(com.pet.buscaativa.services.impl.ControleNotificacoesEnsaioService.class);
+            var chave = new com.pet.buscaativa.services.impl.NotificacoesLocaisEnsaioService.Chave(dia, destinatario, "USF:" + unidadeA);
+            assertThat(controle.executar(chave, entrega -> { throw new AssertionError("Reenvio indevido"); }).name())
+                    .isEqualTo("DUPLICADA");
+        }
+    }
+
     private ConfigurableApplicationContext iniciar(DriverManagerDataSource banco) {
+        return iniciar(banco, "2026-11-24T22:00:00Z");
+    }
+
+    private ConfigurableApplicationContext iniciar(DriverManagerDataSource banco, String instante) {
         return new SpringApplicationBuilder(BuscaativaApplication.class, Relogio.class).registerShutdownHook(false).logStartupInfo(false)
                 .run("--spring.config.location=file:src/main/resources/", "--spring.profiles.active=default",
                         "--server.address=127.0.0.1", "--server.port=0", "--sibraps.usf.sincronizar=false",
-                        "--sibraps.test.relogio-operacional=true",
+                        "--sibraps.test.relogio-operacional=true", "--sibraps.test.instante=" + instante,
                         "--spring.datasource.url=" + banco.getUrl(), "--spring.datasource.username=" + banco.getUsername(),
                         "--spring.datasource.password=" + banco.getPassword(),
                         "--JWT_SECRET_BASE64=" + segredo, "--spring.main.banner-mode=off", "--logging.level.root=ERROR",

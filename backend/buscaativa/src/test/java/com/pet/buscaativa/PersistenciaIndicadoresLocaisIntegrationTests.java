@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -1403,6 +1404,51 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
         } finally {jdbc.execute("drop table tb_entrega_rf26");}
     }
 
+    @Test
+    void tentativaRf26RetemTravasClinicasAteRetornoDoSimulador() throws Exception {
+        var a = novoLocal(UnidadeAtuacao.USF);
+        var faltas = new ArrayList<FrequenciaIndividualLocalEnsaioService.Resultado>();
+        for (int dias : List.of(5, 4, 3)) {
+            var agendaLocal = reserva(a, diasAtras(dias), 9, SituacaoAtendimento.AGENDADO, true);
+            faltas.add(como(a.ator(), () -> individual.registrar(agendaLocal.id(), agendaLocal.versao(), FrequenciaAssistencial.FALTOU)));
+        }
+        var chave = notificacoesLocais.planejar().stream()
+                .filter(e -> e.chave().destinatario().equals(a.ator().getIdPublico())).findFirst().orElseThrow().chave();
+        var jdbc = new JdbcTemplate(fonte);
+        new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(
+                new org.springframework.core.io.ClassPathResource("agenda-migration/h2/V16__controle_tecnico_rf26.sql")).execute(fonte);
+        try {
+            var entrou = new CountDownLatch(1);
+            var liberar = new CountDownLatch(1);
+            try (var executor = Executors.newFixedThreadPool(2)) {
+                var tentativa = executor.submit(() -> controleNotificacoes.executar(chave, e -> {
+                    assertEquals(1, e.pacientes().size());
+                    entrou.countDown();
+                    try { assertTrue(liberar.await(10, TimeUnit.SECONDS)); }
+                    catch (InterruptedException interrompida) {
+                        Thread.currentThread().interrupt();
+                        throw new AssertionError(interrompida);
+                    }
+                }));
+                assertTrue(entrou.await(10, TimeUnit.SECONDS));
+                var ultima = faltas.getLast();
+                var correcao = executor.submit(() -> como(a.ator(), () -> individual.corrigir(ultima.atendimento(),
+                        ultima.versaoFato(), FrequenciaAssistencial.PRESENTE, JUSTIFICATIVA)));
+                try {
+                    aguardarBloqueio("blocker_id is not null");
+                    assertFalse(correcao.isDone());
+                } finally {
+                    liberar.countDown();
+                }
+                assertEquals("SIMULADA", tentativa.get(10, TimeUnit.SECONDS).name());
+                correcao.get(10, TimeUnit.SECONDS);
+                assertTrue(notificacoesLocais.revalidar(chave).orElseThrow().pacientes().isEmpty());
+            }
+        } finally {
+            jdbc.execute("drop table tb_entrega_rf26");
+        }
+    }
+
     private static <T> T apos(CountDownLatch partir, Supplier<T> comando) throws InterruptedException {
         assertTrue(partir.await(10, TimeUnit.SECONDS));
         return comando.get();
@@ -1418,9 +1464,13 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
     }
 
     private void aguardarBloqueio() {
+        aguardarBloqueio("blocker_id = session_id()");
+    }
+
+    private void aguardarBloqueio(String filtroBloqueio) {
         long limite = System.nanoTime() + TimeUnit.SECONDS.toNanos(4);
         while (System.nanoTime() < limite) {
-            if (total("select count(*) from information_schema.sessions where blocker_id = session_id()") > 0) return;
+            if (total("select count(*) from information_schema.sessions where " + filtroBloqueio) > 0) return;
             try {
                 Thread.sleep(20);
             } catch (InterruptedException e) {

@@ -20,7 +20,7 @@ import lombok.RequiredArgsConstructor;
  * falha ambígua/crash exige revisão. Não promete exactly-once de transporte externo.
  */
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 public class ControleNotificacoesEnsaioService {
     private final JdbcTemplate jdbc;
@@ -40,6 +40,10 @@ public class ControleNotificacoesEnsaioService {
         Objects.requireNonNull(chave.data()); Objects.requireNonNull(chave.destinatario()); Objects.requireNonNull(chave.unidade());
         var tx=new TransactionTemplate(transactions);
         tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        tx.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
+        if (Boolean.TRUE.equals(tx.execute(s -> jdbc.queryForObject("""
+                select exists(select 1 from tb_entrega_rf26 where dia=? and destinatario=? and unidade=?)
+                """, Boolean.class, chave.data(), chave.destinatario(), chave.unidade())))) return Resultado.DUPLICADA;
         try {
             tx.executeWithoutResult(s->jdbc.update("""
                     insert into tb_entrega_rf26 (dia,destinatario,unidade,estado,reservada_em)
@@ -47,23 +51,34 @@ public class ControleNotificacoesEnsaioService {
                     """,chave.data(),chave.destinatario(),chave.unidade()));
         } catch(DuplicateKeyException duplicada) { return Resultado.DUPLICADA; }
 
-        Resultado resultado;
-        try {
-            var entrega=notificacoes.revalidar(chave);
-            if(entrega.isEmpty()) resultado=Resultado.INVALIDADA;
-            else {
-                // Injeção exclusiva para ensaiar falhas de transporte, sem bean de e-mail.
-                simulador.simular(entrega.orElseThrow());
-                resultado=Resultado.SIMULADA;
+        return tx.execute(s -> tentar(chave, simulador));
+    }
+
+    private Resultado tentar(NotificacoesLocaisEnsaioService.Chave chave, Simulador simulador) {
+        String estado = jdbc.queryForObject("""
+                select estado from tb_entrega_rf26 where dia=? and destinatario=? and unidade=? for update
+                """, String.class, chave.data(), chave.destinatario(), chave.unidade());
+        if (!"RESERVADA".equals(estado)) return Resultado.DUPLICADA;
+
+        var entrega = notificacoes.revalidarParaTentativa(chave);
+        Resultado resultado = Resultado.INVALIDADA;
+        if (entrega.isPresent()) {
+            // O adaptador fica fora da transação de dados. A suspensão conserva os locks
+            // da transação externa até o adaptador devolver o resultado.
+            var semTransacao = new TransactionTemplate(transactions);
+            semTransacao.setPropagationBehavior(TransactionDefinition.PROPAGATION_NOT_SUPPORTED);
+            try {
+                semTransacao.executeWithoutResult(s -> simulador.simular(entrega.orElseThrow()));
+                resultado = Resultado.SIMULADA;
+            } catch (RuntimeException ambigua) {
+                resultado = Resultado.INCERTA;
             }
-        } catch(RuntimeException falha) { resultado=Resultado.INCERTA; }
-        final Resultado finalizado=resultado;
-        tx.executeWithoutResult(s->{
-            int alteradas=jdbc.update("""
-                    update tb_entrega_rf26 set estado=?, finalizada_em=greatest(current_timestamp,reservada_em) where dia=? and destinatario=? and unidade=? and estado='RESERVADA'
-                    """,finalizado.name(),chave.data(),chave.destinatario(),chave.unidade());
-            if(alteradas!=1) throw new IllegalStateException("Reserva técnica não localizada.");
-        });
-        return finalizado;
+        }
+        int alteradas = jdbc.update("""
+                update tb_entrega_rf26 set estado=?, finalizada_em=greatest(current_timestamp,reservada_em)
+                where dia=? and destinatario=? and unidade=? and estado='RESERVADA'
+                """, resultado.name(), chave.data(), chave.destinatario(), chave.unidade());
+        if (alteradas != 1) throw new IllegalStateException("Reserva técnica não localizada.");
+        return resultado;
     }
 }

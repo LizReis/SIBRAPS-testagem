@@ -121,6 +121,7 @@ class HistoricoRiscoVinculoIntegrationTests extends SecurityTestSupport {
         certificar(a,"2026-09",java.util.Set.of(carregar(a).getId(),Long.MAX_VALUE)); // vínculo ausente no Envers
         var inconclusivo=como(a.ator(),()->painelLocal.painel(3,null,null,null)).evolucao().getFirst();
         assertFalse(inconclusivo.disponivel());assertNull(inconclusivo.verdes());
+        assertEquals("INDISPONIVEL", inconclusivo.situacao().name());
         assertEquals(snapshot,LegacyMigrationFixture.snapshot(fonte,colunas));
         certificar(a,"2026-09",java.util.Set.of(carregar(a).getId()));
         new JdbcTemplate(fonte).update("update revinfo set revtstmp=? where rev=(select min(rev) from revinfo)",
@@ -131,7 +132,7 @@ class HistoricoRiscoVinculoIntegrationTests extends SecurityTestSupport {
     }
 
     private void certificar(Local local,String mes,java.util.Set<Long> ids) {
-        var corte=java.time.YearMonth.parse(mes).atEndOfMonth().atTime(23,59,59).atZone(ZoneId.systemDefault()).toInstant();
+        var corte=java.time.YearMonth.parse(mes).plusMonths(1).atDay(1).atStartOfDay(clock.getZone()).toInstant().minusMillis(1);
         when(coberturaHistorica.vinculosCertificados(carregar(local).getUnidadeChave(),corte))
                 .thenReturn(java.util.Optional.of(ids));
     }

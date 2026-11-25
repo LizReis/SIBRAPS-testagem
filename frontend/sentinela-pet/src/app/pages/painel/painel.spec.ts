@@ -1,3 +1,5 @@
+import { HttpClient } from '@angular/common/http';
+import { UsuarioLogadoService } from '../../services/usuario-logado-service';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { provideRouter } from '@angular/router';
@@ -16,7 +18,11 @@ describe('Painel', () => {
   let component: Painel; let fixture: ComponentFixture<Painel>; let service: { buscarResumo: ReturnType<typeof vi.fn> };
   beforeEach(async () => {
     service = { buscarResumo: vi.fn().mockReturnValue(of(payload)) };
-    await TestBed.configureTestingModule({ imports: [Painel], providers: [provideRouter([]), { provide: PainelService, useValue: service }] }).compileComponents();
+    await TestBed.configureTestingModule({ imports: [Painel], providers: [provideRouter([]),
+      { provide: PainelService, useValue: service },
+      { provide: HttpClient, useValue: { get: () => of({ alertas: [], estadoNaoConfirmado: 0, selecaoIndeterminada: 0 }) } },
+      { provide: UsuarioLogadoService, useValue: { obterUsuarioLogado: () => of({ tipoUsuario: 'PROFISSIONAL' }) } },
+    ] }).compileComponents();
     fixture = TestBed.createComponent(Painel); component = fixture.componentInstance;
   });
   it('cria, mostra loading e renderiza totais, gráficos e prioritário vindos da API', () => {
@@ -26,6 +32,13 @@ describe('Painel', () => {
     expect(component.pontos('verdes')).not.toBe('');
     expect(fixture.nativeElement.textContent).toContain('Paciente Real');
     expect(fixture.nativeElement.querySelector('a[href="/pacientes/detalhes/real-id"]')).toBeTruthy();
+  });
+  it('distingue cobertura ausente, indicador indisponível e zero comprovado', () => {
+    const nulo = { mes: '2026-08', rotulo: 'Ago/26', verdes: null, amarelos: null, vermelhos: null, disponivel: false };
+    expect(component.tooltip({ ...nulo, situacao: 'SEM_COBERTURA' })).toContain('Sem cobertura certificada');
+    expect(component.tooltip({ ...nulo, situacao: 'INDISPONIVEL' })).toContain('Indicadores indisponíveis');
+    expect(component.tooltip({ ...nulo, disponivel: true, situacao: 'COMPROVADO',
+      verdes: 0, amarelos: 0, vermelhos: 0 })).toContain('Regular 0');
   });
   it('aplica filtros em uma única nova requisição', () => {
     fixture.detectChanges(); component.rascunhoTipo = 'INDIVIDUAL'; component.rascunhoRua = 'true'; component.aplicarMaisFiltros();

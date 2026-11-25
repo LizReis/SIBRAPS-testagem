@@ -4,7 +4,9 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.time.Instant;
 import java.time.ZoneId;
+import java.util.Set;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -57,10 +59,15 @@ class HistoricoRiscoVinculoEnsaioService {
     private final EvidenciaStatusVinculo evidencia;
     private final ObjectProvider<CoberturaHistoricaPorUnidade> cobertura;
     private final Clock clock;
+    private final ObjectProvider<FechamentoHistoricoLocalService> fechamentos;
 
     List<Evolucao> reconstruir(List<YearMonth> meses, TipoAcompanhamento tipo, Boolean rua) {
         String unidade = atores.autorizarOperacional().unidade();
+        var persistidos = fechamentos.getIfAvailable();
+        if (persistidos != null && persistidos.habilitado())
+            return persistidos.ler(unidade, meses, tipo, rua);
         var fonte = cobertura.getIfUnique();
+        if (fonte == null) return meses.stream().map(HistoricoRiscoVinculoEnsaioService::semCobertura).toList();
         var leitor = AuditReaderFactory.get(em);
         return meses.stream().map(mes -> {
             try {
@@ -75,8 +82,8 @@ class HistoricoRiscoVinculoEnsaioService {
             String unidade, YearMonth mes, TipoAcompanhamento tipo, Boolean rua) {
         if (fonte == null || !mes.isBefore(YearMonth.now(clock))) return indisponivel(mes);
         // Mesmo corte do painel legado. A revisão posterior não reescreve o fechamento.
-        var fim = mes.atEndOfMonth().atTime(23, 59, 59);
-        var corte = fim.atZone(ZoneId.systemDefault()).toInstant();
+        var corte = corte(mes, clock.getZone());
+        var fim = LocalDateTime.ofInstant(corte, clock.getZone());
         var inventario = fonte.vinculosCertificados(unidade, corte);
         if (inventario.isEmpty() || !vinculosAtuaisAuditados(leitor, unidade)) return indisponivel(mes);
 
@@ -123,6 +130,30 @@ class HistoricoRiscoVinculoEnsaioService {
             contagem.merge(risco.orElseThrow(), 1L, Long::sum);
         }
         return distribuir(mes, contagem);
+    }
+
+    static Instant corte(YearMonth mes, ZoneId zona) {
+        return mes.plusMonths(1).atDay(1).atStartOfDay(zona).toInstant().minusMillis(1);
+    }
+
+    boolean inventarioConfere(String unidade, YearMonth mes, Set<Long> manifesto) {
+        var leitor = AuditReaderFactory.get(em);
+        try {
+            var revisao = leitor.getRevisionNumberForDate(Date.from(corte(mes, clock.getZone())));
+            List<?> ids = leitor.createQuery().forEntitiesAtRevision(VinculoAssistencial.class, revisao)
+                    .add(AuditEntity.property("unidadeChave").eq(unidade)).addProjection(AuditEntity.id()).getResultList();
+            return manifesto.equals(new java.util.HashSet<>(ids)) && vinculosAtuaisAuditados(leitor, unidade);
+        } catch (RevisionDoesNotExistException semRevisao) {
+            return manifesto.isEmpty() && vinculosAtuaisAuditados(leitor, unidade);
+        }
+    }
+
+    Evolucao conferirFechamento(String unidade, YearMonth mes, Set<Long> manifesto, TipoAcompanhamento tipo, Boolean rua) {
+        try {
+            return fechamento(AuditReaderFactory.get(em), (u, c) -> Optional.of(manifesto), unidade, mes, tipo, rua);
+        } catch (jakarta.persistence.EntityNotFoundException | org.hibernate.ObjectNotFoundException referenciaSemRevisao) {
+            return indisponivel(mes);
+        }
     }
 
     private boolean vinculosAtuaisAuditados(AuditReader leitor, String unidade) {
@@ -195,6 +226,11 @@ class HistoricoRiscoVinculoEnsaioService {
                 .addOrder(AuditEntity.revisionNumber().asc()).getResultList();
         return !trilha.isEmpty() && ((Object[]) trilha.getFirst())[0] == RevisionType.ADD
                 && trilha.stream().map(Object[].class::cast).allMatch(r -> r[0] != RevisionType.DEL && origem.equals(r[1]));
+    }
+
+    static Evolucao semCobertura(YearMonth mes) {
+        return new Evolucao(mes.toString(), mes.format(ROTULO), null, null, null, false,
+                BuscaAtivaPainelLocalEnsaioService.SituacaoHistorica.SEM_COBERTURA);
     }
 
     private static Evolucao indisponivel(YearMonth mes) {
