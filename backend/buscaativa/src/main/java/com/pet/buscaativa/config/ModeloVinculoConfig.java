@@ -20,6 +20,7 @@ import com.pet.buscaativa.migration.IdentidadeDocumentalPreflight;
 import com.pet.buscaativa.migration.TransicaoLocalSchemaGuard;
 import com.pet.buscaativa.migration.InventarioHistoricoSchemaGuard;
 import com.pet.buscaativa.migration.MarcoHistoricoSchemaGuard;
+import com.pet.buscaativa.migration.EvidenciaClinicaSchemaGuard;
 
 @Configuration(proxyBeanMethods = false)
 public class ModeloVinculoConfig {
@@ -69,6 +70,7 @@ public class ModeloVinculoConfig {
                         TransicaoLocalSchemaGuard.verificar(fonte);
                         InventarioHistoricoSchemaGuard.verificar(fonte);
                         MarcoHistoricoSchemaGuard.verificar(fonte);
+                        EvidenciaClinicaSchemaGuard.verificar(fonte);
                     }
                     return bean;
                 }

@@ -61,6 +61,8 @@ public final class MarcoHistoricoOffline {
         TransicaoLocalSchemaGuard.verificar(fonte);
         InventarioHistoricoSchemaGuard.verificar(fonte);
         MarcoHistoricoSchemaGuard.verificar(fonte);
+        EvidenciaClinicaSchemaGuard.verificar(fonte);
+        boolean evidenciaClinica = EvidenciaClinicaSchemaGuard.instalada(jdbc);
         var versoes = jdbc.queryForList("""
                 select "version" from "sibraps_agenda_schema_history"
                 where "version" in ('18','19','20') and "success"=true order by "version"
@@ -77,6 +79,8 @@ public final class MarcoHistoricoOffline {
             var anterior = anteriores.getFirst();
             if (!anterior.zona().equals(zona.getId()))
                 throw new IllegalStateException("A zona de um marco já registrado não pode ser alterada.");
+            if (evidenciaClinica && !BaseEvidenciaClinicaOffline.existe(jdbc))
+                throw new IllegalStateException("Marco anterior sem base clínica contemporânea; cobertura retroativa recusada.");
             return anterior;
         }
         var instante = Objects.requireNonNull(jdbc.queryForObject("select current_timestamp", OffsetDateTime.class))
@@ -110,6 +114,7 @@ public final class MarcoHistoricoOffline {
                 (id,iniciado_em,zona,ultimo_movimento,total_unidades,total_vinculos,inventario)
                 values (1,?,?,?,?,?,?)
                 """, instante, zona.getId(), movimento, inventario.size(), total, new ObjectMapper().writeValueAsString(inventario));
+        if (evidenciaClinica) BaseEvidenciaClinicaOffline.registrar(jdbc);
         return new Marco(instante, zona.getId(), movimento, inventario.size(), total);
     }
 }
