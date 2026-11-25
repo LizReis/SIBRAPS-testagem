@@ -459,7 +459,7 @@ class ModeloVinculoOperacionalTests {
             UUID coordenador = sql.queryForObject("select id_publico from tb_usuario where email=?",UUID.class,capsI);
             var grupo = http(app,"POST","/api/grupos",i,Map.of("tema","Grupo sintético integrado",
                     "coordenadorId",coordenador,"recorrencia","UNICA","dataPrimeiraSessao",primeiroDia.plusDays(1),
-                    "horario","09:00","participantesIds",List.of(pessoa)));
+                    "horario","10:30","participantesIds",List.of(pessoa)));
             assertThat(grupo.statusCode()).as(grupo.body()).isEqualTo(200);
             long grupoId = json(app,grupo).path("grupo").asLong();
             long sessao = json(app,grupo).path("sessoes").get(0).asLong();
