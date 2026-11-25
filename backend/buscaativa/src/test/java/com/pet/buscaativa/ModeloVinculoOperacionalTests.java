@@ -455,6 +455,17 @@ class ModeloVinculoOperacionalTests {
                     "tipoAcompanhamento","GRUPO_TERAPEUTICO");
             assertThat(http(app,"POST","/api/pacientes/cadastro-unico/confirmar-vinculo",i,confirmacao).statusCode()).isEqualTo(204);
             assertThat(http(app,"GET","/api/pacientes/"+pessoa,b,null).statusCode()).isEqualTo(404);
+            // Grupo na unidade que compartilha a identidade, sem transportar faltas da USF.
+            UUID coordenador = sql.queryForObject("select id_publico from tb_usuario where email=?",UUID.class,capsI);
+            var grupo = http(app,"POST","/api/grupos",i,Map.of("tema","Grupo sintético integrado",
+                    "coordenadorId",coordenador,"recorrencia","UNICA","dataPrimeiraSessao",primeiroDia.plusDays(1),
+                    "horario","09:00","participantesIds",List.of(pessoa)));
+            assertThat(grupo.statusCode()).as(grupo.body()).isEqualTo(200);
+            long grupoId = json(app,grupo).path("grupo").asLong();
+            long sessao = json(app,grupo).path("sessoes").get(0).asLong();
+            assertThat(http(app,"GET","/api/grupos/"+grupoId,a,null).statusCode()).isEqualTo(404);
+            // População adicional em unidade distinta: cadastro real por HTTP, documentos sintéticos.
+            validarVolumeHistorico(app,ad,usfA,painel);
             UUID responsavel = sql.queryForObject("select id_publico from tb_usuario where email=?",UUID.class,profA);
             String atendimento = null;
             int versao = -1;
@@ -474,6 +485,27 @@ class ModeloVinculoOperacionalTests {
                 assertThat(falta.statusCode()).as(falta.body()).isEqualTo(200);
                 versao = json(app,falta).path("version").asInt();
             }
+            var detalheGrupo = http(app,"GET","/api/grupos/sessoes?dataInicio="+primeiroDia.plusDays(1)
+                    +"&dataFim="+primeiroDia.plusDays(1),i,null);
+            assertThat(detalheGrupo.statusCode()).as(detalheGrupo.body()).isEqualTo(200);
+            var sessaoDto = json(app,detalheGrupo).get(0);
+            assertThat(sessaoDto.path("id").asLong()).isEqualTo(sessao);
+            var confirmar = Map.of("ocorreu",true,"version",sessaoDto.path("version").asInt(),
+                    "frequencias",List.of(Map.of("pacienteId",pessoa,"statusPresenca","PRESENTE")));
+            var ocorrencia = http(app,"POST","/api/grupos/sessoes/"+sessao+"/confirmacao-ocorrencia",i,confirmar);
+            assertThat(ocorrencia.statusCode()).as(ocorrencia.body()).isEqualTo(200);
+            assertThat(json(app,ocorrencia).path("status").asString()).isEqualTo("REALIZADA");
+            var localCaps = json(app,http(app,"GET","/api/pacientes/"+pessoa+"/prontuario",i,null));
+            var localUsf = json(app,http(app,"GET","/api/pacientes/"+pessoa+"/prontuario",a,null));
+            assertThat(localCaps.path("presencasComprovadas").asLong()).isEqualTo(1);
+            assertThat(localCaps.path("faltasComprovadas").asLong()).isZero();
+            assertThat(localUsf.path("presencasComprovadas").asLong()).isZero();
+            assertThat(localUsf.path("faltasComprovadas").asLong()).isEqualTo(2);
+            var relatorio = http(app,"GET","/api/relatorios/frequencia-grupos?grupoId="+grupoId,i,null);
+            assertThat(relatorio.statusCode()).as(relatorio.body()).isEqualTo(200);
+            assertThat(json(app,relatorio).path("dados").size()).isPositive();
+            assertThat(http(app,"GET","/api/relatorios/frequencia-grupos?grupoId="+grupoId,a,null).statusCode()).isEqualTo(404);
+            assertThat(http(app,"GET","/api/relatorios/pendencias",a,null).statusCode()).isEqualTo(200);
             assertThat(tecnico.executar().fechados()).isZero();
             clock.avancar(corte.minusSeconds(30));
             tecnico.executar();
@@ -525,6 +557,7 @@ class ModeloVinculoOperacionalTests {
             assertThat(evolucao(app,painel,b,mes).path("situacao").asString()).isEqualTo("COMPROVADO");
             assertThat(evolucao(app,painel,b,mes).path("verdes").asLong()).isZero();
             assertThat(evolucao(app,painel,ad,mes).path("situacao").asString()).isEqualTo("COMPROVADO");
+            assertThat(evolucao(app,painel,ad,mes).path("verdes").asLong()).isEqualTo(24);
             var indisponivel = evolucao(app,painel,ii,mes);
             assertThat(indisponivel.path("situacao").asString()).isEqualTo("SEM_COBERTURA");
             assertThat(indisponivel.path("verdes").isNull()).isTrue();
@@ -576,6 +609,57 @@ class ModeloVinculoOperacionalTests {
                     select indicadores from tb_observacao_historico_mensal where unidade=? and mes=? and fase='FECHADO'
                     """,String.class,unidadeA,mes.atDay(1))).isEqualTo(indicadores);
         }
+    }
+
+    private void validarVolumeHistorico(ConfigurableApplicationContext app,String token,long usfReferencia,
+            String painel) throws Exception {
+        int cadastrados=0;
+        for(int alvo:List.of(8,16,24)) {
+            long inicio=System.nanoTime();
+            while(cadastrados<alvo) {
+                int n=cadastrados+1;
+                var dados=cadastro(cpfSintetico(n),cnsSintetico(n),"Volume sintético "+n,usfReferencia);
+                var resposta=http(app,"POST","/api/pacientes?ignorarSimilaridade=true",token,dados);
+                assertThat(resposta.statusCode()).as("cadastro sintético %d: %s",n,resposta.body()).isEqualTo(201);
+                cadastrados++;
+            }
+            long cadastroMs=TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-inicio);
+            inicio=System.nanoTime();
+            var monitor=app.getBean(MonitoramentoVinculosEnsaioService.class).executar();
+            long monitorMs=TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-inicio);
+            assertThat(monitor.falhas()).isZero();
+            inicio=System.nanoTime();
+            var resposta=http(app,"GET",painel,token,null);
+            long painelMs=TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-inicio);
+            assertThat(resposta.statusCode()).isEqualTo(200);
+            var dados=json(app,resposta);
+            assertThat(dados.path("totalPacientesAtivos").asLong()).isEqualTo(alvo);
+            assertThat(dados.path("distribuicaoClassificacao").path("verdes").asLong()).isEqualTo(alvo);
+            System.out.printf("HISTORICO_VOLUME pacientes=%d cadastro_lote_ms=%d monitor_ms=%d painel_ms=%d examinados=%d%n",
+                    alvo,cadastroMs,monitorMs,painelMs,monitor.examinados());
+        }
+    }
+
+    private static String cpfSintetico(int n) {
+        String base=String.format(java.util.Locale.ROOT,"%09d",930000000+n);
+        for(int tamanho=9;tamanho<=10;tamanho++) {
+            int soma=0;
+            for(int k=0;k<tamanho;k++) soma+=(base.charAt(k)-'0')*(tamanho+1-k);
+            int dv=11-soma%11;
+            base+=dv>=10?0:dv;
+        }
+        return base;
+    }
+
+    private static String cnsSintetico(int n) {
+        for(int extra=0;extra<10;extra++) {
+            String base=String.format(java.util.Locale.ROOT,"%014d",89000000000000L+n*10L+extra);
+            int soma=0;
+            for(int k=0;k<14;k++) soma+=(base.charAt(k)-'0')*(15-k);
+            int dv=(11-soma%11)%11;
+            if(dv<10) return base+dv;
+        }
+        throw new AssertionError("Não foi possível gerar CNS sintético.");
     }
 
     private record MedicaoFechamento(long ms,int fechados,boolean disputa) {}
