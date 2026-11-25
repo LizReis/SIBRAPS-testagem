@@ -484,7 +484,36 @@ class ModeloVinculoOperacionalTests {
             // Alteração exclusivamente no CAPS II na janela de corte. Não impede outras unidades.
             assertThat(http(app,"POST","/api/pacientes/cadastro-unico/confirmar-vinculo",ii,confirmacao).statusCode()).isEqualTo(204);
             clock.avancar(corte.plusSeconds(10));
-            tecnico.executar();
+            // Duas instâncias sobre o mesmo H2 e leituras HTTP durante a disputa do fechamento.
+            try (var segunda = iniciar(banco,corte.plusSeconds(10).toString());
+                 var executor = Executors.newFixedThreadPool(6)) {
+                var outro = segunda.getBean(com.pet.buscaativa.services.impl.FechamentoHistoricoAutomaticoService.class);
+                var prontos = new CountDownLatch(6);
+                var largada = new CountDownLatch(1);
+                var primeira = executor.submit(() -> medirFechamento(tecnico,prontos,largada));
+                var concorrente = executor.submit(() -> medirFechamento(outro,prontos,largada));
+                var leituras = new java.util.ArrayList<java.util.concurrent.Future<Long>>();
+                for (int n=0;n<4;n++) leituras.add(executor.submit(() -> {
+                    aguardarLargada(prontos,largada);
+                    long inicio=System.nanoTime();
+                    var item=evolucao(app,painel,a,mes);
+                    assertThat(item.path("situacao").asString()).isIn("SEM_COBERTURA","COMPROVADO");
+                    if ("COMPROVADO".equals(item.path("situacao").asString()))
+                        assertThat(item.path("amarelos").asLong()).isEqualTo(1);
+                    else assertThat(item.path("amarelos").isNull()).isTrue();
+                    return TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-inicio);
+                }));
+                try {
+                    assertThat(prontos.await(10,TimeUnit.SECONDS)).isTrue();
+                } finally { largada.countDown(); }
+                var um=primeira.get(60,TimeUnit.SECONDS);
+                var dois=concorrente.get(60,TimeUnit.SECONDS);
+                assertThat(um.fechados()+dois.fechados()).isPositive();
+                var tempos=new java.util.ArrayList<Long>();
+                for(var leitura:leituras) tempos.add(leitura.get(30,TimeUnit.SECONDS));
+                System.out.printf("HISTORICO_CI fechamento concorrente: ms=%d/%d, disputas=%d, leituras_ms=%s%n",
+                        um.ms(),dois.ms(),(um.disputa()?1:0)+(dois.disputa()?1:0),tempos);
+            }
             assertThat(sql.queryForList("""
                     select unidade from tb_observacao_historico_mensal where mes=? and fase='FECHADO'
                     """,String.class,mes.atDay(1))).contains(unidadeA,unidadeB,"CAPS_I","CAPS_AD").doesNotContain("CAPS_II");
@@ -516,6 +545,27 @@ class ModeloVinculoOperacionalTests {
                     select indicadores from tb_observacao_historico_mensal where unidade=? and mes=? and fase='FECHADO'
                     """,String.class,unidadeA,mes.atDay(1))).isEqualTo(indicadores);
             assertThat(tecnico.executar().fechados()).isZero();
+            // Carga progressiva de leitores, sem recriar o cenário ou simular volume de pacientes.
+            for (int leitores : List.of(1,4,12)) {
+                var prontos=new CountDownLatch(leitores);
+                var largada=new CountDownLatch(1);
+                try(var executor=Executors.newFixedThreadPool(leitores)) {
+                    var futuros=new java.util.ArrayList<java.util.concurrent.Future<Long>>();
+                    for(int n=0;n<leitores;n++) futuros.add(executor.submit(()->{
+                        aguardarLargada(prontos,largada);
+                        long inicio=System.nanoTime();
+                        assertThat(evolucao(app,painel,a,mes)).isEqualTo(historicoA);
+                        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-inicio);
+                    }));
+                    try { assertThat(prontos.await(10,TimeUnit.SECONDS)).isTrue(); }
+                    finally { largada.countDown(); }
+                    var tempos=new java.util.ArrayList<Long>();
+                    for(var futuro:futuros) tempos.add(futuro.get(30,TimeUnit.SECONDS));
+                    tempos.sort(Long::compareTo);
+                    System.out.printf("HISTORICO_CI leitores=%d min_ms=%d mediana_ms=%d max_ms=%d%n",
+                            leitores,tempos.getFirst(),tempos.get(tempos.size()/2),tempos.getLast());
+                }
+            }
         }
         var arquivo=temp.resolve("automatico-v22.sql");
         LegacyMigrationFixture.backup(banco,arquivo);
@@ -525,6 +575,27 @@ class ModeloVinculoOperacionalTests {
             assertThat(new JdbcTemplate(copia).queryForObject("""
                     select indicadores from tb_observacao_historico_mensal where unidade=? and mes=? and fase='FECHADO'
                     """,String.class,unidadeA,mes.atDay(1))).isEqualTo(indicadores);
+        }
+    }
+
+    private record MedicaoFechamento(long ms,int fechados,boolean disputa) {}
+
+    private static void aguardarLargada(CountDownLatch prontos,CountDownLatch largada) throws InterruptedException {
+        prontos.countDown();
+        if(!largada.await(10,TimeUnit.SECONDS)) throw new AssertionError("Largada concorrente excedida.");
+    }
+
+    private static MedicaoFechamento medirFechamento(
+            com.pet.buscaativa.services.impl.FechamentoHistoricoAutomaticoService tecnico,
+            CountDownLatch prontos,CountDownLatch largada) throws InterruptedException {
+        aguardarLargada(prontos,largada);
+        long inicio=System.nanoTime();
+        try {
+            var resultado=tecnico.executar();
+            return new MedicaoFechamento(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-inicio),resultado.fechados(),false);
+        } catch(org.springframework.dao.DuplicateKeyException | org.springframework.dao.ConcurrencyFailureException disputa) {
+            // A outra transação deve concluir; qualquer erro não relacionado à disputa falha o teste.
+            return new MedicaoFechamento(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-inicio),0,true);
         }
     }
 

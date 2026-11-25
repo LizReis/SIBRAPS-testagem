@@ -1,0 +1,10 @@
+# Validação complementar — concorrência e custo de leitura do histórico V22
+
+Base: 3bf0185b884f07949051d4b9f05be2cd1af41820. Execução #45697487068: 1.400 testes Java, sem falhas, erros ou skips; 12 testes adicionais de concorrência aprovados; os três jobs concluídos com sucesso. A classe ModeloVinculoOperacionalTests executou 5 testes.
+
+Reaproveita o cenário operacional das cinco unidades já aprovado: duas instâncias independentes de aplicação sobre o mesmo banco H2 persistido, duas execuções técnicas simultâneas na janela posterior e quatro leitores HTTP simultâneos. Exige que ao menos uma execução grave os fechamentos, não haja duplicidades, leitores não observem indicadores parciais, a unidade alterada fique sem cobertura e os resultados anteriores sejam preservados. Só aceita como disputa exceções de chave duplicada/concor­rência do Spring; outros erros propagam. Mantém o teste de correção justificada posterior, filtros, isolamento e restauração. Depois da correção mede 1, 4 e 12 leitores simultâneos usando a mesma população sintética. Emite tempos monotônicos (ms) e contagem de disputas no log HISTORICO_CI. Não estabelece SLA ou limite de produção arbitrário.
+
+A matriz existente de concorrência 6.1 e os testes RF26 simulados continuam executados pela CI. Não há envio externo, banco real, migration nova ou alteração de produção. Os testes novos não foram executados localmente; a CI é necessária.
+
+## Limites
+O relógio clínico é controlado, não demonstra a virada física do relógio do banco. O ensaio mede concorrência entre contextos de aplicação e leituras sobre pequena população, não carga em milhares de vínculos, transações de correção efetivamente sobrepostas ao corte, perda de janela em indisponibilidade prolongada ou desempenho representativo de produção. O objetivo é obter evidência inicial sem duplicar fixtures ou executar suites adicionais. Registrar métricas reais do Actions antes de concluir. Restam ensaio proporcional de volume/correções concorrentes e revisão integrada dos fluxos assistenciais; main intacta.
