@@ -28,6 +28,11 @@ public final class AgendaMigrationTool {
         return migrar(source, "19");
     }
 
+    /** Instala a estrutura do marco técnico sem ativar a coleta. */
+    public static MigrateResult migrarMarcoHistorico(DataSource source) throws java.sql.SQLException {
+        return migrar(source, "20");
+    }
+
     private static MigrateResult migrar(DataSource source, String destino) throws java.sql.SQLException {
         try (var connection = source.getConnection()) {
             if (!"H2".equals(connection.getMetaData().getDatabaseProductName())
@@ -50,16 +55,22 @@ public final class AgendaMigrationTool {
         if (!destino.equals("16")) {
             var atual = flyway.info().current();
             var versao = atual == null ? "" : atual.getVersion().getVersion();
-            if (destino.equals("19")) {
-                if (!java.util.Set.of("18", "19").contains(versao))
+            if (destino.equals("20")) {
+                if (!java.util.Set.of("19", "20").contains(versao))
+                    throw new IllegalStateException("V20 requer V19 concluída.");
+                IdentidadeDocumentalPreflight.verificarOperacional(source);
+                TransicaoLocalSchemaGuard.verificar(source);
+                InventarioHistoricoSchemaGuard.verificar(source);
+            } else if (destino.equals("19")) {
+                if (!java.util.Set.of("18", "19", "20").contains(versao))
                     throw new IllegalStateException("V19 requer V18 concluída.");
                 IdentidadeDocumentalPreflight.verificarOperacional(source);
                 TransicaoLocalSchemaGuard.verificar(source);
             } else if (destino.equals("18")) {
-                if (!java.util.Set.of("17", "18", "19").contains(versao))
+                if (!java.util.Set.of("17", "18", "19", "20").contains(versao))
                     throw new IllegalStateException("V18 requer V17 concluída.");
                 IdentidadeDocumentalPreflight.verificarOperacional(source);
-            } else if (!java.util.Set.of("16", "17", "18", "19").contains(versao)) {
+            } else if (!java.util.Set.of("16", "17", "18", "19", "20").contains(versao)) {
                 throw new IllegalStateException("V17 requer V16 concluída antes do diagnóstico documental.");
             }
             if (versao.equals("16")) {
@@ -70,8 +81,9 @@ public final class AgendaMigrationTool {
         }
         var result = flyway.migrate();
         if (!destino.equals("16")) IdentidadeDocumentalPreflight.verificarRestricoes(source);
-        if (destino.equals("18") || destino.equals("19")) TransicaoLocalSchemaGuard.verificar(source);
-        if (destino.equals("19")) InventarioHistoricoSchemaGuard.verificar(source);
+        if (destino.equals("18") || destino.equals("19") || destino.equals("20")) TransicaoLocalSchemaGuard.verificar(source);
+        if (destino.equals("19") || destino.equals("20")) InventarioHistoricoSchemaGuard.verificar(source);
+        if (destino.equals("20")) MarcoHistoricoSchemaGuard.verificar(source);
         CanonicalAgendaGuard.verificar(source);
         AuditoriaSchemaGuard.verificar(source);
         ResponsabilidadeSessaoGuard.verificar(source);
@@ -105,12 +117,20 @@ public final class AgendaMigrationTool {
             System.out.println(IdentidadeDocumentalPreflight.analisar(source));
             return;
         }
+        if (args.length == 1 && "--registrar-marco-historico".equals(args[0])) {
+            var zona = java.time.ZoneId.of(System.getenv().getOrDefault("APP_ALERTAS_ZONE", "America/Bahia"));
+            var marco = MarcoHistoricoOffline.registrar(source, zona);
+            System.out.println("Marco técnico: " + marco.iniciadoEm() + "; unidades=" + marco.unidades()
+                    + "; vínculos=" + marco.vinculos());
+            return;
+        }
         if (args.length > 1) throw new IllegalArgumentException("Argumento desconhecido.");
         var result = switch (args.length == 0 ? "" : args[0]) {
             case "" -> migrar(source);
             case "--identidade" -> migrarIdentidade(source);
             case "--transicao" -> migrarTransicao(source);
             case "--cobertura-historica" -> migrarCoberturaHistorica(source);
+            case "--estrutura-marco-historico" -> migrarMarcoHistorico(source);
             default -> throw new IllegalArgumentException("Argumento desconhecido.");
         };
         System.out.println("Migrações de agenda executadas: " + result.migrationsExecuted);
