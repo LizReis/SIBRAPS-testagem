@@ -47,7 +47,23 @@ class ModeloVinculoOperacionalTests {
     static class Relogio {
         @Bean @Primary Clock clockOperacionalSintetico(
                 @org.springframework.beans.factory.annotation.Value("${sibraps.test.instante:2026-11-24T22:00:00Z}") String instante) {
-            return Clock.fixed(Instant.parse(instante), ZoneId.of("America/Bahia"));
+            return new RelogioMutavel(Instant.parse(instante), ZoneId.of("America/Bahia"));
+        }
+    }
+
+    private static final class RelogioMutavel extends Clock {
+        private final java.util.concurrent.atomic.AtomicReference<Instant> instante;
+        private final ZoneId zona;
+        RelogioMutavel(Instant instante, ZoneId zona) {
+            this.instante = new java.util.concurrent.atomic.AtomicReference<>(instante);
+            this.zona = zona;
+        }
+        @Override public ZoneId getZone() { return zona; }
+        @Override public Clock withZone(ZoneId zona) { return Clock.fixed(instant(), zona); }
+        @Override public Instant instant() { return instante.get(); }
+        void avancar(Instant novo) {
+            if (novo.isBefore(instant())) throw new IllegalArgumentException("Relógio deve avançar.");
+            instante.set(novo);
         }
     }
 
@@ -393,6 +409,142 @@ class ModeloVinculoOperacionalTests {
         }
     }
 
+    @Test
+    void fechamentoAutomaticoPorUnidadePreservaMesDepoisDeCorrecao() throws Exception {
+        var banco = LegacyMigrationFixture.legacy(temp.resolve("historico-automatico-integrado"));
+        AgendaMigrationTool.migrar(banco);
+        AgendaMigrationTool.migrarIdentidade(banco);
+        AgendaMigrationTool.migrarTransicao(banco);
+        AgendaMigrationTool.migrarCoberturaHistorica(banco);
+        AgendaMigrationTool.migrarMarcoHistorico(banco);
+        AgendaMigrationTool.migrarEvidenciaClinica(banco);
+        AgendaMigrationTool.migrarFechamentoAutomatico(banco);
+        var sql = new JdbcTemplate(banco);
+        long usfA = usf(sql,"Automático A");
+        long usfB = usf(sql,"Automático B");
+        String adminA = ator(sql,usfA,1,"historico-auto-a");
+        String profA = ator(sql,usfA,2,"historico-auto-prof");
+        String recepA = ator(sql,usfA,3,"historico-auto-recep");
+        String adminB = ator(sql,usfB,1,"historico-auto-b");
+        String capsAD = atorCaps(sql,2,"historico-auto-ad");
+        String capsI = atorCaps(sql,3,"historico-auto-i");
+        String capsII = atorCaps(sql,4,"historico-auto-ii");
+        var zona = ZoneId.of("America/Bahia");
+        var marco = com.pet.buscaativa.migration.MarcoHistoricoOffline.registrar(banco,zona);
+        var mes = java.time.YearMonth.from(marco.iniciadoEm().atZoneSameInstant(zona)).plusMonths(1);
+        var corte = mes.plusMonths(1).atDay(1).atStartOfDay(zona).toInstant();
+        LocalDate primeiroDia = mes.atEndOfMonth().minusDays(2);
+        String painel = "/api/painel/resumo?periodoMeses=3";
+        String unidadeA = "USF:"+usfA;
+        String unidadeB = "USF:"+usfB;
+        String indicadores;
+        try (var app = iniciar(banco,primeiroDia.atTime(12,0).atZone(zona).toInstant().toString())) {
+            var clock = (RelogioMutavel) app.getBean(Clock.class);
+            var tecnico = app.getBean(com.pet.buscaativa.services.impl.FechamentoHistoricoAutomaticoService.class);
+            String a = login(app,adminA), p = login(app,profA), r = login(app,recepA), b = login(app,adminB);
+            String i = login(app,capsI), ii = login(app,capsII), ad = login(app,capsAD);
+            assertThat(http(app,"POST","/api/painel/historico/marco",a,null).statusCode()).isEqualTo(409);
+            assertThat(http(app,"PUT","/api/painel/historico/fechamentos/"+mes,a,
+                    Map.of("vinculos",List.of(),"evidenciaSha256","a".repeat(64))).statusCode()).isEqualTo(409);
+            var dados = cadastro("11144477735","800000000000001","Histórico integrado",usfA);
+            var novo = http(app,"POST","/api/pacientes?ignorarSimilaridade=true",r,dados);
+            assertThat(novo.statusCode()).as(novo.body()).isEqualTo(201);
+            String pessoa = json(app,novo).path("paciente").asString();
+            var confirmacao = Map.of("cpf",dados.get("cpf"),"cns",dados.get("cns"),"nome",dados.get("nome"),
+                    "nomeMae",dados.get("nomeMae"),"dataNascimento",dados.get("dataNascimento"),
+                    "tipoAcompanhamento","GRUPO_TERAPEUTICO");
+            assertThat(http(app,"POST","/api/pacientes/cadastro-unico/confirmar-vinculo",i,confirmacao).statusCode()).isEqualTo(204);
+            assertThat(http(app,"GET","/api/pacientes/"+pessoa,b,null).statusCode()).isEqualTo(404);
+            UUID responsavel = sql.queryForObject("select id_publico from tb_usuario where email=?",UUID.class,profA);
+            String atendimento = null;
+            int versao = -1;
+            for (int dia=0; dia<2; dia++) {
+                var data = primeiroDia.plusDays(dia);
+                clock.avancar(data.atTime(12,0).atZone(zona).toInstant());
+                sql.update("""
+                        insert into tb_disponibilidade_excecao(usuario_id,data,turno,capacidade)
+                        select id,?,1,10 from tb_usuario where email=?
+                        """,data,profA);
+                var agenda = http(app,"POST","/api/agendamentos",r,Map.of("pacienteId",pessoa,
+                        "usuarioId",responsavel,"dataAgendamento",data,"turnoAgendamento","MANHA","horaAtendimento","09:00"));
+                assertThat(agenda.statusCode()).as(agenda.body()).isEqualTo(201);
+                var registro = json(app,agenda);
+                atendimento = "/api/agendamentos/"+registro.path("id").asLong();
+                var falta = http(app,"PATCH",atendimento+"/status?novoStatus=FALTOU&version="+registro.path("version").asInt(),p,null);
+                assertThat(falta.statusCode()).as(falta.body()).isEqualTo(200);
+                versao = json(app,falta).path("version").asInt();
+            }
+            assertThat(tecnico.executar().fechados()).isZero();
+            clock.avancar(corte.minusSeconds(30));
+            tecnico.executar();
+            assertThat(sql.queryForList("""
+                    select unidade from tb_observacao_historico_mensal where mes=? and fase='PRE'
+                    """,String.class,mes.atDay(1))).contains(unidadeA,unidadeB,"CAPS_I","CAPS_II","CAPS_AD");
+            assertThat(tecnico.executar().observados()).isZero();
+            // Alteração exclusivamente no CAPS II na janela de corte. Não impede outras unidades.
+            assertThat(http(app,"POST","/api/pacientes/cadastro-unico/confirmar-vinculo",ii,confirmacao).statusCode()).isEqualTo(204);
+            clock.avancar(corte.plusSeconds(10));
+            tecnico.executar();
+            assertThat(sql.queryForList("""
+                    select unidade from tb_observacao_historico_mensal where mes=? and fase='FECHADO'
+                    """,String.class,mes.atDay(1))).contains(unidadeA,unidadeB,"CAPS_I","CAPS_AD").doesNotContain("CAPS_II");
+            assertThat(tecnico.executar().fechados()).isZero();
+            var historicoA = evolucao(app,painel,a,mes);
+            assertThat(historicoA.path("situacao").asString()).isEqualTo("COMPROVADO");
+            assertThat(historicoA.path("amarelos").asLong()).isEqualTo(1);
+            assertThat(evolucao(app,painel,i,mes).path("verdes").asLong()).isEqualTo(1);
+            assertThat(evolucao(app,painel,b,mes).path("situacao").asString()).isEqualTo("COMPROVADO");
+            assertThat(evolucao(app,painel,b,mes).path("verdes").asLong()).isZero();
+            assertThat(evolucao(app,painel,ad,mes).path("situacao").asString()).isEqualTo("COMPROVADO");
+            var indisponivel = evolucao(app,painel,ii,mes);
+            assertThat(indisponivel.path("situacao").asString()).isEqualTo("SEM_COBERTURA");
+            assertThat(indisponivel.path("verdes").isNull()).isTrue();
+            assertThat(evolucao(app,painel,a,mes.minusMonths(1)).path("situacao").asString()).isEqualTo("SEM_COBERTURA");
+            assertThat(evolucao(app,painel,a,mes.plusMonths(1)).path("situacao").asString()).isEqualTo("SEM_COBERTURA");
+            assertThat(evolucao(app,painel+"&situacaoRua=true&tipoAcompanhamento=AMBOS",a,mes).path("amarelos").asLong()).isEqualTo(1);
+            indicadores = sql.queryForObject("""
+                    select indicadores from tb_observacao_historico_mensal where unidade=? and mes=? and fase='FECHADO'
+                    """,String.class,unidadeA,mes.atDay(1));
+            clock.avancar(corte.plusSeconds(3600));
+            var correcao = http(app,"PATCH",atendimento+"/frequencia/correcao",p,
+                    Map.of("novaFrequencia","PRESENTE","version",versao,"justificativa","Correção sintética após fechamento."));
+            assertThat(correcao.statusCode()).as(correcao.body()).isEqualTo(200);
+            assertThat(json(app,http(app,"GET",painel,a,null)).path("pontoAtual").path("distribuicao").path("verdes").asLong()).isEqualTo(1);
+            assertThat(evolucao(app,painel,a,mes)).isEqualTo(historicoA);
+            assertThat(evolucao(app,painel,i,mes).path("verdes").asLong()).isEqualTo(1);
+            assertThat(sql.queryForObject("""
+                    select indicadores from tb_observacao_historico_mensal where unidade=? and mes=? and fase='FECHADO'
+                    """,String.class,unidadeA,mes.atDay(1))).isEqualTo(indicadores);
+            assertThat(tecnico.executar().fechados()).isZero();
+        }
+        var arquivo=temp.resolve("automatico-v22.sql");
+        LegacyMigrationFixture.backup(banco,arquivo);
+        var copia=LegacyMigrationFixture.restore(temp.resolve("automatico-restaurado"),arquivo);
+        try(var app=iniciar(copia,corte.plusSeconds(7200).toString())) {
+            assertThat(evolucao(app,painel,login(app,adminA),mes).path("amarelos").asLong()).isEqualTo(1);
+            assertThat(new JdbcTemplate(copia).queryForObject("""
+                    select indicadores from tb_observacao_historico_mensal where unidade=? and mes=? and fase='FECHADO'
+                    """,String.class,unidadeA,mes.atDay(1))).isEqualTo(indicadores);
+        }
+    }
+
+    private JsonNode evolucao(ConfigurableApplicationContext app,String painel,String token,java.time.YearMonth mes) throws Exception {
+        var resposta = http(app,"GET",painel,token,null);
+        assertThat(resposta.statusCode()).as(resposta.body()).isEqualTo(200);
+        for (var item:json(app,resposta).path("evolucao"))
+            if (mes.toString().equals(item.path("mes").asString())) return item;
+        throw new AssertionError("Mês não retornado: "+mes);
+    }
+
+    private String atorCaps(JdbcTemplate sql,int unidade,String nome) {
+        String email=nome+"@test.local";
+        sql.update("""
+                insert into tb_usuario(id_publico,email,nome,senha,tipo_usuario,unidade_atuacao)
+                values (?,?,?,?,1,?)
+                """,UUID.randomUUID(),email,nome,new BCryptPasswordEncoder().encode(senha),unidade);
+        return email;
+    }
+
     private ConfigurableApplicationContext iniciar(DriverManagerDataSource banco) {
         return iniciar(banco, "2026-11-24T22:00:00Z");
     }
@@ -402,6 +554,7 @@ class ModeloVinculoOperacionalTests {
                 .run("--spring.config.location=file:src/main/resources/", "--spring.profiles.active=default",
                         "--server.address=127.0.0.1", "--server.port=0", "--sibraps.usf.sincronizar=false",
                         "--sibraps.test.relogio-operacional=true", "--sibraps.test.instante=" + instante,
+                        "--sibraps.historico.automatico.habilitado=false",
                         "--spring.datasource.url=" + banco.getUrl(), "--spring.datasource.username=" + banco.getUsername(),
                         "--spring.datasource.password=" + banco.getPassword(),
                         "--JWT_SECRET_BASE64=" + segredo, "--spring.main.banner-mode=off", "--logging.level.root=ERROR",

@@ -1,0 +1,7 @@
+# Validação integrada do histórico automático V22
+
+Base: bdef6b6f3b1e21de4332d3c11477abec67ea4b3d; CI #45696172974 aprovada. Sem nova migration, mudança de regras clínicas ou alteração de código de produção nesta entrega.
+
+Novo cenário em ModeloVinculoOperacionalTests, com aplicação operacional real, H2 persistido sintético, relógio controlado e rotas HTTP: cinco unidades (duas USFs e CAPS AD/I/II), recepção, profissional e administração; identidade compartilhada explícita; duas faltas individuais na USF A; observações técnicas na virada do mês; alteração exclusiva no CAPS II entre as observações; demais unidades com fechamento; mês incompleto e mês aberto sem cobertura; filtros; recusa de certificação manual; correção justificada após fechamento; ponto atual recalculado, fechamento preservado; repetição e backup/restauração. O disparo automático pelo cron é desabilitado neste ensaio para evitar competição com o relógio controlado; invoca-se o mesmo serviço técnico real. O tempo das revisões Envers permanece o do processo; o teste de fronteira lógica não demonstra a ordem de commits em tempo de parede.
+
+A execução depende do Actions. Se o cenário falhar, investigar a causa e corrigir sem relaxar expectativas. Ainda pendentes: concorrência real na fronteira, custo de fechamento e demais fluxos clínicos integrados das cinco unidades. Nenhum banco real usado, marco real ativado ou merge efetuado.
