@@ -41,17 +41,17 @@ public final class CadastroUnicoPreflight {
         long pacientes = contar(jdbc, "select count(*) from tb_paciente");
         long cpfs = contar(jdbc, """
             select count(*) from (
-                select replace(replace(replace(trim(cpf), '.', ''), '-', ''), ' ', '') doc
-                from tb_paciente where cpf is not null and trim(cpf) <> ''
-                group by replace(replace(replace(trim(cpf), '.', ''), '-', ''), ' ', '')
+                select nullif(regexp_replace(cpf, '[^0-9]', ''), '') doc
+                from tb_paciente where nullif(regexp_replace(cpf, '[^0-9]', ''), '') is not null
+                group by nullif(regexp_replace(cpf, '[^0-9]', ''), '')
                 having count(*) > 1
             ) repetidos
             """);
         long cns = contar(jdbc, """
             select count(*) from (
-                select replace(trim(cns), ' ', '') doc
-                from tb_paciente where cns is not null and trim(cns) <> ''
-                group by replace(trim(cns), ' ', '')
+                select nullif(regexp_replace(cns, '[^0-9]', ''), '') doc
+                from tb_paciente where nullif(regexp_replace(cns, '[^0-9]', ''), '') is not null
+                group by nullif(regexp_replace(cns, '[^0-9]', ''), '')
                 having count(*) > 1
             ) repetidos
             """);

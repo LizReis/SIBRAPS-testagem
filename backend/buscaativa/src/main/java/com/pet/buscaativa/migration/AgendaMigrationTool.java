@@ -10,6 +10,15 @@ public final class AgendaMigrationTool {
     private AgendaMigrationTool() {}
 
     public static MigrateResult migrar(DataSource source) throws java.sql.SQLException {
+        return migrar(source, false);
+    }
+
+    /** V17 explicitamente autorizada, somente sobre V16 concluída e banco offline. */
+    public static MigrateResult migrarIdentidade(DataSource source) throws java.sql.SQLException {
+        return migrar(source, true);
+    }
+
+    private static MigrateResult migrar(DataSource source, boolean identidade) throws java.sql.SQLException {
         try (var connection = source.getConnection()) {
             if (!"H2".equals(connection.getMetaData().getDatabaseProductName())
                     || connection.getMetaData().getURL().startsWith("jdbc:h2:mem:"))
@@ -25,9 +34,21 @@ public final class AgendaMigrationTool {
             }
             verificarOrigemVersionada(connection);
         }
-        var result = Flyway.configure().dataSource(source).table("sibraps_agenda_schema_history")
+        var flyway = Flyway.configure().dataSource(source).table("sibraps_agenda_schema_history")
                 .locations("classpath:agenda-migration/h2").javaMigrations(new V2__identificar_frequencias_legadas(), new V6__identificar_responsabilidade_historica())
-                .baselineOnMigrate(true).baselineVersion("0").cleanDisabled(true).load().migrate();
+                .baselineOnMigrate(true).baselineVersion("0").target(identidade ? "17" : "16").cleanDisabled(true).load();
+        if (identidade) {
+            var atual = flyway.info().current();
+            if (atual == null || !java.util.Set.of("16", "17").contains(atual.getVersion().getVersion()))
+                throw new IllegalStateException("V17 requer V16 concluída antes do diagnóstico documental.");
+            if (atual.getVersion().getVersion().equals("16")) {
+                var diagnostico = IdentidadeDocumentalPreflight.analisar(source);
+                if (diagnostico.bloqueiaV17())
+                    throw new IllegalStateException("V17 recusada: documentos duplicados ou inconclusivos. Revisão cadastral explícita necessária. " + diagnostico);
+            }
+        }
+        var result = flyway.migrate();
+        if (identidade) IdentidadeDocumentalPreflight.verificarRestricoes(source);
         CanonicalAgendaGuard.verificar(source);
         AuditoriaSchemaGuard.verificar(source);
         ResponsabilidadeSessaoGuard.verificar(source);
@@ -57,7 +78,13 @@ public final class AgendaMigrationTool {
 
     public static void main(String[] args) throws Exception {
         var source = new DriverManagerDataSource(required("DB_URL"), required("DB_USERNAME"), required("DB_PASSWORD"));
-        var result = migrar(source);
+        if (args.length == 1 && "--diagnostico-identidade".equals(args[0])) {
+            System.out.println(IdentidadeDocumentalPreflight.analisar(source));
+            return;
+        }
+        if (args.length > 1 || args.length == 1 && !"--identidade".equals(args[0]))
+            throw new IllegalArgumentException("Argumento desconhecido.");
+        var result = args.length == 1 ? migrarIdentidade(source) : migrar(source);
         System.out.println("Migrações de agenda executadas: " + result.migrationsExecuted);
     }
     private static String required(String name) {

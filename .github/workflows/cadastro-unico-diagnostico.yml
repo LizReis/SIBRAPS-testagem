@@ -70,6 +70,8 @@ jobs:
       - run: npm ci
       - name: Compilacao de producao
         run: npm run build
+      - name: Compilacao experimental
+        run: npm run build -- --configuration ensaio
 
   frontend-permissoes:
     name: Cadastro unico - Teste direcionado Angular de permissoes
@@ -99,3 +101,7 @@ jobs:
           npm test -- --watch=false --include=src/app/pages/cadastro-paciente/cadastro-paciente.spec.ts
       - name: Teste dos contratos clinicos locais experimentais
         run: npm test -- --watch=false --include=src/app/services/contrato-clinico-local.spec.ts
+      - name: Contratos HTTP integrados (padrao e ensaio)
+        run: |
+          npm test -- --watch=false --include=src/app/services/contrato-clinico-integrado.spec.ts
+          npm test -- --watch=false --configuration ensaio --include=src/app/services/contrato-clinico-integrado.spec.ts
