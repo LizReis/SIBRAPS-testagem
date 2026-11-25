@@ -18,6 +18,7 @@ import br.sibraps.modelovinculo.ConsultasVinculoController;
 import br.sibraps.modelovinculo.EscritoresVinculoController;
 import com.pet.buscaativa.migration.IdentidadeDocumentalPreflight;
 import com.pet.buscaativa.migration.TransicaoLocalSchemaGuard;
+import com.pet.buscaativa.migration.InventarioHistoricoSchemaGuard;
 
 @Configuration(proxyBeanMethods = false)
 public class ModeloVinculoConfig {
@@ -65,6 +66,7 @@ public class ModeloVinculoConfig {
                     if (bean instanceof DataSource fonte) {
                         IdentidadeDocumentalPreflight.verificarOperacional(fonte);
                         TransicaoLocalSchemaGuard.verificar(fonte);
+                        InventarioHistoricoSchemaGuard.verificar(fonte);
                     }
                     return bean;
                 }

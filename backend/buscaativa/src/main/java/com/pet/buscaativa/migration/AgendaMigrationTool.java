@@ -23,6 +23,11 @@ public final class AgendaMigrationTool {
         return migrar(source, "18");
     }
 
+    /** Instala a trilha prospectiva de inventário; não ativa o marco histórico. */
+    public static MigrateResult migrarCoberturaHistorica(DataSource source) throws java.sql.SQLException {
+        return migrar(source, "19");
+    }
+
     private static MigrateResult migrar(DataSource source, String destino) throws java.sql.SQLException {
         try (var connection = source.getConnection()) {
             if (!"H2".equals(connection.getMetaData().getDatabaseProductName())
@@ -45,11 +50,16 @@ public final class AgendaMigrationTool {
         if (!destino.equals("16")) {
             var atual = flyway.info().current();
             var versao = atual == null ? "" : atual.getVersion().getVersion();
-            if (destino.equals("18")) {
-                if (!java.util.Set.of("17", "18").contains(versao))
+            if (destino.equals("19")) {
+                if (!java.util.Set.of("18", "19").contains(versao))
+                    throw new IllegalStateException("V19 requer V18 concluída.");
+                IdentidadeDocumentalPreflight.verificarOperacional(source);
+                TransicaoLocalSchemaGuard.verificar(source);
+            } else if (destino.equals("18")) {
+                if (!java.util.Set.of("17", "18", "19").contains(versao))
                     throw new IllegalStateException("V18 requer V17 concluída.");
                 IdentidadeDocumentalPreflight.verificarOperacional(source);
-            } else if (!java.util.Set.of("16", "17", "18").contains(versao)) {
+            } else if (!java.util.Set.of("16", "17", "18", "19").contains(versao)) {
                 throw new IllegalStateException("V17 requer V16 concluída antes do diagnóstico documental.");
             }
             if (versao.equals("16")) {
@@ -60,7 +70,8 @@ public final class AgendaMigrationTool {
         }
         var result = flyway.migrate();
         if (!destino.equals("16")) IdentidadeDocumentalPreflight.verificarRestricoes(source);
-        if (destino.equals("18")) TransicaoLocalSchemaGuard.verificar(source);
+        if (destino.equals("18") || destino.equals("19")) TransicaoLocalSchemaGuard.verificar(source);
+        if (destino.equals("19")) InventarioHistoricoSchemaGuard.verificar(source);
         CanonicalAgendaGuard.verificar(source);
         AuditoriaSchemaGuard.verificar(source);
         ResponsabilidadeSessaoGuard.verificar(source);
@@ -99,6 +110,7 @@ public final class AgendaMigrationTool {
             case "" -> migrar(source);
             case "--identidade" -> migrarIdentidade(source);
             case "--transicao" -> migrarTransicao(source);
+            case "--cobertura-historica" -> migrarCoberturaHistorica(source);
             default -> throw new IllegalArgumentException("Argumento desconhecido.");
         };
         System.out.println("Migrações de agenda executadas: " + result.migrationsExecuted);
