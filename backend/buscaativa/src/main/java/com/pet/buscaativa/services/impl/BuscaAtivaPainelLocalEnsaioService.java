@@ -27,7 +27,7 @@ import lombok.RequiredArgsConstructor;
 /** Contratos experimentais de busca ativa/painel; sem rotas e sem efeitos clínicos.
  * A auditoria de visualizações e a ativação HTTP serão integradas no corte. */
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 @Transactional(readOnly=true,isolation=Isolation.SERIALIZABLE)
 public class BuscaAtivaPainelLocalEnsaioService {

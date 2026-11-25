@@ -18,7 +18,7 @@ import lombok.RequiredArgsConstructor;
 
 /** Rotina interna experimental, sem agendamento automático nem rota HTTP. */
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 public class MonitoramentoVinculosEnsaioService {
     private final PlatformTransactionManager transactions;

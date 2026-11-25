@@ -76,6 +76,7 @@ describe('CadastroUnicoService', () => {
   it('envia confirmacao explicita ao endpoint de vinculo local e aceita 204 sem corpo', () => {
     let sucesso = false;
     const dados = {
+      tipoAcompanhamento: 'INDIVIDUAL',
       cpf: '12312312312',
       nome: 'Paciente sintetico',
       nomeMae: 'Responsavel sintetica',
@@ -94,6 +95,7 @@ describe('CadastroUnicoService', () => {
   it('propaga rejeicao de identidade divergente, sem segundo envio automatico', () => {
     let status: number | undefined;
     service.confirmarVinculo({
+      tipoAcompanhamento: 'INDIVIDUAL',
       cns: '100000000000123',
       nome: 'Nome divergente',
       nomeMae: 'Responsavel',

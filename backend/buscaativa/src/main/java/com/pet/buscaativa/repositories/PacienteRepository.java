@@ -41,6 +41,12 @@ public interface PacienteRepository extends JpaRepository<Paciente, Long>, JpaSp
 
     Optional<Paciente> findByCpf(String cpf);
 
+    @Query(value = "select p.* from tb_paciente p where p.cpf_normalizado = :documento", nativeQuery = true)
+    Optional<Paciente> findByCpfNormalizado(@Param("documento") String documento);
+
+    @Query(value = "select p.* from tb_paciente p where p.cns_normalizado = :documento", nativeQuery = true)
+    Optional<Paciente> findByCnsNormalizado(@Param("documento") String documento);
+
     Optional<Paciente> findByNome(String nome);
 
     Optional<Paciente> findByNomeMae(String nomeMae);

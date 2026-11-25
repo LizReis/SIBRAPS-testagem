@@ -24,7 +24,7 @@ import lombok.RequiredArgsConstructor;
  * Versão explícita no ensaio; compatibilidade de versão opcional será revisada no corte.
  */
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 public class ComandosAssistenciaisLocaisEnsaioService {
     private final FrequenciaIndividualLocalEnsaioService individual;

@@ -30,6 +30,7 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
+    private final ModeloClinico modelo;
 
     private final GrupoTerapeuticoRepository grupoRepository;
     private final AgendaAssistencialLocks agendaAssistencialLocks;
@@ -53,6 +54,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public GrupoTerapeuticoDTO criarGrupo(CriarGrupoDTO dto) {
+        modelo.exigirLegado();
         validarPeriodoRecorrencia(dto);
         validarIdsParticipantes(dto.participantesIds());
         var recursos = agendaAssistencialLocks.bloquear(idsOuVazios(dto.participantesIds()), List.of(dto.coordenadorId()));
@@ -134,12 +136,14 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional(readOnly = true)
     public List<GrupoTerapeuticoDTO> listarGrupos() {
+        modelo.exigirLegado();
         return grupoRepository.findByAtivoTrue().stream().filter(escopoUnidadeService::grupoPertenceAoEscopo).map(this::toGrupoDTO).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
     public GrupoTerapeuticoDTO buscarGrupo(Long grupoId) {
+        modelo.exigirLegado();
         return toGrupoDTO(grupoRepository.findById(grupoId).filter(escopoUnidadeService::grupoPertenceAoEscopo)
                 .orElseThrow(() -> new ResourceNotFoundException("Grupo não encontrado.")));
     }
@@ -147,6 +151,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public GrupoTerapeuticoDTO atualizarGrupo(Long grupoId, AtualizarGrupoTerapeuticoDTO dto) {
+        modelo.exigirLegado();
         UUID coordenadorOrigem = coordenadorEscalar(grupoId);
         // Transferência e confirmação compartilham os pacientes antes de ler/
         // bloquear responsáveis. Não impor elegibilidade nova ao paciente histórico.
@@ -232,6 +237,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional(readOnly = true)
     public LocalDate sugerirProximaData(Long grupoId) {
+        modelo.exigirLegado();
         GrupoTerapeutico grupo = grupoRepository.findById(grupoId).filter(escopoUnidadeService::grupoPertenceAoEscopo)
                 .orElseThrow(() -> new ResourceNotFoundException("Grupo não encontrado."));
 
@@ -250,6 +256,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public SessaoGrupoDTO criarProximaSessao(NovaSessaoDTO dto) {
+        modelo.exigirLegado();
         validarIdsParticipantes(dto.participantesIds());
         GrupoTerapeutico grupo = bloquearGrupoComSujeitos(dto.grupoId(), idsOuVazios(dto.participantesIds()));
 
@@ -276,6 +283,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional(readOnly = true)
     public List<SessaoGrupoDTO> listarSessoes(LocalDate inicio, LocalDate fim) {
+        modelo.exigirLegado();
         if (inicio.isAfter(fim))
             throw new ValidationException("A data inicial não pode ser posterior à data final.");
         return sessaoRepository.findByDataSessaoBetween(inicio, fim).stream()
@@ -285,6 +293,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public SessaoGrupoDTO adicionarParticipante(Long sessaoId, AdicionarParticipanteDTO dto) {
+        modelo.exigirLegado();
         SessaoGrupo sessao = bloquearSessao(sessaoId, List.of(dto.pacienteId()), FinalidadeBloqueioSessao.OPERACIONAL);
 
         validarSessaoEditavel(sessao);
@@ -299,6 +308,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public SessaoGrupoDTO removerParticipante(Long sessaoId, UUID pacienteId) {
+        modelo.exigirLegado();
         SessaoGrupo sessao = bloquearSessao(sessaoId, List.of(pacienteId), FinalidadeBloqueioSessao.OPERACIONAL);
 
         validarSessaoEditavel(sessao);
@@ -314,6 +324,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public SessaoGrupoDTO registrarPresenca(Long sessaoId, UUID pacienteId, RegistrarPresencaGrupoDTO dto) {
+        modelo.exigirLegado();
         SessaoGrupo sessao = bloquearSessao(sessaoId, List.of(pacienteId), FinalidadeBloqueioSessao.CLINICA);
         autorizacaoClinica.validarSessao(sessao);
         if (sessao.getStatus() != StatusSessaoGrupo.AGENDADA)
@@ -328,6 +339,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public SessaoGrupoDTO atualizarStatus(Long sessaoId, StatusSessaoGrupo novoStatus, Integer expectedVersion) {
+        modelo.exigirLegado();
         SessaoGrupo sessao = bloquearSessao(sessaoId, List.of(), FinalidadeBloqueioSessao.CLINICA);
         autorizacaoClinica.validarSessao(sessao);
         if (expectedVersion != null && !expectedVersion.equals(sessao.getVersion()))
@@ -343,6 +355,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public SessaoGrupoDTO confirmarOcorrencia(Long sessaoId, ConfirmarOcorrenciaGrupoDTO dto) {
+        modelo.exigirLegado();
         SessaoGrupo sessao = bloquearSessao(sessaoId, List.of(), FinalidadeBloqueioSessao.CLINICA);
         autorizacaoClinica.validarSessao(sessao);
         if (sessao.getStatus() != StatusSessaoGrupo.AGENDADA)
@@ -400,6 +413,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public SessaoGrupoDTO inscreverRetroativamente(Long grupoId, InscricaoRetroativaGrupoDTO dto) {
+        modelo.exigirLegado();
         agendaAssistencialLocks.bloquear(List.of(dto.pacienteId()), List.of());
         UUID coordenador = coordenadorEscalar(grupoId);
         Set<UUID> historicos = responsaveisHistoricosEscalares(grupoId);
@@ -494,6 +508,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional(readOnly = true)
     public List<SessaoInscricaoRetroativaDTO> listarSessoesParaInscricaoRetroativa(Long grupoId) {
+        modelo.exigirLegado();
         GrupoTerapeutico g = grupoRepository.findById(grupoId).filter(escopoUnidadeService::grupoPertenceAoEscopo).orElseThrow(() -> new ResourceNotFoundException("Grupo não encontrado."));
         return sessaoRepository.findByGrupoOrderByDataSessaoDesc(g).stream()
                 .filter(escopoUnidadeService::sessaoPertenceAoEscopo)
@@ -504,6 +519,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public SessaoGrupoDTO inscreverEmSessoesFuturas(Long grupoId, InscricaoFuturaGrupoDTO dto) {
+        modelo.exigirLegado();
         GrupoTerapeutico grupo = bloquearGrupoComSujeitos(grupoId, List.of(dto.pacienteId()));
         Paciente paciente = pacienteRepository.findByIdPublico(dto.pacienteId()).orElseThrow();
         // Verificar unidade ANTES de avaliar vagas e alterar inscricoes.
@@ -529,6 +545,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public void removerParticipanteDoGrupo(Long grupoId, UUID pacienteId) {
+        modelo.exigirLegado();
         GrupoTerapeutico grupo = bloquearGrupoComSujeitos(grupoId, List.of(pacienteId));
         Paciente paciente = pacienteRepository.findByIdPublico(pacienteId).orElseThrow();
         // Nao remover inscricao de paciente de outra unidade mesmo que um
@@ -546,6 +563,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional(readOnly = true)
     public List<ParticipanteGrupoDTO> listarParticipantesDoGrupo(Long grupoId) {
+        modelo.exigirLegado();
         GrupoTerapeutico grupo = grupoRepository.findById(grupoId).filter(escopoUnidadeService::grupoPertenceAoEscopo).orElseThrow(() -> new ResourceNotFoundException("Grupo não encontrado."));
         LocalDateTime agora = LocalDateTime.now(clock);
         return sessaoRepository.findByGrupoOrderByDataSessaoDesc(grupo).stream()
@@ -569,6 +587,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     @Override
     @Transactional
     public SessaoGrupoDTO corrigirFrequencias(Long sessaoId, CorrigirFrequenciasGrupoDTO dto) {
+        modelo.exigirLegado();
         SessaoGrupo sessao = bloquearSessao(sessaoId, List.of(), FinalidadeBloqueioSessao.CLINICA);
         autorizacaoClinica.validarSessao(sessao);
         if (sessao.getStatus() != StatusSessaoGrupo.REALIZADA) throw new ValidationException("Somente sessões realizadas permitem correção de frequência.");

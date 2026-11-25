@@ -31,7 +31,7 @@ import lombok.RequiredArgsConstructor;
 
 /** Ensaios de criação de grupos e sessões, sem usar estado clínico global. */
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 public class SerieGruposLocaisEnsaioService {
     private final AtoresEstadoClinicoLocalEnsaio atores;

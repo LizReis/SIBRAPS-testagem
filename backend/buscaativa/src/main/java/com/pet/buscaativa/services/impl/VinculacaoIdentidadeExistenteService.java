@@ -12,7 +12,6 @@ import com.pet.buscaativa.entities.Paciente;
 import com.pet.buscaativa.entities.Usuario;
 import com.pet.buscaativa.entities.VinculoAssistencial;
 import com.pet.buscaativa.entities.enums.TipoUsuario;
-import com.pet.buscaativa.repositories.PacienteRepository;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
 import com.pet.buscaativa.services.exceptions.ValidationException;
 import com.pet.buscaativa.utils.DocumentoUtil;
@@ -34,7 +33,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class VinculacaoIdentidadeExistenteService {
     private final EscopoUnidadeService escopo;
-    private final PacienteRepository pacientes;
+    private final ModeloClinico modelo;
     private final VinculoAssistencialService vinculos;
 
     /** Identificadores internos minimos; nenhum atributo assistencial ou de outra unidade. */
@@ -63,8 +62,8 @@ public class VinculacaoIdentidadeExistenteService {
         if (cpf == null && cns == null)
             throw new ValidationException("Informe CPF ou CNS para localizacao exata.");
 
-        Optional<Paciente> porCpf = cpf == null ? Optional.empty() : pacientes.findByCpf(cpf);
-        Optional<Paciente> porCns = cns == null ? Optional.empty() : pacientes.findByCns(cns);
+        Optional<Paciente> porCpf = cpf == null ? Optional.empty() : modelo.porCpf(cpf);
+        Optional<Paciente> porCns = cns == null ? Optional.empty() : modelo.porCns(cns);
 
         if (porCpf.isPresent() && porCns.isPresent()
                 && !Objects.equals(porCpf.get().getId(), porCns.get().getId()))

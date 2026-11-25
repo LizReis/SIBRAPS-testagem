@@ -22,7 +22,7 @@ export interface IdentidadeCadastralMinima {
 }
 
 export interface ConfirmacaoCadastroUnico extends DocumentosCadastroUnico {
-  tipoAcompanhamento?: string;
+  tipoAcompanhamento: string;
   nome: string;
   nomeMae: string;
   dataNascimento: string; // yyyy-MM-dd

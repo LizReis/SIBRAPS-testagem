@@ -1,4 +1,4 @@
-package br.sibraps.ensaiohttp;
+package br.sibraps.modelovinculo;
 
 import static org.springframework.http.CacheControl.noStore;
 
@@ -18,10 +18,10 @@ import com.pet.buscaativa.services.impl.*;
 import lombok.RequiredArgsConstructor;
 
 @RestController
-@RequestMapping(EscritoresHttpIsolados.RAIZ)
+@RequestMapping(EscritoresVinculoController.RAIZ)
 @RequiredArgsConstructor
 @PreAuthorize("hasAnyRole('ADMINISTRADOR','PROFISSIONAL','RECEPCAO')")
-class ConsultasHttpIsoladas {
+public class ConsultasVinculoController {
     private final ConsultasClinicasLocaisEnsaioService pacientes;
     private final ConsultaCadastralExataService cadastro;
     private final DtosAssistenciaisLocaisEnsaioService fatos;

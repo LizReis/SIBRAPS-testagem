@@ -10,7 +10,7 @@ import lombok.RequiredArgsConstructor;
 
 /** Ensaios V12/V13 coordenados; o registro/decisão nunca aplica fato clínico. */
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 public class RevisaoProvenienciaLocalEnsaioService {
     private final AtoresEstadoClinicoLocalEnsaio atores;

@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 /** Rebuild derived caches with the SAME domain policy after an explicit migration, before readiness.
  * One patient lock/transaction at a time; no appointments, roles or clinical events are created.
  */
+@org.springframework.context.annotation.Profile("test")
 @Component
 @RequiredArgsConstructor
 public class AgendaMigratedIndicatorsInitializer implements ApplicationRunner {

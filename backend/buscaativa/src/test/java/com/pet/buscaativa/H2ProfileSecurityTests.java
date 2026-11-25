@@ -44,7 +44,7 @@ class H2ProfileSecurityTests {
                         "DB_URL=jdbc:h2:mem:profiles-" + UUID.randomUUID(), "DB_USERNAME=sa",
                         "DB_PASSWORD=" + password, "DEV_DB_PASSWORD=" + password,
                         "spring.jpa.hibernate.ddl-auto=create-drop", "logging.level.root=ERROR",
-                        "DEV_DB_USERNAME=sa", "spring.profiles.active=" + profile);
+                        "DEV_DB_USERNAME=sa", "spring.profiles.active=" + (profile.isEmpty() ? "test" : "test," + profile));
         if (profile.equals("attempted-console-override")) {
             runner = runner.withPropertyValues("spring.h2.console.enabled=true", "spring.h2.console.path=/internal-db");
         }

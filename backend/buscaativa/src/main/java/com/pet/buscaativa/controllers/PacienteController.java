@@ -36,6 +36,7 @@ import com.pet.buscaativa.services.PacienteService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
+@org.springframework.context.annotation.Profile("test")
 @RestController
 @RequestMapping("/api/pacientes")
 @RequiredArgsConstructor

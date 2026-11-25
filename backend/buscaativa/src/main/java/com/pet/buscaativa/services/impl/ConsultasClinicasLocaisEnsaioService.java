@@ -28,7 +28,7 @@ import lombok.RequiredArgsConstructor;
  * de fatos de origem desconhecida.
  */
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 @Transactional(readOnly=true,isolation=Isolation.SERIALIZABLE)
 public class ConsultasClinicasLocaisEnsaioService {
@@ -41,6 +41,7 @@ public class ConsultasClinicasLocaisEnsaioService {
     private final HistoricoFrequenciaLocalEnsaio historicoFrequencia;
     private final EntityManager em;
     private final Clock clock;
+    private final ModeloClinico modelo;
 
     public record Indicadores(StatusPaciente statusPaciente, TipoAcompanhamento tipoAcompanhamento,
             Integer countFaltas, LocalDate dataUltimaPresenca, boolean ultimaPresencaConclusiva,
@@ -81,12 +82,21 @@ public class ConsultasClinicasLocaisEnsaioService {
             throw new ValidationException("Busca deve ter ao menos 3 letras, 11 dígitos de CPF ou 15 de CNS.");
         // A pesquisa e o conjunto de candidatos começam pelo vínculo, não
         // por busca global de documento. locate trata %/_ como caracteres.
-        String filtro = termo.isEmpty()?"":digitos.length()==11?" and v.paciente.cpf=:termo"
-                :digitos.length()==15?" and v.paciente.cns=:termo"
-                :" and locate(:termo,lower(v.paciente.nome))>0";
+        boolean porDocumento = digitos.length() == 11 || digitos.length() == 15;
+        var identidade = modelo.operacional() && porDocumento
+                ? (digitos.length() == 11 ? modelo.porCpf(digitos) : modelo.porCns(digitos))
+                : java.util.Optional.<Paciente>empty();
+        if (modelo.operacional() && porDocumento && identidade.isEmpty())
+            return new Pagina(List.of(), pagina, tamanho, 0, 0);
+
+        String filtro = termo.isEmpty() ? "" : identidade.isPresent() ? " and v.paciente.id=:identidade"
+                : digitos.length() == 11 ? " and v.paciente.cpf=:termo"
+                : digitos.length() == 15 ? " and v.paciente.cns=:termo"
+                : " and locate(:termo,lower(v.paciente.nome))>0";
         var consulta = em.createQuery("select v from VinculoAssistencial v join fetch v.paciente where v.unidadeChave=:unidade"
-                +filtro+" order by v.id",VinculoAssistencial.class).setParameter("unidade",contexto.unidade());
-        if (!termo.isEmpty()) consulta.setParameter("termo",digitos.isEmpty()?termo.toLowerCase(Locale.ROOT):digitos);
+                + filtro + " order by v.id", VinculoAssistencial.class).setParameter("unidade", contexto.unidade());
+        if (identidade.isPresent()) consulta.setParameter("identidade", identidade.orElseThrow().getId());
+        else if (!termo.isEmpty()) consulta.setParameter("termo", digitos.isEmpty() ? termo.toLowerCase(Locale.ROOT) : digitos);
         var itens = consulta.getResultList().stream().filter(ProjecaoClinicaVinculoService::chaveCanonica)
                 .map(this::ler).map(Leitura::item)
                 .filter(i->risco==null || risco==i.indicadores().classificacaoRisco())

@@ -83,7 +83,7 @@ class DevDemonstracaoIntegrationTests {
                 .withUserConfiguration(BuscaativaApplication.class, H2ProfileSecurityTests.ExternalServices.class,
                         RelogioFixo.class)
                 .withPropertyValues("spring.config.location=file:src/main/resources/",
-                        "spring.profiles.active=dev,diagnostico-migracao",
+                        "spring.profiles.active=test,dev,diagnostico-migracao",
                         "spring.datasource.url=jdbc:h2:mem:demo-" + UUID.randomUUID(),
                         "JWT_SECRET_BASE64=" + Base64.getEncoder().encodeToString(SecurityTestSupport.randomBytes()),
                         "DEV_DB_PASSWORD=" + UUID.randomUUID(), "logging.level.root=ERROR")

@@ -20,7 +20,7 @@ import lombok.RequiredArgsConstructor;
 
 /** RNF17 local, sem alterar trilha legada, sem encaminhar dados a serviço externo. */
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 public class AuditoriaBuscaLocalEnsaioService {
     private final AtoresEstadoClinicoLocalEnsaio atores;

@@ -10,7 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.pet.buscaativa.entities.Paciente;
 import com.pet.buscaativa.entities.enums.TipoUsuario;
-import com.pet.buscaativa.repositories.PacienteRepository;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
 import com.pet.buscaativa.services.exceptions.ValidationException;
 import com.pet.buscaativa.utils.DocumentoUtil;
@@ -32,7 +31,7 @@ import lombok.RequiredArgsConstructor;
 @Transactional(readOnly = true)
 public class ConsultaCadastralExataService {
     private final EscopoUnidadeService escopo;
-    private final PacienteRepository pacientes;
+    private final ModeloClinico modelo;
 
     /** Minimo necessario para confirmacao humana de identidade cadastral. */
     public record IdentidadeCadastral(
@@ -55,8 +54,8 @@ public class ConsultaCadastralExataService {
         if (cpf == null && cns == null)
             throw new ValidationException("Informe CPF ou CNS para localizacao exata.");
 
-        Optional<Paciente> encontradoCpf = cpf == null ? Optional.empty() : pacientes.findByCpf(cpf);
-        Optional<Paciente> encontradoCns = cns == null ? Optional.empty() : pacientes.findByCns(cns);
+        Optional<Paciente> encontradoCpf = cpf == null ? Optional.empty() : modelo.porCpf(cpf);
+        Optional<Paciente> encontradoCns = cns == null ? Optional.empty() : modelo.porCns(cns);
         if (encontradoCpf.isPresent() && encontradoCns.isPresent()
                 && !Objects.equals(encontradoCpf.get().getId(), encontradoCns.get().getId()))
             throw conflito();

@@ -76,11 +76,15 @@ describe('CadastroExistente', () => {
     ) as HTMLInputElement;
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
+    component.confirmarVinculoLocal();
+    expect(vinculacao).not.toHaveBeenCalled();
+    component.modalidade = 'INDIVIDUAL';
     fixture.detectChanges();
     component.confirmarVinculoLocal();
     expect(vinculacao).toHaveBeenCalledOnce();
     expect(vinculacao).toHaveBeenCalledWith({
       cpf: '12312312312',
+      tipoAcompanhamento: 'INDIVIDUAL',
       nome: dados.nome,
       nomeMae: dados.nomeMae,
       dataNascimento: dados.dataNascimento,
@@ -137,6 +141,7 @@ describe('CadastroExistente', () => {
     const sucesso = vi.fn();
     component.vinculoConfirmado.subscribe(sucesso);
     component.confirmouIdentidade = true;
+    component.modalidade = 'INDIVIDUAL';
     component.confirmarVinculoLocal();
     expect(sucesso).not.toHaveBeenCalled();
     expect(component.concluido).toBe(false);

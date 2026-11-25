@@ -17,6 +17,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import br.sibraps.ensaiohttp.EscritoresHttpIsolados;
+import br.sibraps.modelovinculo.EscritoresVinculoController;
 import com.pet.buscaativa.alertas.EmailService;
 import com.pet.buscaativa.entities.DisponibilidadeExcecao;
 import com.pet.buscaativa.entities.UsfReferencia;
@@ -359,9 +360,9 @@ class EscritoresLocaisHttpTests extends SecurityTestSupport {
     void montagemIncompletaOuComDevNaoPublicaRotasEBancoPersistenteFalhaAntesDaConexao() {
         var runner = new ApplicationContextRunner().withUserConfiguration(EscritoresHttpIsolados.class);
         runner.withPropertyValues("spring.profiles.active=test,ensaio-estado-local")
-                .run(app -> assertThat(app).doesNotHaveBean(EscritoresHttpIsolados.Cadastro.class));
+                .run(app -> assertThat(app).doesNotHaveBean(EscritoresVinculoController.Cadastro.class));
         runner.withPropertyValues("spring.profiles.active=test,ensaio-estado-local,escritores-http-local,dev")
-                .run(app -> assertThat(app).doesNotHaveBean(EscritoresHttpIsolados.Cadastro.class));
+                .run(app -> assertThat(app).doesNotHaveBean(EscritoresVinculoController.Cadastro.class));
         runner.withPropertyValues("spring.profiles.active=test,ensaio-estado-local,escritores-http-local",
                 "spring.datasource.url=jdbc:h2:file:invalido")
                 .run(app -> assertThat(app.getStartupFailure()).hasMessageContaining("banco H2 em memória"));

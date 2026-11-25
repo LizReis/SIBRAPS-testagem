@@ -123,7 +123,7 @@ class ClinicalAuditMigrationTests {
     @Test void disposableDevMemoryCreatesProtectedAuditStructureWithoutHistoricalCorrections() {
         var config=new com.zaxxer.hikari.HikariConfig();config.setJdbcUrl("jdbc:h2:mem:dev-audit-"+UUID.randomUUID());config.setUsername("sa");config.setPassword(UUID.randomUUID().toString());config.setMaximumPoolSize(1);config.setConnectionTimeout(1000);
         try(var source=new com.zaxxer.hikari.HikariDataSource(config)) {
-            application(source,"dev","create-drop").run(context->{assertThat(context).hasNotFailed();AuditoriaSchemaGuard.verificar(source);assertEquals(0,context.getBean(AuditoriaCorrecaoRepository.class).count());});
+            application(source,"test,dev","create-drop").run(context->{assertThat(context).hasNotFailed();AuditoriaSchemaGuard.verificar(source);assertEquals(0,context.getBean(AuditoriaCorrecaoRepository.class).count());});
         }
     }
 }

@@ -19,7 +19,7 @@ import lombok.RequiredArgsConstructor;
  * Não expõe endpoint, não ativa o corte e não altera a autorização da recepção no legado.
  */
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 public class CadastroAcompanhamentoLocalEnsaioService {
     private final AtoresEstadoClinicoLocalEnsaio atores;

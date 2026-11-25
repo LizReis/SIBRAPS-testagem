@@ -34,7 +34,7 @@ import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 
 @Component
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @Transactional(propagation = Propagation.MANDATORY)
 @RequiredArgsConstructor
 class CoordenacaoEscritaClinicaEnsaio {

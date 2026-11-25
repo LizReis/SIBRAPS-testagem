@@ -16,6 +16,7 @@ import com.pet.buscaativa.services.GrupoTerapeuticoService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
+@org.springframework.context.annotation.Profile("test")
 @RestController
 @RequestMapping("/api/grupos")
 @RequiredArgsConstructor

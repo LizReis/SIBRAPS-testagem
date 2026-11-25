@@ -76,7 +76,7 @@ import lombok.RequiredArgsConstructor;
  * - as datas são relativas a LocalDate.now(clock), mantendo os cenários úteis.
  */
 @Configuration
-@Profile("dev")
+@Profile("test & dev")
 @RequiredArgsConstructor
 public class DevConfig implements CommandLineRunner {
 

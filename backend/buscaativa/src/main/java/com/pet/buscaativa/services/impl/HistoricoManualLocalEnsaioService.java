@@ -15,7 +15,7 @@ import lombok.RequiredArgsConstructor;
 
 /** Registro narrativo local, nunca fonte de frequência efetiva. */
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 public class HistoricoManualLocalEnsaioService {
     private final AtoresEstadoClinicoLocalEnsaio atores;

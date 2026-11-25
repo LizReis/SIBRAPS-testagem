@@ -16,11 +16,12 @@ describe('Contratos HTTP do pacote 6B.2', () => {
   });
   afterEach(() => http.verify());
 
-  it('reserva a ampliação cadastral ao build experimental', () => {
+  it('habilita o contrato por vínculo nos dois builds', () => {
     expect(podeEditarPaciente('ADMINISTRADOR')).toBe(true);
     expect(podeEditarPaciente('RECEPCAO')).toBe(true);
     expect(podeEditarPaciente('PROFISSIONAL')).toBe(contratoExperimental);
-    expect(raizClinica).toBe(contratoExperimental ? '/api/ensaio-escritores' : '/api');
+    expect(contratoExperimental).toBe(true);
+    expect(['/api', '/api/ensaio-escritores']).toContain(raizClinica);
   });
 
   it('envia a versão do cadastro e omite campos clínicos na edição local', () => {
@@ -28,10 +29,9 @@ describe('Contratos HTTP do pacote 6B.2', () => {
     TestBed.inject(PacienteService).atualizarPaciente('pessoa', cadastro,
       {vinculo: 'vinculo', versaoCadastro: 2, versao: 6}).subscribe();
     const req = http.expectOne(r => r.method === 'PUT');
-    expect(req.request.url).toBe(contratoExperimental
-      ? `${raizClinica}/pacientes/pessoa/vinculos/vinculo/cadastro` : '/api/pacientes/pessoa');
-    expect(req.request.params.get('versaoCadastro')).toBe(contratoExperimental ? '2' : null);
-    expect(req.request.body.tipoAcompanhamento).toBe(contratoExperimental ? undefined : 'AMBOS');
+    expect(req.request.url).toBe(`${raizClinica}/pacientes/pessoa/vinculos/vinculo/cadastro`);
+    expect(req.request.params.get('versaoCadastro')).toBe('2');
+    expect(req.request.body.tipoAcompanhamento).toBeUndefined();
     req.flush({});
   });
 

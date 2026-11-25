@@ -15,6 +15,7 @@ import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 
 /** Compatibilidade legada até o corte coordenado; não executa o modelo local. */
+@org.springframework.context.annotation.Profile("test")
 @Component
 @RequiredArgsConstructor
 public class MonitoramentoBuscaAtiva {

@@ -47,7 +47,7 @@ import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 @Transactional(readOnly = true, isolation = Isolation.SERIALIZABLE)
 class HistoricoRiscoVinculoEnsaioService {

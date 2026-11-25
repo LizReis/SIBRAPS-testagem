@@ -54,7 +54,25 @@ public final class IdentidadeDocumentalPreflight {
         return j.queryForObject(sql,Long.class);
     }
 
-    /** Verificação estrutural para futura barreira de inicialização operacional. */
+    /** Executada antes de liberar o DataSource para ORM, HTTP ou agendadores. */
+    public static void verificarOperacional(DataSource source) {
+        try {
+            verificarRestricoes(source);
+            var jdbc = new JdbcTemplate(source);
+            Long aplicadas = jdbc.queryForObject("""
+                    select count(distinct "version") from "sibraps_agenda_schema_history"
+                    where "success"=true and "version" in ('1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17')
+                    """, Long.class);
+            if (!Long.valueOf(17).equals(aplicadas))
+                throw new IllegalStateException("Histórico de migração até V17 incompleto.");
+            if (analisar(source).bloqueiaV17())
+                throw new IllegalStateException("Há documentos duplicados ou inconclusivos. O corte requer revisão cadastral.");
+        } catch (SQLException | org.springframework.dao.DataAccessException e) {
+            throw new IllegalStateException("Banco operacional sem comprovação da migração offline V17.");
+        }
+    }
+
+    /** Verificação estrutural, incluindo o conteúdo da expressão calculada. */
     public static void verificarRestricoes(DataSource source) throws SQLException {
         try(var c=source.getConnection()) {
             if(!"H2".equals(c.getMetaData().getDatabaseProductName()))
@@ -62,12 +80,16 @@ public final class IdentidadeDocumentalPreflight {
             for(String doc:List.of("CPF","CNS")) {
                 String coluna=doc+"_NORMALIZADO";
                 try(var q=c.prepareStatement("""
-                        select count(*) from information_schema.columns
+                        select generation_expression from information_schema.columns
                         where table_schema=? and table_name='TB_PACIENTE' and column_name=? and is_generated='ALWAYS'
                         """)) {
                     q.setString(1,c.getSchema()); q.setString(2,coluna);
                     try(var rs=q.executeQuery()) {
-                        rs.next(); if(rs.getLong(1)!=1)throw new IllegalStateException("Coluna documental calculada ausente.");
+                        if (!rs.next()) throw new IllegalStateException("Coluna documental calculada ausente.");
+                        String expressao = rs.getString(1).replace("\"", "").replaceAll("\\s+", "")
+                                .toUpperCase(java.util.Locale.ROOT);
+                        if (!expressao.equals("NULLIF(REGEXP_REPLACE(" + doc + ",'[^0-9]',''),'')"))
+                            throw new IllegalStateException("Expressão de normalização documental inválida.");
                     }
                 }
                 try(var q=c.prepareStatement("""

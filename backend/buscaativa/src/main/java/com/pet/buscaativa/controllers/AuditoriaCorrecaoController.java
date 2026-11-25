@@ -7,6 +7,7 @@ import com.pet.buscaativa.entities.dto.AuditoriaCorrecaoDTO;
 import com.pet.buscaativa.services.AuditoriaCorrecaoService;
 import lombok.RequiredArgsConstructor;
 
+@org.springframework.context.annotation.Profile("test")
 @RestController @RequestMapping("/api") @RequiredArgsConstructor
 @PreAuthorize("hasAnyRole('ADMINISTRADOR','PROFISSIONAL')")
 public class AuditoriaCorrecaoController {

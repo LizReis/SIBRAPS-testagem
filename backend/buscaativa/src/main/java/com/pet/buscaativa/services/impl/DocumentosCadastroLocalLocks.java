@@ -15,7 +15,7 @@ import com.pet.buscaativa.utils.DocumentoUtil;
 
 /** Serializa documentos ainda sem linha de paciente no ensaio de instância única. */
 @Component
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 class DocumentosCadastroLocalLocks {
     private final List<ReentrantLock> travas = IntStream.range(0, 128).mapToObj(i -> new ReentrantLock()).toList();
 

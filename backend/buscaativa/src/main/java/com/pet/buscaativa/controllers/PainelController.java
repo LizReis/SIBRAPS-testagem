@@ -13,6 +13,7 @@ import com.pet.buscaativa.services.PainelService;
 
 import lombok.RequiredArgsConstructor;
 
+@org.springframework.context.annotation.Profile("test")
 @RestController
 @RequestMapping("/api/painel")
 @RequiredArgsConstructor

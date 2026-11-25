@@ -15,6 +15,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.util.ReflectionUtils;
 
 import com.pet.buscaativa.entities.Paciente;
 import com.pet.buscaativa.entities.enums.ClassificacaoRisco;
@@ -41,6 +42,8 @@ class ProjecaoRiscoPoliticaLegadaTests {
 
         // Entidade transitória: exercita a política real sem paciente persistido ou evento operacional.
         var legado = mock(PacienteServiceImpl.class, CALLS_REAL_METHODS);
+        var tipoModelo = ReflectionUtils.findField(PacienteServiceImpl.class, "modelo").getType();
+        ReflectionTestUtils.setField(legado, "modelo", mock(tipoModelo));
         ReflectionTestUtils.setField(legado, "clock",
                 Clock.fixed(REFERENCIA.atStartOfDay().toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
         legado.calcularEAtualizarRisco(paciente);

@@ -37,7 +37,7 @@ import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 public class FrequenciaColetivaLocalEnsaioService {
     private final AtoresEstadoClinicoLocalEnsaio atores;

@@ -24,7 +24,7 @@ import lombok.RequiredArgsConstructor;
 
 /** Fonte local dos dois relatórios operacionais existentes. Sem endpoint ou escrita clínica. */
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 @Transactional(readOnly=true,isolation=Isolation.SERIALIZABLE)
 public class RelatoriosLocaisEnsaioService {

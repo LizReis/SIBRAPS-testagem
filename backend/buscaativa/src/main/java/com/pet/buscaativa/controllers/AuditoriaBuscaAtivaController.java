@@ -9,6 +9,7 @@ import com.pet.buscaativa.entities.dto.*;
 import com.pet.buscaativa.services.AuditoriaBuscaAtivaService;
 import lombok.RequiredArgsConstructor;
 
+@org.springframework.context.annotation.Profile("test")
 @RestController @RequestMapping("/api") @RequiredArgsConstructor
 public class AuditoriaBuscaAtivaController {
     private final AuditoriaBuscaAtivaService service;

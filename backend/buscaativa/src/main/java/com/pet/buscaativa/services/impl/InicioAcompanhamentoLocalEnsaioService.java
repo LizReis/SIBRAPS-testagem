@@ -37,7 +37,7 @@ import lombok.RequiredArgsConstructor;
  * deverá coordenar também os escritores de fatos que não usam essa trava.
  */
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 public class InicioAcompanhamentoLocalEnsaioService {
     private final AtoresEstadoClinicoLocalEnsaio atores;

@@ -52,6 +52,7 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 public class AgendamentoServiceImpl implements AgendamentoService {
+    private final ModeloClinico modelo;
 
     private static final long LIMITE_DIAS_CONSULTA_AGENDA = 62;
 
@@ -84,6 +85,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     @Override
     @Transactional
     public AgendamentoDTO save(AgendamentoDTO agendamentoDTO) {
+        modelo.exigirLegado();
         if (agendamentoDTO == null || agendamentoDTO.pacienteId() == null || agendamentoDTO.usuarioId() == null
                 || agendamentoDTO.dataAgendamento() == null) {
             throw new ValidationException("Informe paciente, profissional e data do atendimento.");
@@ -387,6 +389,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
 
     @Override
     public List<LocalDate> sugerirDataRemarcacao(Long agendamento) {
+        modelo.exigirLegado();
         var original = agendamentoRepository.findById(agendamento)
                 .orElseThrow(() -> new ResourceNotFoundException("Agendamento não encontrado"));
 
@@ -489,6 +492,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
 
     @Override
     public List<AgendamentoDTO> findAll() {
+        modelo.exigirLegado();
         var list = agendamentoRepository.findAll(escopoUnidadeService.<Agendamento>specificationPaciente("paciente")
                 .and(escopoUnidadeService.specificationUsuario("usuario")));
         // Defense-in-depth: filtros de paciente e profissional nao provam
@@ -601,12 +605,14 @@ public class AgendamentoServiceImpl implements AgendamentoService {
 
     @Override
     public List<AgendamentoDTO> buscarAgendaDoDia(LocalDate data, String emailLogado, UUID profissionalIdPublico) {
+        modelo.exigirLegado();
        return buscarAgendaPorPeriodo(data, data, emailLogado, profissionalIdPublico);
     }
 
     @Override
     public List<AgendamentoDTO> buscarAgendaPorPeriodo(LocalDate dataInicio, LocalDate dataFim, String emailLogado,
                                                        UUID profissionalIdPublico) {
+        modelo.exigirLegado();
         if (dataInicio.isAfter(dataFim)) {
             throw new ValidationException("A data inicial não pode ser posterior à data final.");
         }
@@ -644,18 +650,21 @@ public class AgendamentoServiceImpl implements AgendamentoService {
     @Override
     @Transactional
     public AgendamentoDTO atualizarStatus(Long id, SituacaoAtendimento novoStatus, Integer expectedVersion) {
+        modelo.exigirLegado();
         return atualizarStatus(id, novoStatus, expectedVersion, null);
     }
 
     @Override
     @Transactional
     public AgendamentoDTO atualizarStatus(Long id, SituacaoAtendimento novoStatus, Integer expectedVersion, String justificativa) {
+        modelo.exigirLegado();
         return aplicarAtualizacao(id,novoStatus,expectedVersion,justificativa,false);
     }
 
     @Override
     @Transactional
     public AgendamentoDTO corrigirFrequencia(Long id,com.pet.buscaativa.entities.dto.CorrigirFrequenciaDTO dto) {
+        modelo.exigirLegado();
         if (dto==null || dto.novaFrequencia()==null
                 || dto.novaFrequencia()==com.pet.buscaativa.entities.enums.FrequenciaAssistencial.NAO_REGISTRADA
                 || dto.version()==null || dto.version()<0)
@@ -665,6 +674,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
 
     @Override @Transactional
     public AgendamentoDTO recuperarReservaCancelada(Long id,com.pet.buscaativa.entities.dto.RecuperarReservaCanceladaDTO dto) {
+        modelo.exigirLegado();
         if(dto==null)throw new ValidationException("Informe versão e justificativa da recuperação.");
         var a=bloquearAgendamento(id);autorizacaoClinica.validarAgendamento(a,true);
         validarVersaoRegularizacao(a,dto.version());validarEstadoRegularizacao(a);
@@ -682,6 +692,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
 
     @Override @Transactional
     public AgendamentoDTO regularizarFrequenciaCancelada(Long id,com.pet.buscaativa.entities.dto.RegularizarFrequenciaCanceladaDTO dto) {
+        modelo.exigirLegado();
         if(dto==null || (dto.novaFrequencia()!=com.pet.buscaativa.entities.enums.FrequenciaAssistencial.PRESENTE
                 && dto.novaFrequencia()!=com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU))
             throw new ValidationException("Informe resultado PRESENTE/FALTOU comprovado, versão e justificativa.");
@@ -864,6 +875,7 @@ public class AgendamentoServiceImpl implements AgendamentoService {
 
     @Override
     public AgendamentoDTO findById(Long id, String emailLogado) {
+        modelo.exigirLegado();
         Usuario usuarioLogado = usuarioRepository.findByEmail(emailLogado)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário logado não encontrado"));
 

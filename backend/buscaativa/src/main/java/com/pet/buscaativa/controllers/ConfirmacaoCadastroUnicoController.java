@@ -27,6 +27,7 @@ import lombok.RequiredArgsConstructor;
  * clinicos: estes ainda dependem de migracao coordenada dos filtros legados.
  * Nenhuma informacao enviada pelo cliente determina a unidade do vinculo.
  */
+@org.springframework.context.annotation.Profile("test")
 @RestController
 @RequestMapping("/api/pacientes/cadastro-unico")
 @RequiredArgsConstructor

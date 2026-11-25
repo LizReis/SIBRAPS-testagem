@@ -11,6 +11,7 @@ import com.pet.buscaativa.services.InicioService;
 
 import lombok.RequiredArgsConstructor;
 
+@org.springframework.context.annotation.Profile("test")
 @RestController
 @RequestMapping("/api/inicio")
 @RequiredArgsConstructor

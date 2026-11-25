@@ -36,6 +36,7 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
+    private final ModeloClinico modelo;
 
     private final HistoricoPacienteRepository historicoRepository;
     private final java.time.Clock clock;
@@ -48,6 +49,7 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
     @Override
     @Transactional(readOnly = true)
     public HistoricoPacienteDTO consultar(UUID pacienteId) {
+        modelo.exigirLegado();
         Paciente paciente = pacienteRepository.findByIdPublico(pacienteId)
                 .filter(escopoUnidadeService::pacientePertenceAoEscopo)
                 .orElseThrow(() -> new ResourceNotFoundException(pacienteId));
@@ -91,6 +93,7 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
     @Override
     @Transactional
     public void registrarManual(UUID pacienteId, RegistroHistoricoPacienteDTO registro) {
+        modelo.exigirLegado();
         if (registro.tipo() != TipoEventoHistoricoPaciente.BUSCA_ATIVA
                 && registro.tipo() != TipoEventoHistoricoPaciente.PARTICIPACAO_GRUPO_TERAPEUTICO) {
             throw new ValidationException("Somente registros de busca ativa ou participação em grupo podem ser incluídos manualmente.");
@@ -125,6 +128,9 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
     @Transactional
     public void registrarAlteracaoDeAtendimento(Agendamento agendamento, SituacaoAtendimento statusAnterior) {
         SituacaoAtendimento novoStatus = agendamento.getSituacaoAtendimento();
+        if (modelo.operacional() && novoStatus != SituacaoAtendimento.CANCELADO
+                && novoStatus != SituacaoAtendimento.REMARCADO && novoStatus != SituacaoAtendimento.REMARCADO_ORIGEM)
+            modelo.exigirLegado();
         registrarAlteracao(agendamento, statusAnterior, novoStatus);
     }
 
@@ -132,6 +138,7 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
     @Transactional
     public void registrarCorrecaoDeFrequencia(Agendamento agendamento,
             com.pet.buscaativa.entities.enums.FrequenciaAssistencial anterior) {
+        modelo.exigirLegado();
         registrarAlteracao(agendamento, SituacaoAtendimento.valueOf(anterior.name()),
                 SituacaoAtendimento.valueOf(agendamento.getFrequenciaAssistencial().name()));
     }
@@ -221,6 +228,7 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
 
     @Override @Transactional
     public void registrarFatoRegularizado(Agendamento a) {
+        modelo.exigirLegado();
         if(a.getSituacaoReserva()!=com.pet.buscaativa.entities.enums.SituacaoReserva.CANCELADA
             || (a.getFrequenciaAssistencial()!=com.pet.buscaativa.entities.enums.FrequenciaAssistencial.PRESENTE
             && a.getFrequenciaAssistencial()!=com.pet.buscaativa.entities.enums.FrequenciaAssistencial.FALTOU))
@@ -235,6 +243,7 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
     @Override
     @Transactional
     public void registrarSituacaoAtual(Paciente paciente, String descricao) {
+        modelo.exigirLegado();
         salvar(paciente, null, usuarioLogado(), TipoEventoHistoricoPaciente.SITUACAO_ATUALIZADA,
                 null, LocalDateTime.now(), descricao);
     }
@@ -242,6 +251,7 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
     @Override
     @Transactional
     public void registrarFrequenciaGrupo(Paciente paciente, SessaoGrupo sessao, StatusPresencaGrupo status) {
+        modelo.exigirLegado();
         if (historicoRepository.existsByPacienteAndSessaoGrupo(paciente, sessao)) {
             throw new com.pet.buscaativa.services.exceptions.ConflictException("Já existe histórico clínico para esta sessão e paciente.");
         }
@@ -289,6 +299,7 @@ public class HistoricoPacienteServiceImpl implements HistoricoPacienteService {
     @Override
     @Transactional
     public void corrigirFrequenciaGrupo(Paciente paciente, SessaoGrupo sessao, StatusPresencaGrupo status) {
+        modelo.exigirLegado();
         // O lote validou a evidência anterior antes da primeira alteração; não escolher arbitrariamente.
         HistoricoPaciente h = eventoUnicoGrupo(paciente, sessao);
         boolean presente = status == StatusPresencaGrupo.PRESENTE;

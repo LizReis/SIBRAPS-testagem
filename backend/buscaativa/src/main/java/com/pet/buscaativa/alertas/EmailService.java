@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@org.springframework.context.annotation.Profile("test")
 @Service
 @RequiredArgsConstructor
 public class EmailService {

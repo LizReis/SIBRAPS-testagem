@@ -11,9 +11,9 @@ describe('permissões de pacientes', () => {
     },
   );
 
-  it('permite cadastro ao profissional sem conceder edicao', () => {
+  it('permite cadastro e edição cadastral ao profissional', () => {
     expect(podeCadastrarPaciente('PROFISSIONAL')).toBe(true);
-    expect(podeEditarPaciente('PROFISSIONAL')).toBe(false);
+    expect(podeEditarPaciente('PROFISSIONAL')).toBe(true);
   });
 
   it('nao autoriza perfis desconhecidos a cadastrar ou editar', () => {

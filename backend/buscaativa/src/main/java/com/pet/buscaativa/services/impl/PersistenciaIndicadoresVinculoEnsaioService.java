@@ -20,7 +20,7 @@ import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 public class PersistenciaIndicadoresVinculoEnsaioService {
     private final AtoresEstadoClinicoLocalEnsaio atores;

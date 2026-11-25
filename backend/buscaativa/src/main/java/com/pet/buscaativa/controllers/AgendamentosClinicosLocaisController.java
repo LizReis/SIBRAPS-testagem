@@ -19,6 +19,7 @@ import lombok.RequiredArgsConstructor;
  * Rota aditiva para consultar apenas agendamentos da propria unidade.
  * Nao substitui agendas, historicos e indicadores globais legados.
  */
+@org.springframework.context.annotation.Profile("test")
 @RestController
 @RequestMapping("/api/pacientes")
 @RequiredArgsConstructor

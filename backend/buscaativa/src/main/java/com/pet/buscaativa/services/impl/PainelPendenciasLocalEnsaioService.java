@@ -13,7 +13,7 @@ import lombok.RequiredArgsConstructor;
 
 /** Painel administrativo local da opção B. Decisão não equivale à aplicação. */
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 @Transactional(readOnly=true,isolation=Isolation.SERIALIZABLE)
 public class PainelPendenciasLocalEnsaioService {

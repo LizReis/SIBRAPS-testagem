@@ -16,7 +16,7 @@ import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 
 @Component
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 class AtoresEstadoClinicoLocalEnsaio {
     private final EscopoUnidadeService escopo;

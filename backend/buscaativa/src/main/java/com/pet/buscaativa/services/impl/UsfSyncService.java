@@ -20,6 +20,8 @@ import lombok.extern.slf4j.Slf4j;
 
 
 @Slf4j
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+        name = "sibraps.usf.sincronizar", havingValue = "true", matchIfMissing = true)
 @Service
 public class UsfSyncService {
     

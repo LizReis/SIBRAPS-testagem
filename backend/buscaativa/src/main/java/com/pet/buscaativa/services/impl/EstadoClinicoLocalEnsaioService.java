@@ -32,7 +32,7 @@ import lombok.RequiredArgsConstructor;
  * Preserva o estado global e executa o cálculo local sob as mesmas travas.
  */
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 public class EstadoClinicoLocalEnsaioService {
     private final AtoresEstadoClinicoLocalEnsaio atores;

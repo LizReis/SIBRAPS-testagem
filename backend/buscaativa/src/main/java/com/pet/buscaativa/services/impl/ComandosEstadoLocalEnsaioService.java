@@ -14,7 +14,7 @@ import lombok.RequiredArgsConstructor;
 
 /** Adaptador interno de estado clínico, não ativa rotas reais. */
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 public class ComandosEstadoLocalEnsaioService {
     private final EstadoClinicoLocalEnsaioService estado;

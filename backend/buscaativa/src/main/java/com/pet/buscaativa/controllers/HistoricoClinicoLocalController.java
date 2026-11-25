@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
  * as operacoes clinicas legadas. Somente eventos com proveniencia verificavel,
  * nunca indicadores globais de uma identidade compartilhada.
  */
+@org.springframework.context.annotation.Profile("test")
 @RestController
 @RequestMapping("/api/pacientes")
 @RequiredArgsConstructor

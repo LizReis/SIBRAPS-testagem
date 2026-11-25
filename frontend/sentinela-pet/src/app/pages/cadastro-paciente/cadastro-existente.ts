@@ -143,7 +143,7 @@ export class CadastroExistente implements OnDestroy {
     this.cdr.markForCheck();
     this.vinculoAtual = this.cadastro.confirmarVinculo({
       ...this.documentosConsultados,
-      ...(contratoExperimental ? { tipoAcompanhamento: this.modalidade } : {}),
+      tipoAcompanhamento: this.modalidade,
       nome: this.identidade.nome,
       nomeMae: this.identidade.nomeMae,
       dataNascimento: this.identidade.dataNascimento,

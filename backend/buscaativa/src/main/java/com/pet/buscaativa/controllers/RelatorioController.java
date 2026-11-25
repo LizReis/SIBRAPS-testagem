@@ -18,6 +18,7 @@ import com.pet.buscaativa.entities.enums.TipoAcompanhamento;
 import com.pet.buscaativa.services.RelatorioService;
 import lombok.RequiredArgsConstructor;
 
+@org.springframework.context.annotation.Profile("test")
 @RestController
 @RequestMapping("/api/relatorios")
 @RequiredArgsConstructor

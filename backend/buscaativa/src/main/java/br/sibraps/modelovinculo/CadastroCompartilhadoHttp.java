@@ -1,4 +1,4 @@
-package br.sibraps.ensaiohttp;
+package br.sibraps.modelovinculo;
 
 import java.time.LocalDate;
 import java.util.UUID;

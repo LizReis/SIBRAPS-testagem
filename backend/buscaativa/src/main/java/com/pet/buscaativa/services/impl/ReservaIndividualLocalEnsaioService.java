@@ -24,7 +24,7 @@ import lombok.RequiredArgsConstructor;
 
 /** Ensaio do POST de uma reserva nova. Não oferece rota nem escreve no cache global. */
 @Service
-@Profile("test & ensaio-estado-local")
+@Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor
 public class ReservaIndividualLocalEnsaioService {
     private final AtoresEstadoClinicoLocalEnsaio atores;

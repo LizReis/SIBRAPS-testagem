@@ -29,6 +29,7 @@ import com.pet.buscaativa.services.AgendamentoService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
+@org.springframework.context.annotation.Profile("test")
 @RestController
 @RequestMapping("/api/agendamentos")
 @RequiredArgsConstructor

@@ -4,17 +4,20 @@ import { of, Subject, throwError } from 'rxjs';
 import { GrupoTerapeuticoService } from '../../services/grupo-terapeutico-service';
 import { ProfissionalService } from '../../services/profissional/profissional-service';
 import { RelatorioService } from '../../services/relatorio-service';
+import { UsuarioLogadoService } from '../../services/usuario-logado-service';
 import { converterPeriodo, Relatorios } from './relatorios';
 
 describe('Relatorios', () => {
   let fixture: ComponentFixture<Relatorios>;
   let component: Relatorios;
-let relatorioService: {
+  let relatorioService: {
+    consultarBusca: ReturnType<typeof vi.fn>;
     baixarBuscaAtivaPdf: ReturnType<typeof vi.fn>;
     baixarFrequenciaGruposPdf: ReturnType<typeof vi.fn>;
     baixarBuscaAtivaExcel: ReturnType<typeof vi.fn>;
     baixarFrequenciaGruposExcel: ReturnType<typeof vi.fn>;
-  };  const respostaPdf = new HttpResponse({
+  };
+  const respostaPdf = new HttpResponse({
     body: new Blob(['%PDF'], { type: 'application/pdf' }),
     headers: new HttpHeaders({ 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="servidor.pdf"' }),
   });
@@ -29,14 +32,17 @@ let relatorioService: {
 
   beforeEach(async () => {
     relatorioService = {
+      consultarBusca: vi.fn().mockReturnValue(of({ dados: [], revisaoOuSelecaoInconclusiva: 0 })),
       baixarBuscaAtivaPdf: vi.fn().mockReturnValue(of(respostaPdf)),
       baixarFrequenciaGruposPdf: vi.fn().mockReturnValue(of(respostaPdf)),
       baixarBuscaAtivaExcel: vi.fn().mockReturnValue(of(respostaExcel)),
       baixarFrequenciaGruposExcel: vi.fn().mockReturnValue(of(respostaExcel)),
-    };    await TestBed.configureTestingModule({
+    };
+    await TestBed.configureTestingModule({
       imports: [Relatorios],
       providers: [
         { provide: RelatorioService, useValue: relatorioService },
+        { provide: UsuarioLogadoService, useValue: { obterUsuarioLogado: () => of({ tipoUsuario: 'PROFISSIONAL' }) } },
         { provide: ProfissionalService, useValue: { listarElegiveisParaReferencia: () => of([]) } },
         { provide: GrupoTerapeuticoService, useValue: { listarGrupos: () => of([]) } },
       ],

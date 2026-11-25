@@ -51,6 +51,7 @@ public class PacienteServiceImpl implements PacienteService{
     private static final int FALTAS_VERMELHO = 3;
 
     private final PacienteRepository pacienteRepository;
+    private final ModeloClinico modelo;
     private final PacienteMapper pacienteMapper;
     private final HistoricoPacienteService historicoPacienteService;
     private final AgendamentoRepository agendamentoRepository;
@@ -81,7 +82,7 @@ public class PacienteServiceImpl implements PacienteService{
         pessoa.setGatilhoVisitaAcionado(null);
         aplicarDadosCompartilhados(dados, pessoa);
         escopoUnidadeService.validarEscopoDoNovoCadastro(pessoa);
-        pacienteRepository.saveAndFlush(pessoa);
+        modelo.gravarIdentidade(pessoa);
         criarVinculo.accept(pessoa.getIdPublico());
         return pacienteMapper.toPacienteDTO(pessoa);
     }
@@ -96,7 +97,7 @@ public class PacienteServiceImpl implements PacienteService{
                         escopoUnidadeService.validarAcesso(encontrado);
                 });
         aplicarDadosCompartilhados(dados, pessoa);
-        pacienteRepository.saveAndFlush(pessoa);
+        modelo.gravarIdentidade(pessoa);
     }
 
     private void aplicarDadosCompartilhados(PacienteDTO dados, Paciente pessoa) {
@@ -121,6 +122,7 @@ public class PacienteServiceImpl implements PacienteService{
     @Override
     @Transactional
     public PacienteDTO save(PacienteDTO pacienteDTO, boolean ignorarSimilaridade) {
+        modelo.exigirLegado();
         rejeitarContadorInformado(pacienteDTO);
         
         escopoUnidadeService.validarUnidadeConfigurada();
@@ -192,6 +194,7 @@ public class PacienteServiceImpl implements PacienteService{
     @Override
     @Transactional
     public void inativarPaciente(UUID idPublico) {
+        modelo.exigirLegado();
         Paciente paciente = pacienteRepository.findByIdPublicoForUpdate(idPublico)
                 .filter(escopoUnidadeService::pacientePertenceAoEscopo)
                 .orElseThrow(() -> new DatabaseException("Paciente não encontrado!"));
@@ -204,6 +207,7 @@ public class PacienteServiceImpl implements PacienteService{
 
     @Override
     public PacienteDTO findById(UUID idPublico) {
+        modelo.exigirLegado();
         Paciente paciente = pacienteRepository.findByIdPublico(idPublico)
                 .filter(escopoUnidadeService::pacientePertenceAoEscopo)
                 .orElseThrow(() -> new ResourceNotFoundException(idPublico));
@@ -213,6 +217,7 @@ public class PacienteServiceImpl implements PacienteService{
     @Override
     public PacienteListaResponseDTO pesquisar(String q, ClassificacaoRisco classificacao, StatusPaciente status,
             TipoAcompanhamento tipo, int page, int size) {
+        modelo.exigirLegado();
         size = Math.min(Math.max(size, 1), 50); page = Math.max(page, 0);
         Specification<Paciente> spec = escopoUnidadeService.specificationPaciente();
         if (q != null && !q.isBlank()) {
@@ -239,6 +244,7 @@ public class PacienteServiceImpl implements PacienteService{
 
     @Override
     public PacienteDetalheDTO findDetalhe(UUID idPublico) {
+        modelo.exigirLegado();
         Paciente p=pacienteRepository.findByIdPublico(idPublico).filter(escopoUnidadeService::pacientePertenceAoEscopo).orElseThrow(()->new ResourceNotFoundException(idPublico));
         var proximo=agendamentoRepository.findFirstByPacienteAndDataAgendamentoGreaterThanEqualAndSituacaoAtendimentoInOrderByDataAgendamentoAscHoraAtendimentoAsc(
                 p, LocalDate.now(clock), List.of(SituacaoAtendimento.AGENDADO, SituacaoAtendimento.REMARCADO))
@@ -252,6 +258,7 @@ public class PacienteServiceImpl implements PacienteService{
 
     @Override
     public List<AgendamentoDTO> listarAgendamentos(UUID idPublico) {
+        modelo.exigirLegado();
         Paciente p=pacienteRepository.findByIdPublico(idPublico).filter(escopoUnidadeService::pacientePertenceAoEscopo).orElseThrow(()->new ResourceNotFoundException(idPublico));
         return agendamentoRepository.findDetalhesByPaciente(p).stream().map(a->new AgendamentoDTO(a.getId(),a.getUsuario().getIdPublico(),
                 a.getUsuario().getNome(),p.getIdPublico(),p.getNome(),p.getTipoAcompanhamento(),a.getDataAgendamento(),
@@ -263,6 +270,7 @@ public class PacienteServiceImpl implements PacienteService{
 
     @Override
     public List<PacienteDTO> findAll() {
+        modelo.exigirLegado();
         List<Paciente> list = pacienteRepository.findAll(escopoUnidadeService.<Paciente>specificationPaciente());
         return list.stream()
                 .map(PacienteDTO::new)
@@ -286,7 +294,8 @@ public class PacienteServiceImpl implements PacienteService{
             String cpfNormalizado =
                     DocumentoUtil.normalizarCPF(pacienteDTO.cpf());
 
-            pacienteRepository.findByCpf(cpfNormalizado).ifPresent(p -> {
+            modelo.porCpf(cpfNormalizado).ifPresent(p -> {
+                if (modelo.operacional() && !Objects.equals(p.getIdPublico(), idPublico)) throw ModeloClinico.conflitoDocumental();
                 validarAcesso.accept(p);
                 if (!Objects.equals(
                         p.getIdPublico(),
@@ -305,7 +314,8 @@ public class PacienteServiceImpl implements PacienteService{
             String cnsNormalizado =
                     DocumentoUtil.normalizarCNS(pacienteDTO.cns());
 
-            pacienteRepository.findByCns(cnsNormalizado).ifPresent(p -> {
+            modelo.porCns(cnsNormalizado).ifPresent(p -> {
+                if (modelo.operacional() && !Objects.equals(p.getIdPublico(), idPublico)) throw ModeloClinico.conflitoDocumental();
                 validarAcesso.accept(p);
                 if (!Objects.equals(
                         p.getIdPublico(),
@@ -348,6 +358,7 @@ public class PacienteServiceImpl implements PacienteService{
 
     @Override
     public PacienteDTO findByCns(String cns) {
+        modelo.exigirLegado();
         String cnsNormalizado = DocumentoUtil.normalizarCNS(cns);
         Paciente paciente = pacienteRepository.findOne(escopoUnidadeService.<Paciente>specificationPaciente()
                 .and((r,q,cb)->cb.equal(r.get("cns"), cnsNormalizado)))
@@ -358,6 +369,7 @@ public class PacienteServiceImpl implements PacienteService{
 
     @Override
     public PacienteDTO findByCpf(String cpf) {
+        modelo.exigirLegado();
         String cpfNormalizado = DocumentoUtil.normalizarCPF(cpf);
         Paciente paciente = pacienteRepository.findOne(escopoUnidadeService.<Paciente>specificationPaciente()
                 .and((r,q,cb)->cb.equal(r.get("cpf"), cpfNormalizado)))
@@ -368,6 +380,7 @@ public class PacienteServiceImpl implements PacienteService{
 
     @Override
     public List<PacienteDTO> findByNome(String nome) {
+        modelo.exigirLegado();
         List<Paciente> pacientes = pacienteRepository.findAll(escopoUnidadeService.<Paciente>specificationPaciente()
                 .and((r,q,cb)->cb.like(cb.lower(r.get("nome")), "%" + nome.toLowerCase() + "%")));
         
@@ -379,6 +392,7 @@ public class PacienteServiceImpl implements PacienteService{
 
     @Override
     public PacienteDTO findByNomeMae(String nomeMae) {
+        modelo.exigirLegado();
         var paciente = pacienteRepository.findAll(escopoUnidadeService.<Paciente>specificationPaciente()
                 .and((r,q,cb)->cb.equal(r.get("nomeMae"), nomeMae))).stream().findFirst().orElse(null);
 
@@ -392,6 +406,7 @@ public class PacienteServiceImpl implements PacienteService{
     @Override
     public void atualizarAssiduidadePaciente(Paciente paciente, SituacaoAtendimento statusAnterior,
             SituacaoAtendimento novoStatus, LocalDate dataAtendimento) {
+        modelo.exigirLegado();
 
         recalcularAssiduidadePaciente(paciente);
     }
@@ -400,11 +415,13 @@ public class PacienteServiceImpl implements PacienteService{
         // determinísticas. O agendamento corrente já está alterado no persistence context.
         @Override
     public void recalcularAssiduidadePaciente(Paciente paciente) {
+        modelo.exigirLegado();
         recalcularAssiduidadePaciente(paciente, true);
     }
 
     @Override
     public void recalcularAssiduidadePaciente(Paciente paciente, boolean registrarMudancaDeRisco) {
+        modelo.exigirLegado();
         record Evento(LocalDateTime quando, boolean presente, int origem, long id) {}
         List<Evento> eventos = new java.util.ArrayList<>();
         var atendimentos = agendamentoRepository.findByPaciente(paciente);
@@ -444,6 +461,7 @@ public class PacienteServiceImpl implements PacienteService{
 
     @Override
     public void calcularEAtualizarRisco(Paciente paciente) {
+        modelo.exigirLegado();
         calcularEAtualizarRisco(paciente, true);
     }
 
@@ -496,6 +514,7 @@ public class PacienteServiceImpl implements PacienteService{
     @Override
     @Transactional
     public void encerrarAcompanhamento(UUID idPublico, EncerramentoPacienteDTO encerramento) {
+        modelo.exigirLegado();
         Paciente paciente = pacienteRepository.findByIdPublicoForUpdate(idPublico)
                 .filter(escopoUnidadeService::pacientePertenceAoEscopo)
                 .orElseThrow(() -> new ResourceNotFoundException(idPublico));
@@ -523,6 +542,7 @@ public class PacienteServiceImpl implements PacienteService{
     @Override
     @Transactional
     public void reativarAcompanhamento(UUID idPublico, ReativacaoPacienteDTO reativacao) {
+        modelo.exigirLegado();
         Paciente paciente = pacienteRepository.findByIdPublicoForUpdate(idPublico)
                 .filter(escopoUnidadeService::pacientePertenceAoEscopo)
                 .orElseThrow(() -> new ResourceNotFoundException(idPublico));
@@ -544,6 +564,7 @@ public class PacienteServiceImpl implements PacienteService{
     @Override
     @Transactional
     public List<AlertaBuscaAtivaDTO> listarPacientesEmBuscaAtiva() {
+        modelo.exigirLegado();
         // Reclassificação sob demanda impede que a consulta dependa exclusivamente do scheduler.
         // Compatibilidade da consulta legada: manter a política e auditoria
         // atuais, mas serializar a reclassificação com todos os escritores
