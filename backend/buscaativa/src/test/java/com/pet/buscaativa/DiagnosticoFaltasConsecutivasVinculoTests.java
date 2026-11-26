@@ -85,4 +85,53 @@ class DiagnosticoFaltasConsecutivasVinculoTests {
         assertEquals(OptionalInt.of(0), resultado.faltasConsecutivasAnalisaveis());
         assertTrue(resultado.ultimaPresencaComprovada().isEmpty());
     }
+
+    @Test
+    void duasFaltasNoMesmoDiaEmHorariosDistintosNaoSaoCandidatas() {
+        var individual = LinhaDoTempoFrequenciasVinculoService.Fonte.ATENDIMENTO_INDIVIDUAL;
+        var grupo = LinhaDoTempoFrequenciasVinculoService.Fonte.SESSAO_GRUPO;
+        var d = new LinhaDoTempoFrequenciasVinculoService.Diagnostico(
+                List.of(evento(10,9,false,individual,1), evento(10,14,false,grupo,1)),0,0,0,0);
+        assertTrue(DiagnosticoFaltasConsecutivasVinculoService.candidatosReconciliacao(d).isEmpty());
+        assertEquals(OptionalInt.of(2), DiagnosticoFaltasConsecutivasVinculoService.calcular(d)
+                .faltasConsecutivasAnalisaveis());
+    }
+
+    @Test
+    void frequenciasIguaisNoMesmoInstanteSaoCandidatasNaoDuplicidadesComprovadas() {
+        var origem = LinhaDoTempoFrequenciasVinculoService.Fonte.ATENDIMENTO_INDIVIDUAL;
+        var um = evento(10,9,false,origem,1);
+        var dois = evento(10,9,false,origem,2);
+        var d = new LinhaDoTempoFrequenciasVinculoService.Diagnostico(List.of(dois,um),0,0,0,0);
+        var candidatos = DiagnosticoFaltasConsecutivasVinculoService.candidatosReconciliacao(d);
+        assertEquals(1,candidatos.size());
+        assertEquals(DiagnosticoFaltasConsecutivasVinculoService.TipoCandidato.FREQUENCIAS_COINCIDENTES,
+                candidatos.getFirst().tipo());
+        assertEquals(List.of(um,dois),candidatos.getFirst().fatos());
+        // Caracterização do comportamento atual: não suprimir automaticamente.
+        assertEquals(OptionalInt.of(2),DiagnosticoFaltasConsecutivasVinculoService.calcular(d)
+                .faltasConsecutivasAnalisaveis());
+    }
+
+    @Test
+    void frequenciasContraditoriasDistinguemFontesComMesmoIdNumerico() {
+        var individual = LinhaDoTempoFrequenciasVinculoService.Fonte.ATENDIMENTO_INDIVIDUAL;
+        var grupo = LinhaDoTempoFrequenciasVinculoService.Fonte.SESSAO_GRUPO;
+        var d = new LinhaDoTempoFrequenciasVinculoService.Diagnostico(
+                List.of(evento(10,9,true,individual,1), evento(10,9,false,grupo,1)),0,0,0,0);
+        var candidato = DiagnosticoFaltasConsecutivasVinculoService.candidatosReconciliacao(d).getFirst();
+        assertEquals(DiagnosticoFaltasConsecutivasVinculoService.TipoCandidato.FREQUENCIAS_CONTRADITORIAS,
+                candidato.tipo());
+        assertEquals(2,candidato.fatos().size());
+        assertTrue(DiagnosticoFaltasConsecutivasVinculoService.calcular(d)
+                .faltasConsecutivasAnalisaveis().isEmpty());
+    }
+
+    @Test
+    void repeticaoDaMesmaRepresentacaoNaoCriaDoisFatosCandidatos() {
+        var fato = evento(10,9,false,LinhaDoTempoFrequenciasVinculoService.Fonte.ATENDIMENTO_INDIVIDUAL,1);
+        var d = new LinhaDoTempoFrequenciasVinculoService.Diagnostico(List.of(fato,fato),0,0,0,0);
+        assertTrue(DiagnosticoFaltasConsecutivasVinculoService.candidatosReconciliacao(d).isEmpty());
+    }
+
 }
