@@ -778,7 +778,18 @@ class ModeloVinculoOperacionalTests {
             assertThat(json(app,auditoria).path("registros").get(0).path("id").asString()).isEqualTo(id.toString());
             assertThat(json(app,http(app,"GET",rota,tokenColega,null)).path("total").asLong()).isZero();
             assertThat(http(app,"GET",rota,tokenExterno,null).statusCode()).isEqualTo(404);
-            assertThat(http(app,"POST",rota+"?version="+versao,token,dadosResolucao).statusCode()).isEqualTo(409);
+            // O validador compartilhado de versão local usa ValidationException (422).
+            // A padronização global de versões obsoletas pertence à etapa 7.
+            var obsoleta=http(app,"POST",rota+"?version="+versao,token,dadosResolucao);
+            assertThat(obsoleta.statusCode()).as(obsoleta.body()).isEqualTo(422);
+            assertThat(obsoleta.body()).contains("Versão local divergente");
+            int versaoAtual=versaoResolucao(sql,vinculo);
+            var repetida=http(app,"POST",rota+"?version="+versaoAtual,token,dadosResolucao);
+            assertThat(repetida.statusCode()).as(repetida.body()).isEqualTo(409);
+            assertThat(repetida.body()).contains("resolução incompatível");
+            assertThat(versaoResolucao(sql,vinculo)).isEqualTo(versaoAtual);
+            assertThat(sql.queryForObject("select count(*) from tb_resolucao_frequencia_local",Integer.class)).isEqualTo(1);
+            assertThat(sql.queryForObject("select count(*) from tb_evidencia_resolucao_historica",Integer.class)).isEqualTo(1);
             assertThat(faltasResolucao(sql,vinculo)).isEqualTo(2);
             var prontuario=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",token,null);
             assertThat(prontuario.statusCode()).as(prontuario.body()).isEqualTo(200);
