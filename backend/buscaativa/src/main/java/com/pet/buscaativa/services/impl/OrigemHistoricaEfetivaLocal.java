@@ -29,6 +29,7 @@ class OrigemHistoricaEfetivaLocal {
     private final HistoricoPacienteRepository historicos;
     private final VerificacaoFatoRevisaoProvenienciaService verificador;
     private final AutorizacaoVinculoAssistencialService autorizacao;
+    private final EscopoUnidadeService escopo;
 
     record Reconhecimento(UUID id,UUID ticket,Long historico,boolean comprovada,UUID reversao) {}
     private record Reversao(UUID id,OffsetDateTime registradaEm) {}
@@ -55,7 +56,21 @@ class OrigemHistoricaEfetivaLocal {
         String filtro=grupo?"tipo_correcao='GRUPO' and sessao_id=? and participante_id=? and agendamento_id is null"
                 :"tipo_correcao='INDIVIDUAL' and agendamento_id=? and sessao_id is null and participante_id is null";
         var argumentos=new java.util.ArrayList<Object>();
-        argumentos.add(local.getPaciente().getId());argumentos.add(local.getUnidadeChave());
+        // O escritor de frequência registra a chave de auditoria do painel
+        // (USF:CNES / CAPS:enum), não a chave canônica do vínculo.
+        // Conferir o contexto autenticado e a fonte já comprovada; nunca
+        // deduzir a origem de um fato antigo a partir desse rótulo.
+        var usuario=escopo.usuarioLogado();
+        if(!local.getUnidadeChave().equals(com.pet.buscaativa.entities.ChaveUnidadeAssistencial.doUsuarioAtual(usuario)))
+            return false;
+        if(usuario.getUnidadeAtuacao()==com.pet.buscaativa.entities.enums.UnidadeAtuacao.USF) {
+            var usf=usuario.getUsfAtuacao();
+            if(usf.getCnes()==null || usf.getCnes().isBlank()
+                    || !java.util.Objects.equals(jdbc.queryForObject(
+                        "select count(*) from tb_usf_referencia where cnes=?",Long.class,usf.getCnes()),1L))
+                return false;
+        }
+        argumentos.add(local.getPaciente().getId());argumentos.add(escopo.unidadePainel().valor());
         argumentos.add(inicial.responsavelId());argumentos.add(a.registroFonte());
         if(grupo) argumentos.add(inicial.participanteId());
         argumentos.add(inicial.versaoFonte());argumentos.add(atual.versaoFonte());

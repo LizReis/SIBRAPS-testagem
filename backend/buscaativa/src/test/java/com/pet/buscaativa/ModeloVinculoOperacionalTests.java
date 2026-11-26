@@ -1304,9 +1304,17 @@ class ModeloVinculoOperacionalTests {
         var corrigido=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",tokenProf,null);
         assertThat(corrigido.statusCode()).as(corrigido.body()).isEqualTo(200);
         var leituraCorrigida=json(app,corrigido);
+        // Contrato real do escritor: unidade da auditoria não é a chave canônica.
+        String chaveAuditoria="USF:"+sql.queryForObject("select cnes from tb_usf_referencia where id=?",String.class,unidade);
+        assertThat(sql.queryForObject("select unidade from tb_auditoria_correcao_frequencia where agendamento_id=?",String.class,falta.id()))
+                .isEqualTo(chaveAuditoria).isNotEqualTo("USF:"+unidade);
+        assertThat(sql.queryForObject("select versao_anterior from tb_auditoria_correcao_frequencia where agendamento_id=?",Integer.class,falta.id()))
+                .isEqualTo(versaoIndividualAtual);
+        assertThat(sql.queryForObject("select versao_resultante from tb_auditoria_correcao_frequencia where agendamento_id=?",Integer.class,falta.id()))
+                .isEqualTo(sql.queryForObject("select version from tb_agendamento where id=?",Integer.class,falta.id()));
         assertThat(java.util.stream.StreamSupport.stream(leituraCorrigida.path("historico").spliterator(),false)
                 .anyMatch(e->e.path("id").asLong()==h && e.path("origemCorrigida").asBoolean()
-                        && e.path("situacao").asString().equals("PRESENTE"))).isTrue();
+                        && e.path("situacao").asString().equals("PRESENTE"))).as("Prontuário após correção individual: %s",corrigido.body()).isTrue();
         assertThat(leituraCorrigida.path("faltasComprovadas").asLong()).isEqualTo(2);
         assertThat(sql.queryForObject("select numero_falta_consecutiva from tb_historico_paciente where id=?",Integer.class,h)).isNull();
         assertThat(sql.queryForObject("select numero_falta_consecutiva from tb_historico_paciente where id=?",Integer.class,hGrupo)).isEqualTo(2);
@@ -1318,9 +1326,11 @@ class ModeloVinculoOperacionalTests {
         var leituraFinal=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",tokenProf,null);
         assertThat(leituraFinal.statusCode()).as(leituraFinal.body()).isEqualTo(200);
         var finalJson=json(app,leituraFinal);
+        assertThat(sql.queryForObject("select unidade from tb_auditoria_correcao_frequencia where participante_id=?",String.class,participante))
+                .isEqualTo(chaveAuditoria);
         assertThat(java.util.stream.StreamSupport.stream(finalJson.path("historico").spliterator(),false)
                 .filter(e->e.path("origemCorrigida").asBoolean() && e.path("situacao").asString().equals("PRESENTE"))
-                .map(e->e.path("id").asLong()).toList()).containsExactlyInAnyOrder(h,hGrupo);
+                .map(e->e.path("id").asLong()).toList()).as("Prontuário após correção coletiva: %s",leituraFinal.body()).containsExactlyInAnyOrder(h,hGrupo);
         assertThat(finalJson.path("faltasComprovadas").asLong()).isEqualTo(1);
         assertThat(finalJson.path("presencasComprovadas").asLong()).isEqualTo(2);
         assertThat(sql.queryForObject("select count(*) from tb_historico_paciente where id in (?,?) and unidade_origem_chave is null",Integer.class,h,hGrupo)).isEqualTo(2);
