@@ -3,6 +3,8 @@ package com.pet.buscaativa;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -19,6 +21,7 @@ import com.pet.buscaativa.entities.SessaoGrupo;
 import com.pet.buscaativa.entities.Usuario;
 import com.pet.buscaativa.entities.VinculoAssistencial;
 import com.pet.buscaativa.entities.enums.TipoUsuario;
+import com.pet.buscaativa.entities.enums.TipoEventoHistoricoPaciente;
 import com.pet.buscaativa.repositories.AgendamentoRepository;
 import com.pet.buscaativa.repositories.HistoricoPacienteRepository;
 import com.pet.buscaativa.repositories.SessaoGrupoRepository;
@@ -164,4 +167,68 @@ class VerificacaoFatoRevisaoProvenienciaServiceTests {
                 () -> service.verificar(pacienteIdPublico, TipoRegistro.AGENDAMENTO, 3L));
         verifyNoInteractions(agendamentos, historicos, sessoes);
     }
+    private HistoricoPaciente historicoSemOrigem(long id) {
+        HistoricoPaciente h = mock(HistoricoPaciente.class);
+        Usuario responsavel = mock(Usuario.class);
+        when(responsavel.getId()).thenReturn(23L);
+        when(h.getId()).thenReturn(id);
+        when(h.getPaciente()).thenReturn(paciente);
+        when(h.getProfissional()).thenReturn(responsavel);
+        when(h.getOcorridoEm()).thenReturn(LocalDateTime.of(2026, 1, 10, 9, 0));
+        when(h.getTipo()).thenReturn(TipoEventoHistoricoPaciente.FALTA);
+        when(historicos.findById(id)).thenReturn(Optional.of(h));
+        return h;
+    }
+
+    private Agendamento fonteHistorica(String unidade) {
+        Agendamento a = mock(Agendamento.class);
+        when(a.getId()).thenReturn(31L);
+        when(a.getPaciente()).thenReturn(paciente);
+        when(a.getUnidadeOrigemChave()).thenReturn(unidade);
+        return a;
+    }
+
+    @Test
+    void administradorLocalNaoPodeAtribuirOrigemSemFonteOuComFonteSemUnidade() {
+        perfil(TipoUsuario.ADMINISTRADOR);
+        vinculoLocal();
+        var semFonte = historicoSemOrigem(31L);
+        var semUnidade = historicoSemOrigem(32L);
+        when(semUnidade.getAgendamento()).thenReturn(fonteHistorica(null));
+        var fonteExterna = historicoSemOrigem(33L);
+        when(fonteExterna.getAgendamento()).thenReturn(fonteHistorica("CAPS_II"));
+
+        for (long id : List.of(31L, 32L, 33L)) {
+            assertThrows(ResourceNotFoundException.class,
+                    () -> service.verificar(pacienteIdPublico, TipoRegistro.HISTORICO, id));
+        }
+        verify(autorizacao, never()).validarHistoricoLocal(any());
+        verify(autorizacao, never()).validarAgendamentoLocal(any());
+    }
+
+    @Test
+    void candidatoComFonteLocalMasResponsabilidadeAusenteOuDuasFontesNaoComprovaOrigem() {
+        perfil(TipoUsuario.ADMINISTRADOR);
+        vinculoLocal();
+        var vinculoId = UUID.randomUUID();
+        var vinculo = autorizacao.exigirVinculoLocal(pacienteIdPublico);
+        when(autorizacao.exigirVinculoIdentificado(pacienteIdPublico, vinculoId)).thenReturn(vinculo);
+        var semResponsavel = historicoSemOrigem(41L);
+        when(semResponsavel.getProfissional()).thenReturn(null);
+        when(semResponsavel.getAgendamento()).thenReturn(fonteHistorica("CAPS_AD"));
+        var duasFontes = historicoSemOrigem(42L);
+        when(duasFontes.getAgendamento()).thenReturn(fonteHistorica("CAPS_AD"));
+        when(duasFontes.getSessaoGrupo()).thenReturn(mock(SessaoGrupo.class));
+        when(historicos.findCandidatosOrigemLocal(pacienteIdPublico, "CAPS_AD"))
+                .thenReturn(List.of(semResponsavel, duasFontes));
+
+        assertTrue(service.candidatosOrigem(pacienteIdPublico, vinculoId).candidatos().isEmpty());
+        for (long id : List.of(41L, 42L)) {
+            assertThrows(ResourceNotFoundException.class,
+                    () -> service.verificar(pacienteIdPublico, TipoRegistro.HISTORICO, id));
+        }
+        verify(autorizacao, never()).validarAgendamentoLocal(any());
+        verify(autorizacao, never()).validarSessaoLocal(any(), any());
+    }
+
 }
