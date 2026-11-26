@@ -121,7 +121,7 @@ class DiagnosticoConsolidadoMigracaoClinicaIntegrationTests extends SecurityTest
         var usfA = linhaDoTempo.analisar(pessoa);
         assertEquals(2, usfA.eventosComOrigemLocal().size()); // atendimento e frequência coletiva válidos
         assertEquals(1, usfA.agendamentosSemOrigemComFrequencia()); // remarcação com elo sem origem
-        assertEquals(3, usfA.frequenciasInconsistentes()); // sem frequência, agendada e sem responsável
+        assertEquals(2, usfA.frequenciasInconsistentes()); // sessões realizadas sem frequência registrada ou sem responsável comprovado
         assertEquals(new InventarioFrequenciasVinculoService.Inventario(1, 0, 1, 0, 1),
                 inventario.inventariar(pessoa));
         assertTrue(faltas.analisar(pessoa).faltasConsecutivasAnalisaveis().isEmpty());

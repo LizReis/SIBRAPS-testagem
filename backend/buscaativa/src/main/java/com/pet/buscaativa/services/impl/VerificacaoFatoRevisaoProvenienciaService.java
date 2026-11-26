@@ -140,7 +140,7 @@ public class VerificacaoFatoRevisaoProvenienciaService {
                 // O vinculo do paciente sozinho nao autoriza leitura da sessao:
                 // o autorizador tambem exige participacao comprovada no grupo.
                 autorizacao.validarSessaoLocal(fato, paciente);
-                if (AvaliacaoProvenienciaClinica.origemSessao(fato)
+                if (fato.isResponsabilidadePendente() || AvaliacaoProvenienciaClinica.origemSessao(fato)
                         != AvaliacaoProvenienciaClinica.Situacao.COMPROVADA) {
                     throw naoEncontrado();
                 }

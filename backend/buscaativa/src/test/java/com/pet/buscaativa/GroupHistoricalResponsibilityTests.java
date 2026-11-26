@@ -29,7 +29,7 @@ class GroupHistoricalResponsibilityTests extends AgendaIntegritySupport {
     @Autowired UsfReferenciaRepository usfs;
     private SessaoGrupo scheduled(){return tx(()->{
         var g=new GrupoTerapeutico();g.setCoordenador(professional);g.setTema("Grupo sintético histórico");g.setRecorrencia(RecorrenciaGrupo.UNICA);g.setHorarioPadrao(LocalTime.of(8,0));g.setAtivo(true);groups.saveAndFlush(g);
-        var s=new SessaoGrupo();s.setGrupo(g);s.setStatus(StatusSessaoGrupo.AGENDADA);s.setDataSessao(LocalDate.now().minusDays(5));s.setHorario(LocalTime.of(8,0));sessions.saveAndFlush(s);
+        var s=new SessaoGrupo();s.setGrupo(g);s.setStatus(StatusSessaoGrupo.AGENDADA);s.setDataSessao(LocalDate.now().minusDays(5));s.setHorario(LocalTime.of(8,0));s.designarProfissional(g.getCoordenador());sessions.saveAndFlush(s);
         var p=new SessaoGrupoParticipante();p.setSessaoGrupo(s);p.setPaciente(patient);p.setStatusPresenca(StatusPresencaGrupo.NAO_REGISTRADA);participants.saveAndFlush(p);return s;
     });}
     private int confirm(Usuario actor,SessaoGrupo s) throws Exception {
@@ -49,7 +49,7 @@ class GroupHistoricalResponsibilityTests extends AgendaIntegritySupport {
     private void owner(SessaoGrupo s,Usuario expected){assertEquals(expected.getId(),jdbc.queryForObject("select responsavel_atendimento_id from tb_sessao_grupo where id=?",Long.class,s.getId()));assertFalse(jdbc.queryForObject("select responsabilidade_pendente from tb_sessao_grupo where id=?",Boolean.class,s.getId()));}
     @Test void gr01FormerCoordinatorCanCorrectWithReasonAndImmutableOwner() throws Exception {var s=performed();transfer(s);assertEquals(422,correction(professional,s,null));assertEquals(200,correction(professional,s,REASON));owner(s,professional);var row=records(professional,s,200).get(0);assertEquals(professional.getIdPublico().toString(),row.get("usuarioId").asText());assertEquals(professional.getIdPublico().toString(),row.get("responsavelAtendimentoId").asText());}
     @Test void gr02NewCoordinatorCannotCorrectOldSessionOrReadClinicalAudit() throws Exception {var s=performed();transfer(s);var before=database();assertEquals(403,correction(colleague,s,REASON));assertEquals(before,database());records(colleague,s,403);}
-    private SessaoGrupo nextSession(SessaoGrupo old){return tx(()->{var s=new SessaoGrupo();s.setGrupo(groups.findById(old.getGrupo().getId()).orElseThrow());s.setStatus(StatusSessaoGrupo.AGENDADA);s.setDataSessao(LocalDate.now().minusDays(2));s.setHorario(LocalTime.of(8,0));sessions.saveAndFlush(s);var p=new SessaoGrupoParticipante();p.setSessaoGrupo(s);p.setPaciente(patient);p.setStatusPresenca(StatusPresencaGrupo.NAO_REGISTRADA);participants.saveAndFlush(p);return s;});}
+    private SessaoGrupo nextSession(SessaoGrupo old){return tx(()->{var s=new SessaoGrupo();s.setGrupo(groups.findById(old.getGrupo().getId()).orElseThrow());s.setStatus(StatusSessaoGrupo.AGENDADA);s.setDataSessao(LocalDate.now().minusDays(2));s.setHorario(LocalTime.of(8,0));s.designarProfissional(s.getGrupo().getCoordenador());sessions.saveAndFlush(s);var p=new SessaoGrupoParticipante();p.setSessaoGrupo(s);p.setPaciente(patient);p.setStatusPresenca(StatusPresencaGrupo.NAO_REGISTRADA);participants.saveAndFlush(p);return s;});}
     @Test void gr03And04NewCoordinatorOwnsAndCorrectsNewSession() throws Exception {var old=performed();transfer(old);var newer=nextSession(old);assertEquals(200,confirm(colleague,newer));owner(old,professional);owner(newer,colleague);newer=sessions.findById(newer.getId()).orElseThrow();assertEquals(200,correction(colleague,newer,REASON));owner(newer,colleague);var row=records(colleague,newer,200).get(0);assertEquals(colleague.getIdPublico().toString(),row.get("responsavelAtendimentoId").asText());}
     @Test void gr05FormerCoordinatorCannotCorrectSuccessorsSession() throws Exception {var old=performed();transfer(old);var newer=nextSession(old);assertEquals(200,confirm(colleague,newer));newer=sessions.findById(newer.getId()).orElseThrow();var before=database();assertEquals(403,correction(professional,newer,REASON));assertEquals(before,database());}
     @Test void gr06AdminActorDoesNotReplaceHistoricalResponsible() throws Exception {var s=performed();transfer(s);assertEquals(200,correction(admin,s,REASON));owner(s,professional);var row=records(admin,s,200).get(0);assertEquals(admin.getIdPublico().toString(),row.get("usuarioId").asText());assertEquals(professional.getIdPublico().toString(),row.get("responsavelAtendimentoId").asText());}
@@ -58,7 +58,25 @@ class GroupHistoricalResponsibilityTests extends AgendaIntegritySupport {
         tx(()->{var x=new UsfReferencia();x.setCnes(UUID.randomUUID().toString());usfs.saveAndFlush(x);var y=new UsfReferencia();y.setCnes(UUID.randomUUID().toString());usfs.saveAndFlush(y);for(var u:List.of(admin,professional,colleague)){u.setUnidadeAtuacao(UnidadeAtuacao.USF);u.setUsfAtuacao(x);users.saveAndFlush(u);}var p=patients.findById(patient.getId()).orElseThrow();p.setCapsReferencia(null);p.setUsfReferencia(x);patients.saveAndFlush(p);return null;});
         var s=performed();transfer(s);var external=tx(()->{var x=new UsfReferencia();x.setCnes(UUID.randomUUID().toString());usfs.saveAndFlush(x);var u=user(TipoUsuario.ADMINISTRADOR,UnidadeAtuacao.USF);u.setUsfAtuacao(x);return users.saveAndFlush(u);});var before=database();assertEquals(404,correction(external,s,REASON));records(external,s,404);assertEquals(before,database());
     }
-    @Test void gr09UnperformedSessionFollowsTransferredCoordinator() throws Exception {var s=scheduled();transfer(s);var before=database();assertEquals(403,confirm(professional,s));assertEquals(before,database());assertEquals(200,confirm(colleague,s));owner(s,colleague);}
+    @Test void gr09OverdueSessionKeepsDesignationAndRequiresLocalReview() throws Exception {
+        var s = scheduled();
+        transfer(s);
+        var pendente = sessions.findById(s.getId()).orElseThrow();
+        assertPendente(pendente);
+        var externo = tx(() -> user(TipoUsuario.ADMINISTRADOR, UnidadeAtuacao.CAPS_I));
+        var antes = database();
+        assertEquals(409, confirm(colleague, pendente));
+        assertEquals(409, confirm(admin, pendente));
+        assertEquals(404, confirm(externo, pendente));
+        assertEquals(antes, database());
+    }
+    private void assertPendente(SessaoGrupo sessao) {
+        assertEquals(StatusSessaoGrupo.AGENDADA, sessao.getStatus());
+        assertTrue(sessao.isResponsabilidadePendente());
+        assertNull(sessao.getResponsavelAtendimento());
+        assertEquals(professional.getId(), jdbc.queryForObject(
+                "select profissional_designado_id from tb_sessao_grupo where id=?", Long.class, sessao.getId()));
+    }
     @Test void gr10AmbiguousLegacyIsProtectedWithoutInventedOwner() throws Exception {var s=scheduled();tx(()->{var x=sessions.findById(s.getId()).orElseThrow();x.setStatus(StatusSessaoGrupo.REALIZADA);sessions.saveAndFlush(x);return null;});var before=database();assertEquals(409,correction(admin,s,REASON));assertEquals(409,correction(professional,s,REASON));records(professional,s,403);records(admin,s,200);assertEquals(before,database());assertNull(jdbc.queryForObject("select responsavel_atendimento_id from tb_sessao_grupo where id=?",Long.class,s.getId()));}
     @Test void gr12TransferDoesNotRewritePreviousAuditsAndOldOwnerCanReadThem() throws Exception {var s=performed();assertEquals(200,correction(admin,s,REASON));var before=jdbc.queryForList("select * from tb_auditoria_correcao_frequencia order by id");transfer(s);assertEquals(before,jdbc.queryForList("select * from tb_auditoria_correcao_frequencia order by id"));owner(s,professional);assertEquals(1,records(professional,s,200).size());records(colleague,s,403);records(admin,s,200);}
     @Test void receptionCannotCorrectHistoricalSession() throws Exception {var s=performed();transfer(s);var reception=tx(()->user(TipoUsuario.RECEPCAO,UnidadeAtuacao.CAPS_AD));var before=database();assertEquals(403,correction(reception,s,REASON));records(reception,s,403);assertEquals(before,database());}
@@ -66,7 +84,13 @@ class GroupHistoricalResponsibilityTests extends AgendaIntegritySupport {
     @Test void adminCanSuperviseWhenOriginalResponsibleHasMovedUnit() throws Exception {var s=performed();transfer(s);tx(()->{var u=users.findById(professional.getId()).orElseThrow();u.setUnidadeAtuacao(UnidadeAtuacao.CAPS_I);users.saveAndFlush(u);return null;});assertEquals(200,correction(admin,s,REASON));owner(s,professional);assertEquals(404,correction(professional,sessions.findById(s.getId()).orElseThrow(),REASON));}
     @Test void provisionalFrequencyDoesNotFreezeResponsibilityBeforeRealization() throws Exception {
         var s=scheduled();var r=mvc.perform(patch("/api/grupos/sessoes/"+s.getId()+"/participantes/"+patient.getIdPublico()+"/presenca").header("Authorization","Bearer "+tokens.gerarToken(professional)).contentType("application/json").content("{\"statusPresenca\":\"PRESENTE\"}")).andReturn().getResponse();assertEquals(200,r.getStatus());
-        assertNull(jdbc.queryForObject("select responsavel_atendimento_id from tb_sessao_grupo where id=?",Long.class,s.getId()));transfer(s);assertEquals(200,confirm(colleague,s));owner(s,colleague);
+        assertNull(jdbc.queryForObject("select responsavel_atendimento_id from tb_sessao_grupo where id=?",Long.class,s.getId()));
+        transfer(s);
+        var pendente = sessions.findById(s.getId()).orElseThrow();
+        assertPendente(pendente);
+        assertEquals(409, confirm(colleague, pendente));
+        assertEquals("PRESENTE", jdbc.queryForObject(
+                "select status_presenca from tb_sessao_grupo_participante where sessao_grupo_id=?", String.class, s.getId()));
     }
     @Test void gr09FutureSessionFollowsNewCoordinatorWithoutPrematurelyFreezingOwner() throws Exception {
         var old=performed();var future=nextSession(old);tx(()->{var x=sessions.findById(future.getId()).orElseThrow();x.setDataSessao(LocalDate.now().plusDays(30));sessions.saveAndFlush(x);return null;});transfer(old);
@@ -88,6 +112,30 @@ class GroupHistoricalResponsibilityTests extends AgendaIntegritySupport {
         try {var futures=operations.stream().map(op->pool.submit(()->new TransactionTemplate(manager).execute(status->{connections.add(jdbc.queryForObject("select session_id()",Integer.class));ready.countDown();authenticate();try{assertTrue(start.await(10,TimeUnit.SECONDS));int result=op.call();if(result>=400)status.setRollbackOnly();return result;}catch(Exception e){throw new IllegalStateException(e);}finally{SecurityContextHolder.clearContext();}}))).toList();assertTrue(ready.await(10,TimeUnit.SECONDS));start.countDown();var result=new ArrayList<Integer>();for(var f:futures)result.add(f.get(30,TimeUnit.SECONDS));assertEquals(operations.size(),connections.size());assertTrue(result.stream().allMatch(x->x==200||x==403||x==409),result.toString());System.out.println("RESPONSIBILITY_RACE connections="+connections.size()+" results="+result);return result;}finally{start.countDown();pool.shutdownNow();assertTrue(pool.awaitTermination(10,TimeUnit.SECONDS));}
     }
     @RepeatedTest(2) void gr11TransferAndOldOwnerCorrectionBothRemainConsistent() throws Exception {var s=performed();var dto=transferDTO(s);long count=audits.count();assertEquals(List.of(200,200),concurrent(List.of(()->transfer(s,dto),()->correction(professional,s,REASON))));owner(s,professional);assertEquals(count+1,audits.count());assertEquals(professional.getIdPublico().toString(),records(admin,s,200).get(0).get("responsavelAtendimentoId").asText());}
-    @RepeatedTest(2) void gr11TransferAndConfirmationNeverAuthorizeFromStaleCoordinator() throws Exception {var s=scheduled();var dto=transferDTO(s);var results=concurrent(List.of(()->transfer(s,dto),()->confirm(professional,s)));assertEquals(200,results.get(0));var status=sessions.findById(s.getId()).orElseThrow().getStatus();if(results.get(1)==200){assertEquals(StatusSessaoGrupo.REALIZADA,status);owner(s,professional);}else{assertEquals(403,results.get(1));assertEquals(StatusSessaoGrupo.AGENDADA,status);assertEquals(200,confirm(colleague,s));owner(s,colleague);}}
-    @RepeatedTest(2) void gr11AdminConfirmationFreezesCoordinatorUnderSameDatabaseLock() throws Exception {var s=scheduled();var dto=transferDTO(s);assertEquals(List.of(200,200),concurrent(List.of(()->transfer(s,dto),()->confirm(admin,s))));Long id=jdbc.queryForObject("select responsavel_atendimento_id from tb_sessao_grupo where id=?",Long.class,s.getId());assertTrue(Set.of(professional.getId(),colleague.getId()).contains(id));Long atRealization=jdbc.queryForObject("select g.coordenador_id from tb_grupo_terapeutico_aud g where g.id=? and g.rev <= (select min(rev) from tb_sessao_grupo_aud where id=? and status='REALIZADA') order by g.rev desc limit 1",Long.class,s.getGrupo().getId(),s.getId());assertEquals(atRealization,id);}
+    @RepeatedTest(2)
+    void gr11TransferAndConfirmationNeverAuthorizeFromStaleCoordinator() throws Exception {
+        assertTransferenciaEConfirmacaoSerializam(professional);
+    }
+
+    @RepeatedTest(2)
+    void gr11AdminConfirmationFreezesCoordinatorUnderSameDatabaseLock() throws Exception {
+        assertTransferenciaEConfirmacaoSerializam(admin);
+    }
+
+    private void assertTransferenciaEConfirmacaoSerializam(Usuario ator) throws Exception {
+        var s = scheduled();
+        var dto = transferDTO(s);
+        var resultados = concurrent(List.of(() -> transfer(s, dto), () -> confirm(ator, s)));
+        assertEquals(200, resultados.get(0));
+        var atual = sessions.findById(s.getId()).orElseThrow();
+        if (resultados.get(1) == 200) {
+            assertEquals(StatusSessaoGrupo.REALIZADA, atual.getStatus());
+            owner(atual, professional);
+        } else {
+            assertTrue(Set.of(403, 409).contains(resultados.get(1)));
+            assertPendente(atual);
+            assertEquals(409, confirm(colleague, atual));
+            assertEquals(409, confirm(admin, atual));
+        }
+    }
 }

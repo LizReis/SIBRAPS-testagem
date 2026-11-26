@@ -51,6 +51,7 @@ public class FrequenciaColetivaLocalEnsaioService {
     private final EntityManager em;
     private final Clock clock;
     private final EvidenciaStatusVinculo evidenciaEstado;
+    private final DesignacaoSessaoService designacoes;
 
     record Sessao(Long id, Long grupo, UUID coordenador, UUID responsavel,
             Integer versaoGrupo, Integer versaoSessao, StatusSessaoGrupo status) {}
@@ -80,11 +81,10 @@ public class FrequenciaColetivaLocalEnsaioService {
         var ator = recursos.atores().ator();
         var sessao = recursos.sessoes().get(id);
         var coordenador = sessao.getGrupo().getCoordenador();
-        var responsavel = correcao ? sessao.getResponsavelAtendimento() : coordenador;
         if (sessao.getStatus() != (correcao ? StatusSessaoGrupo.REALIZADA : StatusSessaoGrupo.AGENDADA)
-                || AvaliacaoProvenienciaClinica.origemSessao(sessao) != AvaliacaoProvenienciaClinica.Situacao.COMPROVADA
-                || responsavel == null)
+                || AvaliacaoProvenienciaClinica.origemSessao(sessao) != AvaliacaoProvenienciaClinica.Situacao.COMPROVADA)
             throw new ConflictException("A sessão não tem estado ou proveniência compatível.");
+        var responsavel = correcao ? sessao.getResponsavelAtendimento() : designacoes.paraConfirmacao(sessao);
         if (!AtoresEstadoClinicoLocalEnsaio.elegivel(coordenador, contexto.unidade(), false)
                 || ator.getTipoUsuario() != TipoUsuario.ADMINISTRADOR && !ator.getId().equals(responsavel.getId()))
             throw new AccessDeniedException("Usuário sem autorização para esta sessão.");
@@ -206,6 +206,7 @@ public class FrequenciaColetivaLocalEnsaioService {
         var sessao = recursos.sessoes().get(id);
         conferirSessaoAgendada(sessao, contexto);
         exigirResponsavelDaSessao(sessao, recursos.atores().ator());
+        designacoes.exigirSemRevisao(sessao);
         CoordenacaoEscritaClinicaEnsaio.validarVersao(versao, sessao.getVersion());
         temporal.validarSessao(sessao, false);
         var p = sessao.getParticipantes().stream().filter(x -> paciente.equals(x.getPaciente().getIdPublico()))
@@ -237,6 +238,7 @@ public class FrequenciaColetivaLocalEnsaioService {
         var sessao = recursos.sessoes().get(id);
         conferirSessaoAgendada(sessao, contexto);
         exigirResponsavelDaSessao(sessao, recursos.atores().ator());
+        designacoes.exigirSemRevisao(sessao);
         CoordenacaoEscritaClinicaEnsaio.validarVersao(versao, sessao.getVersion());
         sessao.getParticipantes().forEach(p -> p.setStatusPresenca(NAO_REGISTRADA));
         sessao.setMotivoCancelamento(motivo);

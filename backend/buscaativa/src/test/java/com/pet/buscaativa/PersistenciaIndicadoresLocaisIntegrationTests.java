@@ -736,6 +736,156 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
     }
 
     @Test
+    void transferenciaPreservaAutoriaEEncaminhaSessoesVencidasParaRevisaoLocal() {
+        var local = novoLocal(UnidadeAtuacao.CAPS_AD);
+        var antigo = local.ator();
+        var novo = tx.execute(t -> usuario(UnidadeAtuacao.CAPS_AD));
+        var admin = tx.execute(t -> {
+            var ator = usuario(UnidadeAtuacao.CAPS_AD);
+            ator.setTipoUsuario(TipoUsuario.ADMINISTRADOR);
+            return ator;
+        });
+        var externo = tx.execute(t -> {
+            var ator = usuario(UnidadeAtuacao.CAPS_I);
+            ator.setTipoUsuario(TipoUsuario.ADMINISTRADOR);
+            return ator;
+        });
+        var inicio = Instant.now().atZone(clock.getZone()).toLocalDate().plusDays(2);
+        var fim = inicio.plusWeeks(4);
+        var hora = LocalTime.of(10, 0);
+        var paciente = local.paciente().getIdPublico();
+        var criar = new com.pet.buscaativa.entities.dto.CriarGrupoDTO("Grupo sintético RESP-09", antigo.getIdPublico(),
+                RecorrenciaGrupo.SEMANAL, inicio, fim, hora, List.of(paciente));
+        var serie = como(antigo, () -> seriesLocais.criar(criar));
+        var ids = serie.sessoes();
+        assertEquals(5, ids.size());
+        // Simula uma sessão anterior à V32, cuja designação existe apenas no Envers.
+        tx.executeWithoutResult(t -> new JdbcTemplate(fonte).update(
+                "update tb_sessao_grupo set profissional_designado_id=null where id=?", ids.get(2)));
+        RelogioHistorico.HISTORICO.set(inicio.plusWeeks(3).atTime(18, 0).atZone(clock.getZone()).toInstant());
+        try {
+            var realizada = como(antigo, () -> dtosLocais.sessao(ids.get(0)));
+            como(antigo, () -> coletivo.confirmar(realizada.id(), realizada.version(), Map.of(paciente, StatusPresencaGrupo.PRESENTE)));
+            var cancelada = como(antigo, () -> dtosLocais.sessao(ids.get(1)));
+            int versaoCancelada = como(antigo, () -> coletivo.cancelar(
+                    cancelada.id(), cancelada.version(), "Cancelamento sintético"));
+            var vencida = como(antigo, () -> dtosLocais.sessao(ids.get(3)));
+            como(antigo, () -> coletivo.registrarProvisoria(vencida.id(), vencida.version(), paciente, StatusPresencaGrupo.PRESENTE));
+
+            var colunas = LegacyMigrationFixture.columns(fonte);
+            var antes = LegacyMigrationFixture.snapshot(fonte, colunas);
+            var atualizar = new com.pet.buscaativa.entities.dto.AtualizarGrupoTerapeuticoDTO(criar.tema(), novo.getIdPublico(),
+                    inicio, hora, RecorrenciaGrupo.SEMANAL, fim, serie.versaoGrupo());
+            assertThrows(ResourceNotFoundException.class, () -> como(externo, () -> seriesLocais.atualizar(serie.grupo(), atualizar)));
+            como(admin, () -> seriesLocais.atualizar(serie.grupo(), atualizar));
+
+            var confirmada = como(admin, () -> dtosLocais.sessao(ids.get(0)));
+            assertEquals(antigo.getIdPublico(), confirmada.responsavelAtendimentoId());
+            assertEquals(antigo.getIdPublico(), confirmada.profissionalDesignadoId());
+            var canceladaApos = como(admin, () -> dtosLocais.sessao(ids.get(1)));
+            assertEquals(StatusSessaoGrupo.CANCELADA, canceladaApos.status());
+            assertEquals(antigo.getIdPublico(), canceladaApos.profissionalDesignadoId());
+            assertEquals(versaoCancelada, canceladaApos.version());
+            var futura = como(admin, () -> dtosLocais.sessao(ids.get(4)));
+            assertEquals(novo.getIdPublico(), futura.profissionalDesignadoId());
+            assertNull(futura.responsavelAtendimentoId());
+            assertFalse(futura.responsabilidadePendente());
+
+            for (var id : ids.subList(2, 4)) {
+                var pendente = como(admin, () -> dtosLocais.sessao(id));
+                assertEquals(antigo.getIdPublico(), pendente.profissionalDesignadoId());
+                assertEquals(StatusSessaoGrupo.AGENDADA, pendente.status());
+                assertTrue(pendente.responsabilidadePendente());
+                assertNull(pendente.responsavelAtendimentoId());
+                assertEquals(0, pendente.quantidadePresencasConfirmadas());
+                assertThrows(ResourceNotFoundException.class, () -> como(externo, () -> dtosLocais.sessao(id)));
+                assertThrows(ResourceNotFoundException.class, () -> como(externo,
+                        () -> coletivo.confirmar(id, pendente.version(), Map.of())));
+                for (var ator : List.of(antigo, novo, admin))
+                    assertThrows(ConflictException.class, () -> como(ator,
+                            () -> coletivo.confirmar(id, pendente.version(), Map.of())));
+                assertEquals(1L, total("""
+                        select count(*) from tb_sessao_grupo_aud
+                        where id=? and responsabilidade_pendente=true and profissional_designado_id=?
+                        and responsavel_atendimento_id is null
+                        """, id, antigo.getId()));
+            }
+            assertEquals(StatusPresencaGrupo.PRESENTE, como(admin, () -> dtosLocais.sessao(ids.get(3)))
+                    .participantes().getFirst().statusPresenca());
+            var depois = LegacyMigrationFixture.snapshot(fonte, colunas);
+            for (String tabela : List.of("TB_VINCULO_ASSISTENCIAL", "TB_VINCULO_ASSISTENCIAL_AUD",
+                    "TB_HISTORICO_PACIENTE", "TB_HISTORICO_PACIENTE_AUD", "TB_SESSAO_GRUPO_PARTICIPANTE",
+                    "TB_SESSAO_GRUPO_PARTICIPANTE_AUD", "TB_AUDITORIA_CORRECAO_FREQUENCIA"))
+                assertEquals(antes.get(tabela), depois.get(tabela), tabela);
+        } finally {
+            RelogioHistorico.HISTORICO.remove();
+        }
+    }
+
+    @Test
+    void transferenciaEConfirmacaoConcorrentesNaoAtribuemAutoriaAoNovoCoordenador() throws Exception {
+        var local = novoLocal(UnidadeAtuacao.CAPS_AD);
+        var anterior = local.ator();
+        var novo = tx.execute(t -> usuario(UnidadeAtuacao.CAPS_AD));
+        var data = diasAtras(2);
+        var sessao = sessao(anterior, List.of(local), data, 10);
+        var grupo = tx.execute(t -> {
+            var agendada = em.find(SessaoGrupo.class, sessao.id());
+            var grupoDaSessao = agendada.getGrupo();
+            agendada.designarProfissional(grupoDaSessao.getCoordenador());
+            grupoDaSessao.setRecorrencia(RecorrenciaGrupo.UNICA);
+            grupoDaSessao.setHorarioPadrao(LocalTime.of(10, 0));
+            return grupoDaSessao.getId();
+        });
+        int versaoSessao = (int) total("select version from tb_sessao_grupo where id=?", sessao.id());
+        var comando = new com.pet.buscaativa.entities.dto.AtualizarGrupoTerapeuticoDTO(
+                "Grupo sintético do ensaio", novo.getIdPublico(), data, LocalTime.of(10, 0), RecorrenciaGrupo.UNICA, null,
+                (int) total("select version from tb_grupo_terapeutico where id=?", grupo));
+        var largada = new CountDownLatch(1);
+        boolean confirmou;
+        boolean transferiu;
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var troca = executor.submit(() -> {
+                assertTrue(largada.await(5, TimeUnit.SECONDS));
+                try {
+                    como(anterior, () -> seriesLocais.atualizar(grupo, comando));
+                    return true;
+                } catch (ConflictException ex) {
+                    return false;
+                }
+            });
+            var confirmacao = executor.submit(() -> {
+                assertTrue(largada.await(5, TimeUnit.SECONDS));
+                try {
+                    como(anterior, () -> coletivo.confirmar(sessao.id(), versaoSessao,
+                            Map.of(local.paciente().getIdPublico(), StatusPresencaGrupo.PRESENTE)));
+                    return true;
+                } catch (ConflictException ex) {
+                    return false;
+                }
+            });
+            largada.countDown();
+            transferiu = troca.get(15, TimeUnit.SECONDS);
+            confirmou = confirmacao.get(15, TimeUnit.SECONDS);
+        }
+        assertTrue(transferiu || confirmou);
+        // A descoberta pode ficar obsoleta se a confirmação vencer a disputa.
+        if (!transferiu) como(anterior, () -> seriesLocais.atualizar(grupo, comando));
+
+        var atual = como(novo, () -> dtosLocais.sessao(sessao.id()));
+        assertEquals(anterior.getIdPublico(), atual.profissionalDesignadoId());
+        if (confirmou) {
+            assertEquals(StatusSessaoGrupo.REALIZADA, atual.status());
+            assertEquals(anterior.getIdPublico(), atual.responsavelAtendimentoId());
+        } else {
+            assertEquals(StatusSessaoGrupo.AGENDADA, atual.status());
+            assertTrue(atual.responsabilidadePendente());
+            assertNull(atual.responsavelAtendimentoId());
+            assertEquals(0L, total("select count(*) from tb_historico_paciente where sessao_grupo_id=?", sessao.id()));
+        }
+    }
+
+    @Test
     void regeneraApenasSerieFuturaHomogeneaERecusaVersaoAntiga() {
         var a=novoLocal(UnidadeAtuacao.CAPS_II);
         var data=LocalDate.now(clock).plusDays(2);

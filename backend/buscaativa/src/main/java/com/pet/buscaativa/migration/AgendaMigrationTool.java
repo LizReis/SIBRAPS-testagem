@@ -78,6 +78,10 @@ public final class AgendaMigrationTool {
         return migrar(source, "31");
     }
 
+    public static MigrateResult migrarDesignacaoSessao(DataSource source) throws java.sql.SQLException {
+        return migrar(source, "32");
+    }
+
     private static MigrateResult migrar(DataSource source, String destino) throws java.sql.SQLException {
         try (var connection = source.getConnection()) {
             if (!"H2".equals(connection.getMetaData().getDatabaseProductName())
@@ -100,9 +104,14 @@ public final class AgendaMigrationTool {
         if (!destino.equals("16")) {
             var atual = flyway.info().current();
             var versao = atual == null ? "" : atual.getVersion().getVersion();
-            if (destino.equals("31")) {
-                if (!java.util.Set.of("30", "31").contains(versao))
+            if (destino.equals("32") || destino.equals("31")) {
+                if (destino.equals("32")) {
+                    if (!java.util.Set.of("31", "32").contains(versao))
+                        throw new IllegalStateException("V32 requer V31 concluída.");
+                    EvidenciaOrigemSchemaGuard.verificar(source);
+                } else if (!java.util.Set.of("30", "31").contains(versao)) {
                     throw new IllegalStateException("V31 requer V30 concluída.");
+                }
                 IdentidadeDocumentalPreflight.verificarOperacional(source);
                 TransicaoLocalSchemaGuard.verificar(source);
                 InventarioHistoricoSchemaGuard.verificar(source);
@@ -271,7 +280,8 @@ public final class AgendaMigrationTool {
         if (destino.equals("28") || destino.equals("29") || destino.equals("30") || destino.equals("31")) AplicacaoOrigemSchemaGuard.verificar(source);
         if (destino.equals("29") || destino.equals("30") || destino.equals("31")) ReversaoOrigemSchemaGuard.verificar(source);
         if (destino.equals("30") || destino.equals("31")) ReaberturaOrigemSchemaGuard.verificar(source);
-        if (destino.equals("31")) EvidenciaOrigemSchemaGuard.verificar(source);
+        if (destino.equals("31") || destino.equals("32")) EvidenciaOrigemSchemaGuard.verificar(source);
+        if (destino.equals("32")) DesignacaoSessaoSchemaGuard.verificar(source);
         CanonicalAgendaGuard.verificar(source);
         AuditoriaSchemaGuard.verificar(source);
         ResponsabilidadeSessaoGuard.verificar(source);
@@ -335,6 +345,7 @@ public final class AgendaMigrationTool {
             case "--reversao-origem" -> migrarReversaoOrigem(source);
             case "--reabertura-origem" -> migrarReaberturaOrigem(source);
             case "--evidencia-origem" -> migrarEvidenciaOrigem(source);
+            case "--designacao-sessao" -> migrarDesignacaoSessao(source);
             default -> throw new IllegalArgumentException("Argumento desconhecido.");
         };
         System.out.println("Migrações de agenda executadas: " + result.migrationsExecuted);

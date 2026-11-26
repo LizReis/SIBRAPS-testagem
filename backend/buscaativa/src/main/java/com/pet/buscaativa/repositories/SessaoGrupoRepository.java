@@ -56,7 +56,8 @@ public interface SessaoGrupoRepository extends JpaRepository<SessaoGrupo, Long> 
                                              @Param("data") LocalDate data, @Param("horario") LocalTime horario,
                                              @Param("statusCancelada") StatusSessaoGrupo statusCancelada);
     @Query("select count(s)>0 from SessaoGrupo s where s.dataSessao=:data and s.horario=:hora and "
-            + "((s.status=com.pet.buscaativa.entities.enums.StatusSessaoGrupo.AGENDADA and s.grupo.coordenador=:usuario) or "
+            + "((s.status=com.pet.buscaativa.entities.enums.StatusSessaoGrupo.AGENDADA and (s.profissionalDesignado=:usuario "
+            + "or (s.profissionalDesignado is null and s.responsabilidadePendente=false and s.grupo.coordenador=:usuario))) or "
             + "(s.status=com.pet.buscaativa.entities.enums.StatusSessaoGrupo.REALIZADA and s.responsavelAtendimento=:usuario))")
     boolean existsSessaoDoResponsavelNoMesmoHorario(@Param("usuario") com.pet.buscaativa.entities.Usuario usuario,
             @Param("data") LocalDate data,@Param("hora") LocalTime hora);

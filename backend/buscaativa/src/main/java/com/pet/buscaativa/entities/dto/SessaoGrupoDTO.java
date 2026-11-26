@@ -25,12 +25,14 @@ public record SessaoGrupoDTO(
         String nomeResponsavelAtendimento,
         boolean responsabilidadePendente,
         String motivoResponsabilidadePendente,
-        String origemResponsabilidade
+        String origemResponsabilidade,
+        java.util.UUID profissionalDesignadoId,
+        String nomeProfissionalDesignado
 ) {
     public SessaoGrupoDTO(Long id,Long grupoId,String temaGrupo,String nomeCoordenador,LocalDate dataSessao,LocalTime horario,
             StatusSessaoGrupo status,StatusExibicaoSessaoGrupo statusExibicao,String motivoCancelamento,List<ParticipanteSessaoDTO> participantes,
             Integer quantidadeParticipantes,Integer quantidadePresencasConfirmadas,Integer version) {
         this(id,grupoId,temaGrupo,nomeCoordenador,dataSessao,horario,status,statusExibicao,motivoCancelamento,participantes,
-            quantidadeParticipantes,quantidadePresencasConfirmadas,version,null,null,false,null,null);
+            quantidadeParticipantes,quantidadePresencasConfirmadas,version,null,null,false,null,null,null,null);
     }
 }

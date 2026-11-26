@@ -44,6 +44,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
     private final InscricaoRetroativaGrupoAuditoriaRepository auditoriaRetroativaRepository;
     private final AgendamentoRepository agendamentoRepository;
     private final Clock clock;
+    private final DesignacaoSessaoService designacoes;
     private final com.pet.buscaativa.services.PoliticaTemporalFrequencia politicaTemporal;
     private final EscopoUnidadeService escopoUnidadeService;
     private final com.pet.buscaativa.services.AutorizacaoClinicaService autorizacaoClinica;
@@ -218,16 +219,19 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
             sessaoRepository.deleteAll(sessoes);
             sessaoRepository.flush();
             for (LocalDate data : datas) {
-                SessaoGrupo nova = sessaoRepository.save(novaSessao(grupo, data, dto.horario()));
+                SessaoGrupo nova = novaSessao(grupo, data, dto.horario());
+                nova.designarProfissional(coordenador);
+                sessaoRepository.save(nova);
                 for (UUID pacienteId : participantes) adicionarParticipanteInterno(nova, pacienteId);
             }
         }
         if (!estrutural && !coordenadorOrigem.equals(dto.coordenadorId())) {
-            // REALIZADA mantém o responsável histórico; CANCELADA não cria compromisso.
-            // AGENDADA ainda segue a coordenação vigente, inclusive confirmação tardia legada.
-            for (SessaoGrupo sessao : sessoes)
-                if (sessao.getStatus() == StatusSessaoGrupo.AGENDADA)
+            for (SessaoGrupo sessao : sessoes) {
+                if (sessao.getStatus() == StatusSessaoGrupo.AGENDADA && !sessao.isResponsabilidadePendente()
+                        && designacoes.aindaNaoIniciou(sessao, agora))
                     validarCompromissoCoordenador(coordenador, sessao.getDataSessao(), sessao.getHorario(), sessao.getId());
+            }
+            sessoes.forEach(sessao -> designacoes.transferir(sessao, coordenador, agora));
         }
         grupo.setTema(dto.tema().trim()); grupo.setCoordenador(coordenador); grupo.setHorarioPadrao(dto.horario());
         grupo.setRecorrencia(dto.recorrencia()); grupo.setDataFimRecorrencia(dto.dataFimRecorrencia());
@@ -329,6 +333,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         autorizacaoClinica.validarSessao(sessao);
         if (sessao.getStatus() != StatusSessaoGrupo.AGENDADA)
             throw new ValidationException("A frequência provisória só pode ser alterada em sessão agendada.");
+        designacoes.exigirSemRevisao(sessao);
         politicaTemporal.validarSessao(sessao, false);
         SessaoGrupoParticipante participante = buscarParticipante(sessao, pacienteId);
         participante.setStatusPresenca(dto.statusPresenca());
@@ -362,6 +367,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
             throw new ConflictException("Sessão já foi confirmada como " + sessao.getStatus() + ".");
         if (dto.version() != null && !dto.version().equals(sessao.getVersion()))
             throw new OptimisticLockException("A sessão foi alterada por outro usuário.");
+        designacoes.exigirSemRevisao(sessao);
         if (!dto.ocorreu()) {
             for (var p : sessao.getParticipantes())
                 p.setStatusPresenca(StatusPresencaGrupo.NAO_REGISTRADA);
@@ -371,6 +377,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
             return toSessaoDTO(sessaoRepository.save(sessao));
         }
         politicaTemporal.validarSessao(sessao, false);
+        var responsavel = designacoes.paraConfirmacao(sessao);
         List<FrequenciaParticipanteGrupoDTO> recebidas = dto.frequencias() == null ? List.of() : dto.frequencias();
         Set<UUID> ids = new HashSet<>();
         for (var f : recebidas) {
@@ -401,7 +408,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         }
         participanteRepository.saveAll(participantes);
         sessao.setMotivoCancelamento(null);
-        sessao.confirmarRealizacao(sessao.getGrupo().getCoordenador());
+        sessao.confirmarRealizacao(responsavel);
         sessaoRepository.saveAndFlush(sessao);
         for (Paciente p : pacientes)
             pacienteService.recalcularAssiduidadePaciente(p);
@@ -789,6 +796,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
         s.setDataSessao(data);
         s.setHorario(horario);
         s.setStatus(StatusSessaoGrupo.AGENDADA);
+        s.designarProfissional(grupo.getCoordenador());
         return s;
     }
 
@@ -874,14 +882,17 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
                 .map(p -> new ParticipanteSessaoDTO(p.getPaciente().getIdPublico(), p.getPaciente().getNome(),
                         p.getStatusPresenca()))
                 .toList();
-        int presencas = (int) ps.stream()
-                .filter(p -> p.statusPresenca() == StatusPresencaGrupo.PRESENTE).count();
+        int presencas = s.getStatus() == StatusSessaoGrupo.REALIZADA
+                ? (int) ps.stream().filter(p -> p.statusPresenca() == StatusPresencaGrupo.PRESENTE).count()
+                : 0;
         return new SessaoGrupoDTO(s.getId(), s.getGrupo().getId(), s.getGrupo().getTema(),
                 s.getGrupo().getCoordenador().getNome(), s.getDataSessao(), s.getHorario(), s.getStatus(),
                 statusExibicao(s), s.getMotivoCancelamento(), ps, ps.size(), presencas, s.getVersion(),
                 s.getResponsavelAtendimento()==null?null:s.getResponsavelAtendimento().getIdPublico(),
                 s.getResponsavelAtendimento()==null?null:s.getResponsavelAtendimento().getNome(),
-                s.isResponsabilidadePendente(),s.getMotivoResponsabilidadePendente(),s.getOrigemResponsabilidade());
+                s.isResponsabilidadePendente(),s.getMotivoResponsabilidadePendente(),s.getOrigemResponsabilidade(),
+                s.getProfissionalDesignado()==null?null:s.getProfissionalDesignado().getIdPublico(),
+                s.getProfissionalDesignado()==null?null:s.getProfissionalDesignado().getNome());
     }
 
     private StatusExibicaoSessaoGrupo statusExibicao(SessaoGrupo s) {

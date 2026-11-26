@@ -63,6 +63,26 @@ public class SessaoGrupo extends AbstractEntities implements Serializable {
     @OneToMany(mappedBy = "sessaoGrupo", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<SessaoGrupoParticipante> participantes = new ArrayList<>();
 
+    /** Designação de agenda, preservada separadamente da realização efetiva. */
+    @Setter(AccessLevel.NONE)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "profissional_designado_id")
+    private Usuario profissionalDesignado;
+
+    public void designarProfissional(Usuario profissional) {
+        if (status != StatusSessaoGrupo.AGENDADA || responsabilidadePendente || responsavelAtendimento != null)
+            throw new IllegalStateException("A designação anterior da sessão está protegida.");
+        profissionalDesignado = java.util.Objects.requireNonNull(profissional);
+    }
+
+    public void sinalizarRevisaoDeAutoria() {
+        if (status != StatusSessaoGrupo.AGENDADA || responsavelAtendimento != null)
+            throw new IllegalStateException("Somente sessão sem confirmação pode exigir revisão de autoria.");
+        responsabilidadePendente = true;
+        motivoResponsabilidadePendente = "AUTORIA_APOS_TROCA_DE_COORDENACAO_NAO_COMPROVADA";
+        origemResponsabilidade = "PENDENTE_RECONCILIACAO";
+    }
+
     /** Consolidated at effective confirmation, independent of later group coordination. */
     @Setter(lombok.AccessLevel.NONE)
     @ManyToOne(fetch = FetchType.LAZY)
@@ -82,7 +102,7 @@ public class SessaoGrupo extends AbstractEntities implements Serializable {
     private String origemResponsabilidade;
 
     public void confirmarRealizacao(Usuario responsavelValidado) {
-        if (status != StatusSessaoGrupo.AGENDADA || responsavelAtendimento != null)
+        if (status != StatusSessaoGrupo.AGENDADA || responsavelAtendimento != null || responsabilidadePendente)
             throw new IllegalStateException("A responsabilidade de sessão realizada não pode ser substituída.");
         responsavelAtendimento = java.util.Objects.requireNonNull(responsavelValidado);
         responsabilidadePendente = false;

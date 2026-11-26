@@ -77,12 +77,16 @@ public class DtosAssistenciaisLocaisEnsaioService {
             case CANCELADA -> StatusExibicaoSessaoGrupo.CANCELADO;
             case AGENDADA -> guardas.sessaoAindaNaoIniciou(s)?StatusExibicaoSessaoGrupo.AGENDADO:StatusExibicaoSessaoGrupo.EM_ANDAMENTO;
         };
-        int presencas=(int)ps.stream().filter(p -> p.statusPresenca()==StatusPresencaGrupo.PRESENTE).count();
+        int presencas = s.getStatus() == StatusSessaoGrupo.REALIZADA
+                ? (int) ps.stream().filter(p -> p.statusPresenca() == StatusPresencaGrupo.PRESENTE).count()
+                : 0;
         return new SessaoGrupoDTO(s.getId(),s.getGrupo().getId(),s.getGrupo().getTema(),s.getGrupo().getCoordenador().getNome(),
                 s.getDataSessao(),s.getHorario(),s.getStatus(),status,s.getMotivoCancelamento(),ps,ps.size(),presencas,s.getVersion(),
                 s.getResponsavelAtendimento()==null?null:s.getResponsavelAtendimento().getIdPublico(),
                 s.getResponsavelAtendimento()==null?null:s.getResponsavelAtendimento().getNome(),
-                s.isResponsabilidadePendente(),s.getMotivoResponsabilidadePendente(),s.getOrigemResponsabilidade());
+                s.isResponsabilidadePendente(),s.getMotivoResponsabilidadePendente(),s.getOrigemResponsabilidade(),
+                s.getProfissionalDesignado()==null?null:s.getProfissionalDesignado().getIdPublico(),
+                s.getProfissionalDesignado()==null?null:s.getProfissionalDesignado().getNome());
     }
 
     public List<AgendamentoDTO> agenda(LocalDate inicio, LocalDate fim, UUID profissional) {

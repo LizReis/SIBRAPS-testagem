@@ -44,6 +44,7 @@ public class SerieGruposLocaisEnsaioService {
     private final HistoricoPacienteRepository historicos;
     private final PersistenciaIndicadoresVinculoEnsaioService indicadores;
     private final PoliticaTemporalFrequencia temporal;
+    private final DesignacaoSessaoService designacoes;
 
     public record Resultado(Long grupo, Integer versaoGrupo, List<Long> sessoes) {}
     public record Proxima(Long sessao, Integer versaoSessao) {}
@@ -196,10 +197,11 @@ public class SerieGruposLocaisEnsaioService {
                 || !Objects.equals(g.getHorarioPadrao(), dto.horario()) || g.getRecorrencia()!=dto.recorrencia()
                 || !Objects.equals(g.getDataFimRecorrencia(), dto.dataFimRecorrencia());
         boolean troca = !Objects.equals(g.getCoordenador().getId(), novo.getId());
+        var agora = LocalDateTime.now(clock);
         List<Long> ids;
         if (estrutural) {
             if (sessoes.stream().anyMatch(s -> s.getStatus()!=StatusSessaoGrupo.AGENDADA
-                    || !guardas.sessaoAindaNaoIniciou(s)))
+                    || !designacoes.aindaNaoIniciou(s, agora)))
                 throw new ConflictException("Após o início do grupo não é permitido alterar a estrutura.");
             var participantes = sessoes.getFirst().getParticipantes().stream().map(x -> x.getPaciente().getIdPublico())
                     .collect(Collectors.toSet());
@@ -229,8 +231,14 @@ public class SerieGruposLocaisEnsaioService {
             g.setCoordenador(novo);
             ids = datas.stream().map(d -> criarSessao(g,d,dto.horario(),locais).getId()).toList();
         } else {
-            if (troca) for (var s : sessoes) if (s.getStatus()==StatusSessaoGrupo.AGENDADA)
-                guardas.validarCompromissoCoordenador(novo,s.getDataSessao(),s.getHorario(),s.getId());
+            if (troca) {
+                for (var s : sessoes) {
+                    if (s.getStatus() == StatusSessaoGrupo.AGENDADA && !s.isResponsabilidadePendente()
+                            && designacoes.aindaNaoIniciou(s, agora))
+                        guardas.validarCompromissoCoordenador(novo, s.getDataSessao(), s.getHorario(), s.getId());
+                }
+                sessoes.forEach(s -> designacoes.transferir(s, novo, agora));
+            }
             ids = sessoes.stream().map(SessaoGrupo::getId).toList();
         }
         g.setTema(dto.tema().trim());

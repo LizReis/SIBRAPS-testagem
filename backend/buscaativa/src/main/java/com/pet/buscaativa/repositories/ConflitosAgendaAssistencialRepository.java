@@ -34,7 +34,7 @@ public interface ConflitosAgendaAssistencialRepository extends Repository<Agenda
     @Query("select count(p)>0 from SessaoGrupoParticipante p where p.paciente=:paciente and p.sessaoGrupo.dataSessao=:data and p.sessaoGrupo.horario=:hora and p.sessaoGrupo.status=com.pet.buscaativa.entities.enums.StatusSessaoGrupo.REALIZADA and p.statusPresenca=:frequencia and (:excluir is null or p.sessaoGrupo.id<>:excluir)")
     boolean frequenciaGrupoRealizado(@Param("paciente") Paciente paciente, @Param("data") LocalDate data, @Param("hora") LocalTime hora, @Param("excluir") Long excluir, @Param("frequencia") StatusPresencaGrupo frequencia);
 
-    @Query("select count(s)>0 from SessaoGrupo s where s.grupo.coordenador=:usuario and s.dataSessao=:data and s.horario=:hora and s.status=com.pet.buscaativa.entities.enums.StatusSessaoGrupo.AGENDADA and (:excluir is null or s.id<>:excluir)")
+    @Query("select count(s)>0 from SessaoGrupo s where (s.profissionalDesignado=:usuario or (s.profissionalDesignado is null and s.responsabilidadePendente=false and s.grupo.coordenador=:usuario)) and s.dataSessao=:data and s.horario=:hora and s.status=com.pet.buscaativa.entities.enums.StatusSessaoGrupo.AGENDADA and (:excluir is null or s.id<>:excluir)")
     boolean sessaoAgendada(@Param("usuario") Usuario usuario, @Param("data") LocalDate data, @Param("hora") LocalTime hora, @Param("excluir") Long excluir);
 
     @Query("select count(s)>0 from SessaoGrupo s where s.responsavelAtendimento=:usuario and s.dataSessao=:data and s.horario=:hora and s.status=com.pet.buscaativa.entities.enums.StatusSessaoGrupo.REALIZADA and s.responsabilidadePendente=false and (:excluir is null or s.id<>:excluir)")

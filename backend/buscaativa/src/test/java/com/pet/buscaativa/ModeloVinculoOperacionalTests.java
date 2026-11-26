@@ -116,6 +116,17 @@ class ModeloVinculoOperacionalTests {
         String administrador = ator(sql, unidadeB, 1, "administrador");
         String profissionalB = ator(sql, unidadeB, 2, "profissional-b");
 
+        var backupV17 = temp.resolve("controle-v17.sql");
+        LegacyMigrationFixture.backup(banco, backupV17);
+        var controleV17 = LegacyMigrationFixture.restore(temp.resolve("controle-v17"), backupV17);
+        prepararSessaoNosEnsaiosDeEsquemaAnterior(controleV17);
+        try (var anterior = iniciar(controleV17)) {
+            var tokenAdmin = login(anterior, administrador);
+            var marcoSemV18 = http(anterior, "POST", "/api/painel/historico/marco", tokenAdmin, null);
+            assertThat(marcoSemV18.statusCode()).isEqualTo(409);
+            assertThat(json(anterior, marcoSemV18).path("message").asString()).contains("V18");
+        }
+        migrarDaV17AteV32(banco);
         try (var primeira = iniciar(banco); var segunda = iniciar(banco)) {
             for (String bean : List.of("pacienteController", "agendamentoController", "grupoTerapeuticoController",
                     "agendaMigratedIndicatorsInitializer", "monitoramentoBuscaAtiva", "alertaPacientesVermelhosScheduler",
@@ -134,9 +145,6 @@ class ModeloVinculoOperacionalTests {
             var tokenRecepcao = login(primeira, recepcao);
             var tokenProfissional = login(segunda, profissional);
             var tokenAdmin = login(segunda, administrador);
-            var marcoSemV18 = http(segunda, "POST", "/api/painel/historico/marco", tokenAdmin, null);
-            assertThat(marcoSemV18.statusCode()).isEqualTo(409);
-            assertThat(json(segunda, marcoSemV18).path("message").asString()).contains("V18");
             validarCadastroConcorrenteEntreUnidades(primeira, segunda, tokenProfissional,
                     login(segunda, profissionalB), sql, unidadeA, unidadeB);
             assertThat(http(primeira, "GET", "/api/pacientes/pesquisa", null, null).statusCode()).isEqualTo(401);
@@ -193,6 +201,32 @@ class ModeloVinculoOperacionalTests {
             assertThat(sql.queryForObject("select status_paciente from tb_paciente where id_publico=?", Integer.class, UUID.fromString(pessoa)))
                     .isNull();
         }
+    }
+
+    private static void prepararSessaoNosEnsaiosDeEsquemaAnterior(javax.sql.DataSource banco) {
+        // Os testes históricos exercitam portões anteriores à V31 com o mapeamento JPA atual.
+        // Aplicar apenas o formato da sessão nesta fixture preserva a validação de esquema.
+        var script = new org.springframework.core.io.ClassPathResource(
+                "agenda-migration/h2/V32__designacao_profissional_sessao.sql");
+        new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(script).execute(banco);
+    }
+
+    private static void migrarDaV17AteV32(javax.sql.DataSource banco) throws Exception {
+        AgendaMigrationTool.migrarTransicao(banco);
+        AgendaMigrationTool.migrarCoberturaHistorica(banco);
+        AgendaMigrationTool.migrarMarcoHistorico(banco);
+        AgendaMigrationTool.migrarEvidenciaClinica(banco);
+        AgendaMigrationTool.migrarFechamentoAutomatico(banco);
+        AgendaMigrationTool.migrarResolucaoFrequencia(banco);
+        AgendaMigrationTool.migrarReversaoResolucao(banco);
+        AgendaMigrationTool.migrarAplicacaoPendencia(banco);
+        AgendaMigrationTool.migrarEvidenciaResolucao(banco);
+        AgendaMigrationTool.migrarProvaOrigem(banco);
+        AgendaMigrationTool.migrarAplicacaoOrigem(banco);
+        AgendaMigrationTool.migrarReversaoOrigem(banco);
+        AgendaMigrationTool.migrarReaberturaOrigem(banco);
+        AgendaMigrationTool.migrarEvidenciaOrigem(banco);
+        AgendaMigrationTool.migrarDesignacaoSessao(banco);
     }
 
     private void validarCadastroConcorrenteEntreUnidades(ConfigurableApplicationContext a,
@@ -317,6 +351,7 @@ class ModeloVinculoOperacionalTests {
         AgendaMigrationTool.migrarIdentidade(banco);
         assertThat(AgendaMigrationTool.migrarTransicao(banco).migrationsExecuted).isEqualTo(1);
         assertThat(AgendaMigrationTool.migrarTransicao(banco).migrationsExecuted).isZero();
+        prepararSessaoNosEnsaiosDeEsquemaAnterior(banco);
         var sql = new JdbcTemplate(banco);
         long unidadeA = usf(sql, "Histórico A");
         long unidadeB = usf(sql, "Histórico B");
@@ -414,20 +449,7 @@ class ModeloVinculoOperacionalTests {
         var banco = LegacyMigrationFixture.legacy(temp.resolve("historico-automatico-integrado"));
         AgendaMigrationTool.migrar(banco);
         AgendaMigrationTool.migrarIdentidade(banco);
-        AgendaMigrationTool.migrarTransicao(banco);
-        AgendaMigrationTool.migrarCoberturaHistorica(banco);
-        AgendaMigrationTool.migrarMarcoHistorico(banco);
-        AgendaMigrationTool.migrarEvidenciaClinica(banco);
-        AgendaMigrationTool.migrarFechamentoAutomatico(banco);
-        AgendaMigrationTool.migrarResolucaoFrequencia(banco);
-        AgendaMigrationTool.migrarReversaoResolucao(banco);
-        AgendaMigrationTool.migrarAplicacaoPendencia(banco);
-        AgendaMigrationTool.migrarEvidenciaResolucao(banco);
-        AgendaMigrationTool.migrarProvaOrigem(banco);
-        AgendaMigrationTool.migrarAplicacaoOrigem(banco);
-        AgendaMigrationTool.migrarReversaoOrigem(banco);
-        AgendaMigrationTool.migrarReaberturaOrigem(banco);
-        AgendaMigrationTool.migrarEvidenciaOrigem(banco);
+        migrarDaV17AteV32(banco);
         var sql = new JdbcTemplate(banco);
         long usfA = usf(sql,"Automático A");
         long usfB = usf(sql,"Automático B");
@@ -796,6 +818,15 @@ class ModeloVinculoOperacionalTests {
         assertThat(AgendaMigrationTool.migrarReaberturaOrigem(banco).migrationsExecuted).isZero();
         assertThat(AgendaMigrationTool.migrarEvidenciaOrigem(banco).migrationsExecuted).isEqualTo(1);
         assertThat(AgendaMigrationTool.migrarEvidenciaOrigem(banco).migrationsExecuted).isZero();
+        assertThatThrownBy(() -> com.pet.buscaativa.migration.DesignacaoSessaoSchemaGuard.verificar(banco))
+                .hasMessage("Banco operacional requer a designação de sessão V32 completa.");
+        assertThat(AgendaMigrationTool.migrarDesignacaoSessao(banco).migrationsExecuted).isEqualTo(1);
+        assertThat(AgendaMigrationTool.migrarDesignacaoSessao(banco).migrationsExecuted).isZero();
+        var schema = new JdbcTemplate(banco);
+        assertThat(schema.queryForObject("select count(*) from tb_sessao_grupo where profissional_designado_id is not null",
+                Long.class)).isZero();
+        assertThat(schema.queryForObject("select count(*) from tb_sessao_grupo_aud where profissional_designado_id is not null",
+                Long.class)).isZero();
         var sql=new JdbcTemplate(banco);
         long unidade=usf(sql,"Resolução A");
         String prof=ator(sql,unidade,2,"resolucao-prof");
