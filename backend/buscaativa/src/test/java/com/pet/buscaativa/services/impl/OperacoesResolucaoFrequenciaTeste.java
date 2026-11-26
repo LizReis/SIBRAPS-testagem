@@ -82,6 +82,15 @@ public final class OperacoesResolucaoFrequenciaTeste {
                 com.pet.buscaativa.entities.DecisaoRevisaoProveniencia.Decisao.APROVAR,
                 "Aprovação sintética para conferência do atendimento."));
     }
+    public static UUID aplicarOrigem(ApplicationContext app,String email,UUID paciente,UUID vinculo,Integer versao,
+            UUID ticket,boolean rollback) {
+        return como(email,()->tx(app).execute(t->{
+            var id=app.getBean(AplicacaoOrigemHistoricaLocal.class).aplicar(paciente,vinculo,versao,ticket,
+                    "Aplicação sintética após conferência da fonte assistencial.");
+            if(rollback) t.setRollbackOnly();
+            return id;
+        }));
+    }
     public static void corrigir(ApplicationContext app,String email,Reserva r) {
         como(email,()->app.getBean(FrequenciaIndividualLocalEnsaioService.class)
                 .corrigir(r.id(),r.versao(),FrequenciaAssistencial.PRESENTE,"Correção sintética de frequência conferida."));

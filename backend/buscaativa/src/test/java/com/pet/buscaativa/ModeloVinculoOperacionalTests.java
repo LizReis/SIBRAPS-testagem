@@ -728,6 +728,8 @@ class ModeloVinculoOperacionalTests {
         assertThat(AgendaMigrationTool.migrarEvidenciaResolucao(banco).migrationsExecuted).isZero();
         assertThat(AgendaMigrationTool.migrarProvaOrigem(banco).migrationsExecuted).isEqualTo(1);
         assertThat(AgendaMigrationTool.migrarProvaOrigem(banco).migrationsExecuted).isZero();
+        assertThat(AgendaMigrationTool.migrarAplicacaoOrigem(banco).migrationsExecuted).isEqualTo(1);
+        assertThat(AgendaMigrationTool.migrarAplicacaoOrigem(banco).migrationsExecuted).isZero();
         var sql=new JdbcTemplate(banco);
         long unidade=usf(sql,"Resolução A");
         String prof=ator(sql,unidade,2,"resolucao-prof");
@@ -886,7 +888,7 @@ class ModeloVinculoOperacionalTests {
             assertThat(semProva.path("presencasComprovadas").isNull()).isTrue();
             assertThat(semProva.path("historicoLocalRequerConferencia").asBoolean()).isTrue();
             validarResolucaoColetivaConcorrente(app,sql,unidade,prof,colega,token,tokenColega,tokenAdmin,tokenExterno);
-            validarRevisaoOrigemHistorico(app,sql,unidade,token,tokenAdmin,tokenExterno,tokenRecepcao,prof);
+            validarRevisaoOrigemHistorico(app,sql,unidade,token,tokenAdmin,tokenExterno,tokenRecepcao,prof,admin,externo);
         }
     }
 
@@ -1019,7 +1021,7 @@ class ModeloVinculoOperacionalTests {
     }
 
     private void validarRevisaoOrigemHistorico(ConfigurableApplicationContext app,JdbcTemplate sql,long unidade,
-            String tokenProf,String tokenAdmin,String tokenExterno,String tokenRecepcao,String prof) throws Exception {
+            String tokenProf,String tokenAdmin,String tokenExterno,String tokenRecepcao,String prof,String admin,String externoEmail) throws Exception {
         var dados=cadastro(cpfSintetico(92),cnsSintetico(92),"Origem histórica",unidade);
         var novo=http(app,"POST","/api/pacientes?ignorarSimilaridade=true",tokenProf,dados);
         assertThat(novo.statusCode()).as(novo.body()).isEqualTo(201);
@@ -1122,6 +1124,35 @@ class ModeloVinculoOperacionalTests {
         assertThat(prontuario.statusCode()).as(prontuario.body()).isEqualTo(200);
         assertThat(java.util.stream.StreamSupport.stream(json(app,prontuario).path("historico").spliterator(),false)
                 .noneMatch(e->e.path("id").asLong()==h || e.path("id").asLong()==hGrupo)).isTrue();
+        int versaoAtual=versaoResolucao(sql,vinculo);
+        assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aplicarOrigem(
+                app,prof,paciente,vinculo,versaoAtual,ticket,false))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aplicarOrigem(
+                app,externoEmail,paciente,outroVinculo,versaoResolucao(sql,outroVinculo),ticket,false))
+                .isInstanceOf(com.pet.buscaativa.services.exceptions.ResourceNotFoundException.class);
+        com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aplicarOrigem(
+                app,admin,paciente,vinculo,versaoAtual,ticket,true);
+        assertThat(sql.queryForObject("select count(*) from tb_aplicacao_origem_historica",Integer.class)).isZero();
+        var aplicada=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aplicarOrigem(
+                app,admin,paciente,vinculo,versaoAtual,ticket,false);
+        assertThat(sql.queryForObject("select decisao_id from tb_aplicacao_origem_historica where id=?",UUID.class,aplicada)).isEqualTo(decisao);
+        assertThat(sql.queryForObject("select historico_id from tb_aplicacao_origem_historica where id=?",Long.class,aplicada)).isEqualTo(h);
+        assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aplicarOrigem(
+                app,admin,paciente,vinculo,versaoAtual,ticket,false))
+                .isInstanceOf(com.pet.buscaativa.services.exceptions.ConflictException.class);
+        assertThatThrownBy(()->sql.update("delete from tb_aplicacao_origem_historica where id=?",aplicada))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        // Fixture: versão da sessão mudou após aprovação, mas os valores continuam coerentes.
+        sql.update("update tb_sessao_grupo set version=version+1 where id=?",sessao);
+        assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aplicarOrigem(
+                app,admin,paciente,vinculo,versaoAtual,ticketGrupo,false))
+                .isInstanceOf(com.pet.buscaativa.services.exceptions.ConflictException.class)
+                .hasMessageContaining("desatualizada");
+        assertThat(sql.queryForObject("select count(*) from tb_aplicacao_origem_historica",Integer.class)).isEqualTo(1);
+        assertThat(sql.queryForObject("select count(*) from tb_historico_paciente where id in (?,?) and unidade_origem_chave is null",Integer.class,h,hGrupo)).isEqualTo(2);
+        assertThat(faltasResolucao(sql,vinculo)).isEqualTo(3);
+        assertThat(faltasResolucao(sql,outroVinculo)).isZero();
     }
 
     private static int faltasResolucao(JdbcTemplate sql,UUID vinculo) {

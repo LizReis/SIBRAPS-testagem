@@ -1,0 +1,92 @@
+package com.pet.buscaativa.services.impl;
+
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
+import java.util.UUID;
+import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.jdbc.core.JdbcTemplate;
+import com.pet.buscaativa.entities.PendenciaRevisaoProveniencia.TipoRegistro;
+import com.pet.buscaativa.entities.enums.FrequenciaAssistencial;
+import com.pet.buscaativa.entities.enums.TipoEventoHistoricoPaciente;
+import com.pet.buscaativa.migration.AplicacaoOrigemSchemaGuard;
+import com.pet.buscaativa.services.PoliticaJustificativaCorrecao;
+import com.pet.buscaativa.services.exceptions.ConflictException;
+import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
+import com.pet.buscaativa.services.impl.VerificacaoFatoRevisaoProvenienciaService.CandidatoOrigem;
+import com.pet.buscaativa.services.impl.VerificacaoFatoRevisaoProvenienciaService.ProvaOrigem;
+import lombok.RequiredArgsConstructor;
+
+/** Escritor interno. Não expor rota antes de integrar todos os consumidores. */
+@Component
+@Profile("!test | (test & ensaio-estado-local)")
+@RequiredArgsConstructor
+@Transactional(propagation=Propagation.MANDATORY)
+class AplicacaoOrigemHistoricaLocal {
+    private final AtoresEstadoClinicoLocalEnsaio atores;
+    private final CoordenacaoEscritaClinicaEnsaio coordenacao;
+    private final VerificacaoFatoRevisaoProvenienciaService verificador;
+    private final PoliticaJustificativaCorrecao justificativas;
+    private final JdbcTemplate jdbc;
+    private final Clock clock;
+
+    private record Aprovacao(UUID decisao,ProvaOrigem prova,OffsetDateTime decididaEm) {}
+
+    UUID aplicar(UUID paciente,UUID vinculo,Integer versao,UUID ticket,String justificativa) {
+        var contexto=atores.autorizar(true);
+        var bloqueados=coordenacao.paraVinculo(contexto,paciente,vinculo,null);
+        var local=bloqueados.vinculos().get(paciente);
+        var ator=bloqueados.atores().ator();
+        CoordenacaoEscritaClinicaEnsaio.validarVersao(versao,local.getVersion());
+        if(!AplicacaoOrigemSchemaGuard.instalada(jdbc))
+            throw new ConflictException("Estrutura de aplicação de origem não instalada.");
+        // Localizar o ticket antes da prova, para não diferenciar casos de outra unidade.
+        var registros=jdbc.query("""
+                select registro_id from tb_pendencia_revisao_proveniencia
+                where id=? and vinculo_id=? and paciente_id=? and unidade_chave=?
+                  and tipo_registro='HISTORICO' and situacao_evidencia='REVISAR_ORIGEM_DESCONHECIDA'
+                """,(rs,n)->rs.getLong(1),ticket,local.getId(),local.getPaciente().getId(),local.getUnidadeChave());
+        if(registros.size()!=1) throw new ResourceNotFoundException("Pendência não encontrada.");
+        long historico=registros.getFirst();
+        var aprovacao=jdbc.query("""
+                select p.decisao_id,p.fonte,p.fonte_id,p.versao_fonte,p.participante_id,p.responsavel_id,
+                       p.ocorrido_em,p.frequencia,p.tipo_historico,d.decidida_em
+                from tb_prova_aprovacao_origem p join tb_decisao_revisao_proveniencia d
+                    on d.id=p.decisao_id and d.pendencia_id=p.pendencia_id
+                    and d.paciente_id=p.paciente_id and d.unidade_chave=p.unidade_chave and d.decisao='APROVAR'
+                where p.pendencia_id=? and p.vinculo_id=? and p.paciente_id=? and p.unidade_chave=? and p.historico_id=?
+                """,(rs,n)->new Aprovacao(rs.getObject(1,UUID.class),new ProvaOrigem(
+                        new CandidatoOrigem(historico,TipoRegistro.valueOf(rs.getString(2)),rs.getLong(3),
+                            rs.getObject(7,LocalDateTime.class),FrequenciaAssistencial.valueOf(rs.getString(8))),
+                        rs.getInt(4),rs.getObject(5,Long.class),rs.getLong(6),
+                        TipoEventoHistoricoPaciente.valueOf(rs.getString(9))),rs.getObject(10,OffsetDateTime.class)),
+                ticket,local.getId(),local.getPaciente().getId(),local.getUnidadeChave(),historico)
+                .stream().findFirst().orElseThrow(()->new ConflictException("Pendência sem aprovação de origem comprovada."));
+        if(Boolean.TRUE.equals(jdbc.queryForObject("""
+                select exists(select 1 from tb_aplicacao_origem_historica where historico_id=?)
+                """,Boolean.class,historico)))
+            throw new ConflictException("Origem histórica já possui aplicação registrada.");
+        // A identidade está travada: revalidar a fonte e a cadeia, sem confiar
+        // em dados enviados pelo cliente ou na aprovação isoladamente.
+        var atual=verificador.verificar(paciente,TipoRegistro.HISTORICO,historico);
+        if(!atual.historicoSemOrigemComFonteLocal() || !aprovacao.prova().equals(atual.provaOrigem()))
+            throw new ConflictException("Evidência da aprovação desatualizada; origem não corrigida.");
+        String motivo=justificativas.validar(justificativa);
+        var instante=OffsetDateTime.ofInstant(clock.instant().truncatedTo(ChronoUnit.MICROS),ZoneOffset.UTC);
+        if(instante.isBefore(aprovacao.decididaEm()))
+            throw new ConflictException("Instante de aplicação anterior à aprovação.");
+        UUID id=UUID.randomUUID();
+        jdbc.update("""
+                insert into tb_aplicacao_origem_historica
+                    (id,decisao_id,pendencia_id,vinculo_id,paciente_id,unidade_chave,historico_id,ator_id,perfil,justificativa,registrado_em)
+                values (?,?,?,?,?,?,?,?,'ADMINISTRADOR',?,?)
+                """,id,aprovacao.decisao(),ticket,local.getId(),local.getPaciente().getId(),
+                local.getUnidadeChave(),historico,ator.getId(),motivo,instante);
+        return id;
+    }
+}
