@@ -1153,6 +1153,43 @@ class ModeloVinculoOperacionalTests {
         assertThat(sql.queryForObject("select count(*) from tb_historico_paciente where id in (?,?) and unidade_origem_chave is null",Integer.class,h,hGrupo)).isEqualTo(2);
         assertThat(faltasResolucao(sql,vinculo)).isEqualTo(3);
         assertThat(faltasResolucao(sql,outroVinculo)).isZero();
+        // A leitura reconhece a aplicação individual válida, não a coletiva obsoleta.
+        var reconhecido=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",tokenProf,null);
+        assertThat(reconhecido.statusCode()).as(reconhecido.body()).isEqualTo(200);
+        var leitura=json(app,reconhecido);
+        var eventos=java.util.stream.StreamSupport.stream(leitura.path("historico").spliterator(),false).toList();
+        var evento=eventos.stream().filter(e->e.path("id").asLong()==h).findFirst().orElseThrow();
+        assertThat(evento.path("origemCorrigida").asBoolean()).isTrue();
+        assertThat(evento.path("unidadeOrigem").asString()).isEqualTo("USF:"+unidade);
+        assertThat(eventos.stream().noneMatch(e->e.path("id").asLong()==hGrupo || e.path("id").asLong()==divergente)).isTrue();
+        assertThat(leitura.path("faltasComprovadas").asLong()).isEqualTo(3);
+        var prontuarioExterno=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",tokenExterno,null);
+        assertThat(prontuarioExterno.statusCode()).as(prontuarioExterno.body()).isEqualTo(200);
+        assertThat(java.util.stream.StreamSupport.stream(json(app,prontuarioExterno).path("historico").spliterator(),false)
+                .noneMatch(e->e.path("id").asLong()==h || e.path("id").asLong()==hGrupo)).isTrue();
+        var painel=http(app,"GET","/api/relatorios/pendencias?tamanho=100",tokenAdmin,null);
+        assertThat(painel.statusCode()).as(painel.body()).isEqualTo(200);
+        var item=java.util.stream.StreamSupport.stream(json(app,painel).path("itens").spliterator(),false)
+                .filter(e->e.path("ticket").asString().equals(ticket.toString())).findFirst().orElseThrow();
+        assertThat(item.path("revisaoOrigem").asBoolean()).isTrue();
+        assertThat(item.path("aplicacaoOrigem").asString()).isEqualTo("ORIGEM_RECONHECIDA");
+        assertThat(item.path("registroAplicacaoOrigem").asString()).isEqualTo(aplicada.toString());
+        assertThat(item.path("aplicacao").asString()).isEqualTo("SEM_APLICACAO");
+        // Simular divergência posterior de versão da fonte, sem alterar a aprovação.
+        sql.update("update tb_agendamento set version=version+1 where id=?",falta.id());
+        var inconclusivo=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",tokenAdmin,null);
+        assertThat(inconclusivo.statusCode()).as(inconclusivo.body()).isEqualTo(200);
+        var semOrigem=json(app,inconclusivo);
+        assertThat(semOrigem.path("historicoLocalRequerConferencia").asBoolean()).isTrue();
+        assertThat(java.util.stream.StreamSupport.stream(semOrigem.path("historico").spliterator(),false)
+                .noneMatch(e->e.path("id").asLong()==h)).isTrue();
+        assertThat(semOrigem.path("faltasComprovadas").asLong()).isEqualTo(3);
+        var painelInconclusivo=http(app,"GET","/api/relatorios/pendencias?tamanho=100",tokenAdmin,null);
+        assertThat(painelInconclusivo.statusCode()).as(painelInconclusivo.body()).isEqualTo(200);
+        var itemInconclusivo=java.util.stream.StreamSupport.stream(json(app,painelInconclusivo).path("itens").spliterator(),false)
+                .filter(e->e.path("ticket").asString().equals(ticket.toString())).findFirst().orElseThrow();
+        assertThat(itemInconclusivo.path("aplicacaoOrigem").asString()).isEqualTo("INCONCLUSIVA");
+        assertThat(sql.queryForObject("select count(*) from tb_aplicacao_origem_historica where id=?",Integer.class,aplicada)).isEqualTo(1);
     }
 
     private static int faltasResolucao(JdbcTemplate sql,UUID vinculo) {

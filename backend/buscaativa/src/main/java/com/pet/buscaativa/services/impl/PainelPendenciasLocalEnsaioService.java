@@ -19,13 +19,16 @@ import lombok.RequiredArgsConstructor;
 public class PainelPendenciasLocalEnsaioService {
     private final AtoresEstadoClinicoLocalEnsaio atores;
     private final EntityManager em;
+    private final OrigemHistoricaEfetivaLocal origemEfetiva;
     private final org.springframework.jdbc.core.JdbcTemplate jdbc;
     public enum Estado { PENDENTE, APROVADA, REJEITADA }
     public enum Aplicacao { SEM_APLICACAO, RESOLUCAO_REGISTRADA, REVERTIDA, INCONCLUSIVA }
     private record SituacaoAplicacao(Aplicacao estado,UUID resolucao) {}
+    public enum AplicacaoOrigem { SEM_APLICACAO, ORIGEM_RECONHECIDA, INCONCLUSIVA }
     public record Item(UUID ticket,UUID paciente,UUID vinculo,String nome,PendenciaRevisaoProveniencia.TipoRegistro tipoRegistro,
             Instant solicitadoEm,Estado estado,UUID decisao,Instant decididaEm,
-            Integer versaoVinculo, Long registro, String justificativaSolicitacao, String justificativaDecisao, Aplicacao aplicacao, UUID resolucaoAtiva) {}
+            Integer versaoVinculo, Long registro, String justificativaSolicitacao, String justificativaDecisao, Aplicacao aplicacao, UUID resolucaoAtiva,
+            boolean revisaoOrigem, AplicacaoOrigem aplicacaoOrigem, UUID registroAplicacaoOrigem) {}
     public record Pagina(long pendentes,long aprovadas,long rejeitadas,java.util.List<Item> itens,long total,int pagina,int tamanho) {}
 
     public Pagina listar(Estado filtro,int pagina,int tamanho) {
@@ -48,17 +51,23 @@ public class PainelPendenciasLocalEnsaioService {
                 filtro==Estado.APROVADA?DecisaoRevisaoProveniencia.Decisao.APROVAR:DecisaoRevisaoProveniencia.Decisao.REJEITAR);
         long total=filtro==null?pendentes+aprovadas+rejeitadas:filtro==Estado.PENDENTE?pendentes:filtro==Estado.APROVADA?aprovadas:rejeitadas;
         boolean instalada=com.pet.buscaativa.migration.AplicacaoPendenciaSchemaGuard.instalada(jdbc);
+        var origens=new java.util.HashMap<Long,java.util.Map<Long,OrigemHistoricaEfetivaLocal.Reconhecimento>>();
         long offset=(long)pagina*tamanho;
         var itens=offset>=total?java.util.List.<Item>of():q.setFirstResult(Math.toIntExact(offset)).setMaxResults(tamanho)
                 .getResultList().stream().map(row->{
                     var p=(PendenciaRevisaoProveniencia)row[0];var d=(DecisaoRevisaoProveniencia)row[1];
                     var v=p.getVinculo();
                     var aplicacao=instalada?situacaoAplicacao(p):new SituacaoAplicacao(Aplicacao.SEM_APLICACAO,null);
+                    boolean revisaoOrigem=p.getSituacaoEvidencia()==com.pet.buscaativa.migration.ClassificadorEvidenciaClinicaLocal.Situacao.REVISAR_ORIGEM_DESCONHECIDA;
+                    var origem=revisaoOrigem?origens.computeIfAbsent(v.getId(),id->origemEfetiva.consultar(v)).get(p.getRegistroId()):null;
+                    if(origem!=null && !p.getId().equals(origem.ticket())) origem=null;
                     return new Item(p.getId(),v.getPaciente().getIdPublico(),v.getIdPublico(),v.getPaciente().getNome(),
                             p.getTipoRegistro(),p.getSolicitadoEm(),d==null?Estado.PENDENTE:
                             d.getDecisao()==DecisaoRevisaoProveniencia.Decisao.APROVAR?Estado.APROVADA:Estado.REJEITADA,
                             d==null?null:d.getId(),d==null?null:d.getDecididaEm(), v.getVersion(),
-                            p.getRegistroId(), p.getJustificativa(), d==null?null:d.getJustificativa(), aplicacao.estado(),aplicacao.resolucao());
+                            p.getRegistroId(), p.getJustificativa(), d==null?null:d.getJustificativa(), aplicacao.estado(),aplicacao.resolucao(),revisaoOrigem,
+                            origem==null?AplicacaoOrigem.SEM_APLICACAO:origem.comprovada()?AplicacaoOrigem.ORIGEM_RECONHECIDA:AplicacaoOrigem.INCONCLUSIVA,
+                            origem==null?null:origem.id());
                 }).toList();
         return new Pagina(pendentes,aprovadas,rejeitadas,itens,total,pagina,tamanho);
     }

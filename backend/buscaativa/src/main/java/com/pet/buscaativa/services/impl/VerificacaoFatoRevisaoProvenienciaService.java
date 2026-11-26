@@ -149,7 +149,7 @@ public class VerificacaoFatoRevisaoProvenienciaService {
         return new FatoLocalVerificado(tipoRegistro, registroId, paciente.getId(), unidade);
     }
 
-    private ProvaOrigem conferirHistoricoSemOrigem(HistoricoPaciente h,VinculoAssistencial local) {
+    ProvaOrigem conferirHistoricoSemOrigem(HistoricoPaciente h,VinculoAssistencial local) {
         if(!AvaliacaoProvenienciaClinica.origemAusente(h.getUnidadeOrigemChave())
                 || h.getPaciente()==null || !Objects.equals(h.getPaciente().getId(),local.getPaciente().getId())
                 || h.getProfissional()==null || h.getProfissional().getId()==null || h.getOcorridoEm()==null

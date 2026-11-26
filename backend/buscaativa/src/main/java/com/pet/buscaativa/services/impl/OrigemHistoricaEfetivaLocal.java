@@ -1,0 +1,73 @@
+package com.pet.buscaativa.services.impl;
+
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.UUID;
+import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Component;
+import org.springframework.jdbc.core.JdbcTemplate;
+import com.pet.buscaativa.entities.VinculoAssistencial;
+import com.pet.buscaativa.entities.PendenciaRevisaoProveniencia.TipoRegistro;
+import com.pet.buscaativa.entities.enums.FrequenciaAssistencial;
+import com.pet.buscaativa.entities.enums.TipoEventoHistoricoPaciente;
+import com.pet.buscaativa.migration.AplicacaoOrigemSchemaGuard;
+import com.pet.buscaativa.repositories.HistoricoPacienteRepository;
+import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
+import com.pet.buscaativa.services.impl.VerificacaoFatoRevisaoProvenienciaService.CandidatoOrigem;
+import com.pet.buscaativa.services.impl.VerificacaoFatoRevisaoProvenienciaService.ProvaOrigem;
+import lombok.RequiredArgsConstructor;
+
+/** Leitura restrita a um vínculo local já autorizado, na transação da consulta.
+ * Nunca alterar a origem bruta nem criar um novo fato de frequência. */
+@Component
+@Profile("!test | (test & ensaio-estado-local)")
+@RequiredArgsConstructor
+class OrigemHistoricaEfetivaLocal {
+    private final JdbcTemplate jdbc;
+    private final HistoricoPacienteRepository historicos;
+    private final VerificacaoFatoRevisaoProvenienciaService verificador;
+    private final AutorizacaoVinculoAssistencialService autorizacao;
+
+    record Reconhecimento(UUID id,UUID ticket,boolean comprovada) {}
+    private record Aplicacao(UUID id,UUID ticket,ProvaOrigem prova,OffsetDateTime aplicadaEm,OffsetDateTime decididaEm) {}
+
+    Map<Long,Reconhecimento> consultar(VinculoAssistencial local) {
+        var autorizado=autorizacao.exigirVinculoIdentificado(local.getPaciente().getIdPublico(),local.getIdPublico());
+        if(!java.util.Objects.equals(autorizado.getId(),local.getId())
+                || !java.util.Objects.equals(autorizado.getUnidadeChave(),local.getUnidadeChave()))
+            throw new ResourceNotFoundException("Paciente não encontrado.");
+        if(!AplicacaoOrigemSchemaGuard.instalada(jdbc)) return Map.of();
+        var registros=jdbc.query("""
+                select a.id,a.pendencia_id,a.historico_id,p.fonte,p.fonte_id,p.versao_fonte,p.participante_id,
+                       p.responsavel_id,p.ocorrido_em,p.frequencia,p.tipo_historico,a.registrado_em,d.decidida_em
+                from tb_aplicacao_origem_historica a
+                join tb_prova_aprovacao_origem p on p.decisao_id=a.decisao_id and p.pendencia_id=a.pendencia_id
+                    and p.vinculo_id=a.vinculo_id and p.paciente_id=a.paciente_id
+                    and p.unidade_chave=a.unidade_chave and p.historico_id=a.historico_id
+                join tb_decisao_revisao_proveniencia d on d.id=p.decisao_id and d.pendencia_id=p.pendencia_id
+                    and d.paciente_id=p.paciente_id and d.unidade_chave=p.unidade_chave and d.decisao='APROVAR'
+                where a.vinculo_id=? and a.paciente_id=? and a.unidade_chave=?
+                """,(rs,n)->new Aplicacao(rs.getObject(1,UUID.class),rs.getObject(2,UUID.class),new ProvaOrigem(
+                        new CandidatoOrigem(rs.getLong(3),TipoRegistro.valueOf(rs.getString(4)),rs.getLong(5),
+                            rs.getObject(9,LocalDateTime.class),FrequenciaAssistencial.valueOf(rs.getString(10))),
+                        rs.getInt(6),rs.getObject(7,Long.class),rs.getLong(8),
+                        TipoEventoHistoricoPaciente.valueOf(rs.getString(11))),rs.getObject(12,OffsetDateTime.class),
+                        rs.getObject(13,OffsetDateTime.class)),local.getId(),local.getPaciente().getId(),local.getUnidadeChave());
+        var resultado=new LinkedHashMap<Long,Reconhecimento>();
+        for(var a:registros) {
+            long id=a.prova().candidato().historico();
+            boolean comprovada=false;
+            try {
+                var h=historicos.findById(id).orElseThrow(()->new ResourceNotFoundException("Histórico não encontrado."));
+                comprovada=!a.aplicadaEm().isBefore(a.decididaEm())
+                        && a.prova().equals(verificador.conferirHistoricoSemOrigem(h,local));
+            } catch(ResourceNotFoundException e) {
+                // Divergência posterior não autoriza leitura nem apaga a aplicação.
+            }
+            resultado.put(id,new Reconhecimento(a.id(),a.ticket(),comprovada));
+        }
+        return Map.copyOf(resultado);
+    }
+}

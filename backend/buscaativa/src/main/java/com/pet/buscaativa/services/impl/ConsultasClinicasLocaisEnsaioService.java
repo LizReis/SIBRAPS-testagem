@@ -39,6 +39,7 @@ public class ConsultasClinicasLocaisEnsaioService {
     private final DtosAssistenciaisLocaisEnsaioService dtos;
     private final HistoricoPacienteRepository historicos;
     private final HistoricoFrequenciaLocalEnsaio historicoFrequencia;
+    private final OrigemHistoricaEfetivaLocal origemEfetiva;
     private final EntityManager em;
     private final Clock clock;
     private final ModeloClinico modelo;
@@ -63,7 +64,7 @@ public class ConsultasClinicasLocaisEnsaioService {
             StatusSessaoGrupo status, StatusPresencaGrupo frequencia, boolean desconsiderado) {}
     public record Evento(Long id, TipoEventoHistoricoPaciente tipo, SituacaoAtendimento situacao,
             LocalDateTime ocorridoEm, String descricao, Long agendamentoId, Long sessaoId,
-            String nomeResponsavel, String unidadeOrigem, Integer numeroFaltaConsecutiva, boolean desconsiderado) {}
+            String nomeResponsavel, String unidadeOrigem, Integer numeroFaltaConsecutiva, boolean desconsiderado, boolean origemCorrigida) {}
     public record Prontuario(Item paciente, List<AgendamentoDTO> atendimentos, List<Participacao> sessoes,
             List<Evento> historico, Long presencasComprovadas, Long faltasComprovadas,
             boolean historicoLocalRequerConferencia, List<Long> atendimentosDesconsiderados) {}
@@ -166,10 +167,19 @@ public class ConsultasClinicasLocaisEnsaioService {
         var porFato=ev.diagnosticoBruto().eventosComOrigemLocal().stream().collect(Collectors.toMap(f->new ChaveFato(f.fonte(),f.registroId()),f->f));
         var eventos=new ArrayList<Evento>();
         boolean revisar=l.item().indicadores().revisaoNecessaria();
-        var registros=historicos.findLocaisComOrigemComprovada(paciente,v.getUnidadeChave());
+        var reconhecimentos=origemEfetiva.consultar(v);
+        var registros=new ArrayList<>(historicos.findLocaisComOrigemComprovada(paciente,v.getUnidadeChave()));
+        for(var entrada:reconhecimentos.entrySet()) {
+            if(!entrada.getValue().comprovada()) { revisar=true; continue; }
+            historicos.findById(entrada.getKey()).ifPresent(registros::add);
+        }
+        registros.sort(Comparator.comparing(HistoricoPaciente::getOcorridoEm,
+                Comparator.nullsLast(Comparator.reverseOrder())).thenComparing(HistoricoPaciente::getId,Comparator.reverseOrder()));
         for (var h:registros) {
             try {
-                autorizacao.validarHistoricoLocal(h);
+                var reconhecimento=reconhecimentos.get(h.getId());
+                boolean corrigida=reconhecimento!=null && reconhecimento.comprovada();
+                if(!corrigida) autorizacao.validarHistoricoLocal(h);
                 Integer numero=null;
                 boolean desconsiderado=false;
                 if (h.getAgendamento()!=null) {
@@ -179,7 +189,7 @@ public class ConsultasClinicasLocaisEnsaioService {
                             || h.getTipo()==TipoEventoHistoricoPaciente.PARTICIPACAO_GRUPO_TERAPEUTICO) {
                         var chave=new ChaveFato(LinhaDoTempoFrequenciasVinculoService.Fonte.ATENDIMENTO_INDIVIDUAL,a.getId());
                         var f=porFato.get(chave);
-                        var coerente=historicoFrequencia.individual(a,v,a.getFrequenciaAssistencial());
+                        var coerente=corrigida?h:historicoFrequencia.individual(a,v,a.getFrequenciaAssistencial());
                         if (f==null || coerente==null || !h.getId().equals(coerente.getId())
                                 || !Objects.equals(f.ocorridoEm(),h.getOcorridoEm())) { revisar=true; continue; }
                         desconsiderado=ev.desconsiderado(chave.fonte(),chave.id());
@@ -192,7 +202,7 @@ public class ConsultasClinicasLocaisEnsaioService {
                     var chave=new ChaveFato(LinhaDoTempoFrequenciasVinculoService.Fonte.SESSAO_GRUPO,p.getId());
                     var f=porFato.get(chave);
                     if (f==null) { revisar=true; continue; }
-                    var coerente=historicoFrequencia.coletivo(p,v,FrequenciaAssistencial.valueOf(p.getStatusPresenca().name()));
+                    var coerente=corrigida?h:historicoFrequencia.coletivo(p,v,FrequenciaAssistencial.valueOf(p.getStatusPresenca().name()));
                     if (coerente==null || !h.getId().equals(coerente.getId())
                             || !Objects.equals(f.ocorridoEm(),h.getOcorridoEm())) { revisar=true; continue; }
                     desconsiderado=ev.desconsiderado(chave.fonte(),chave.id());
@@ -201,7 +211,7 @@ public class ConsultasClinicasLocaisEnsaioService {
                 eventos.add(new Evento(h.getId(),h.getTipo(),h.getSituacaoAtendimento(),h.getOcorridoEm(),h.getDescricao(),
                         h.getAgendamento()==null?null:h.getAgendamento().getId(),
                         h.getSessaoGrupo()==null?null:h.getSessaoGrupo().getId(),
-                        h.getProfissional()==null?null:h.getProfissional().getNome(),v.getUnidadeChave(),numero,desconsiderado));
+                        h.getProfissional()==null?null:h.getProfissional().getNome(),v.getUnidadeChave(),numero,desconsiderado,corrigida));
             } catch (ResourceNotFoundException | ConflictException incoerente) {
                 revisar=true;
             }
