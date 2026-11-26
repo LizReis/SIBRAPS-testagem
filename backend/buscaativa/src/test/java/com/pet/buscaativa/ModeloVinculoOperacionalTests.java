@@ -728,6 +728,21 @@ class ModeloVinculoOperacionalTests {
             assertThat(versaoResolucao(sql,vinculo)).isEqualTo(versao);
             var id=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.resolver(app,prof,paciente,vinculo,versao,a,b,false);
             assertThat(faltasResolucao(sql,vinculo)).isEqualTo(2);
+            var prontuario=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",token,null);
+            assertThat(prontuario.statusCode()).as(prontuario.body()).isEqualTo(200);
+            var leitura=json(app,prontuario);
+            assertThat(leitura.path("atendimentos").size()).isEqualTo(3);
+            assertThat(leitura.path("faltasComprovadas").asLong()).isEqualTo(2);
+            assertThat(leitura.path("atendimentosDesconsiderados").size()).isEqualTo(1);
+            assertThat(leitura.path("atendimentosDesconsiderados").get(0).asLong()).isEqualTo(b.id());
+            var eventosDesconsiderados=java.util.stream.StreamSupport.stream(leitura.path("historico").spliterator(),false)
+                    .filter(h->h.path("desconsiderado").asBoolean()).toList();
+            assertThat(eventosDesconsiderados).hasSize(1);
+            assertThat(eventosDesconsiderados.getFirst().path("agendamentoId").asLong()).isEqualTo(b.id());
+            assertThat(eventosDesconsiderados.getFirst().path("numeroFaltaConsecutiva").isNull()).isTrue();
+            var resumo=http(app,"GET","/api/inicio/resumo",token,null);
+            assertThat(resumo.statusCode()).as(resumo.body()).isEqualTo(200);
+            assertThat(json(app,resumo).path("totalFaltasUltimosSeteDias").asLong()).isEqualTo(2);
             assertThat(sql.queryForObject("select count(*) from vw_resolucao_frequencia_ativa",Integer.class)).isEqualTo(1);
             assertThat(versaoResolucao(sql,vinculo)).isGreaterThan(versao);
             assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.corrigir(app,prof,b))
@@ -738,6 +753,10 @@ class ModeloVinculoOperacionalTests {
                     .isInstanceOf(com.pet.buscaativa.services.exceptions.ResourceNotFoundException.class);
             com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.desfazer(app,prof,paciente,vinculo,apos,id);
             assertThat(faltasResolucao(sql,vinculo)).isEqualTo(3);
+            var revertido=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",token,null);
+            assertThat(revertido.statusCode()).as(revertido.body()).isEqualTo(200);
+            assertThat(json(app,revertido).path("faltasComprovadas").asLong()).isEqualTo(3);
+            assertThat(json(app,revertido).path("atendimentosDesconsiderados").size()).isZero();
             assertThat(sql.queryForObject("select count(*) from vw_resolucao_frequencia_ativa",Integer.class)).isZero();
             assertThat(sql.queryForObject("select count(*) from tb_resolucao_frequencia_local",Integer.class)).isEqualTo(1);
             assertThat(sql.queryForObject("select count(*) from tb_reversao_resolucao_frequencia",Integer.class)).isEqualTo(1);

@@ -60,13 +60,13 @@ public class ConsultasClinicasLocaisEnsaioService {
     public record Detalhe(Item paciente, Cadastro cadastro, UsuarioReferenciaDTO profissionalReferencia,
             boolean referenciaInconclusiva, ProximoAgendamentoDTO proximoAgendamento) {}
     public record Participacao(Long sessao, Long grupo, String tema, LocalDate data, LocalTime hora,
-            StatusSessaoGrupo status, StatusPresencaGrupo frequencia) {}
+            StatusSessaoGrupo status, StatusPresencaGrupo frequencia, boolean desconsiderado) {}
     public record Evento(Long id, TipoEventoHistoricoPaciente tipo, SituacaoAtendimento situacao,
             LocalDateTime ocorridoEm, String descricao, Long agendamentoId, Long sessaoId,
-            String nomeResponsavel, String unidadeOrigem, Integer numeroFaltaConsecutiva) {}
+            String nomeResponsavel, String unidadeOrigem, Integer numeroFaltaConsecutiva, boolean desconsiderado) {}
     public record Prontuario(Item paciente, List<AgendamentoDTO> atendimentos, List<Participacao> sessoes,
             List<Evento> historico, long presencasComprovadas, long faltasComprovadas,
-            boolean historicoLocalRequerConferencia) {}
+            boolean historicoLocalRequerConferencia, List<Long> atendimentosDesconsiderados) {}
 
     record Leitura(VinculoAssistencial local, CalculoIndicadoresVinculo.Resultado calculo, Item item) {}
     private record ChaveFato(LinhaDoTempoFrequenciasVinculoService.Fonte fonte, Long id) {}
@@ -125,7 +125,7 @@ public class ConsultasClinicasLocaisEnsaioService {
                 p.getUsfReferencia()==null?null:p.getUsfReferencia().getNomeUsf(),p.getCapsReferencia());
         var ref=v.getProfissionalReferencia();
         boolean refInconclusiva=ref!=null && !AtoresEstadoClinicoLocalEnsaio.elegivel(ref,v.getUnidadeChave(),false);
-        var proximo=l.calculo().evidencias().agenda().stream()
+        var proximo=l.calculo().evidencias().agendaBruta().stream()
                 .filter(a->a.getDataAgendamento()!=null && a.getHoraAtendimento()!=null
                         && !a.getDataAgendamento().isBefore(LocalDate.now(clock))
                         && Boolean.TRUE.equals(a.getOcupaVaga())
@@ -144,26 +144,26 @@ public class ConsultasClinicasLocaisEnsaioService {
         var l=ler(exigir(paciente));
         var v=l.local();
         var ev=l.calculo().evidencias();
-        var agenda=ev.agenda().stream().sorted(Comparator.comparing(Agendamento::getDataAgendamento,
+        var agenda=ev.agendaBruta().stream().sorted(Comparator.comparing(Agendamento::getDataAgendamento,
                 Comparator.nullsLast(Comparator.naturalOrder())).thenComparing(Agendamento::getHoraAtendimento,
                 Comparator.nullsLast(Comparator.naturalOrder())).thenComparing(Agendamento::getId))
                 .map(a->dtos.atendimento(a.getId())).toList();
         // Somente a participação do paciente consultado, não a lista de colegas.
-        var grupos=ev.participacoes().stream().map(p->{
+        var grupos=ev.participacoesBrutas().stream().map(p->{
             var s=p.getSessaoGrupo();
             return new Participacao(s.getId(),s.getGrupo().getId(),s.getGrupo().getTema(),s.getDataSessao(),
                     s.getHorario(),s.getStatus(),s.getStatus()==StatusSessaoGrupo.REALIZADA
                             && AvaliacaoProvenienciaClinica.frequenciaRegistrada(p.getStatusPresenca())
-                            ?p.getStatusPresenca():null);
+                            ?p.getStatusPresenca():null, ev.desconsiderado(LinhaDoTempoFrequenciasVinculoService.Fonte.SESSAO_GRUPO,p.getId()));
         }).sorted(Comparator.comparing(Participacao::data,Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(Participacao::hora,Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(Participacao::sessao)).toList();
 
-        var reservas=ev.agenda().stream().collect(Collectors.toMap(Agendamento::getId,a->a));
-        var participantes=ev.participacoes().stream().collect(Collectors.groupingBy(p->p.getSessaoGrupo().getId()));
+        var reservas=ev.agendaBruta().stream().collect(Collectors.toMap(Agendamento::getId,a->a));
+        var participantes=ev.participacoesBrutas().stream().collect(Collectors.groupingBy(p->p.getSessaoGrupo().getId()));
         var fatos=ev.diagnostico().eventosComOrigemLocal();
         var numeros=numeros(l);
-        var porFato=fatos.stream().collect(Collectors.toMap(f->new ChaveFato(f.fonte(),f.registroId()),f->f));
+        var porFato=ev.diagnosticoBruto().eventosComOrigemLocal().stream().collect(Collectors.toMap(f->new ChaveFato(f.fonte(),f.registroId()),f->f));
         var eventos=new ArrayList<Evento>();
         boolean revisar=l.item().indicadores().revisaoNecessaria();
         var registros=historicos.findLocaisComOrigemComprovada(paciente,v.getUnidadeChave());
@@ -171,6 +171,7 @@ public class ConsultasClinicasLocaisEnsaioService {
             try {
                 autorizacao.validarHistoricoLocal(h);
                 Integer numero=null;
+                boolean desconsiderado=false;
                 if (h.getAgendamento()!=null) {
                     var a=reservas.get(h.getAgendamento().getId());
                     if (a==null) { revisar=true; continue; }
@@ -181,7 +182,8 @@ public class ConsultasClinicasLocaisEnsaioService {
                         var coerente=historicoFrequencia.individual(a,v,a.getFrequenciaAssistencial());
                         if (f==null || coerente==null || !h.getId().equals(coerente.getId())
                                 || !Objects.equals(f.ocorridoEm(),h.getOcorridoEm())) { revisar=true; continue; }
-                        numero=numeros.get(chave);
+                        desconsiderado=ev.desconsiderado(chave.fonte(),chave.id());
+                        numero=desconsiderado?null:numeros.get(chave);
                     }
                 } else if (h.getSessaoGrupo()!=null) {
                     var ps=participantes.getOrDefault(h.getSessaoGrupo().getId(),List.of());
@@ -193,19 +195,40 @@ public class ConsultasClinicasLocaisEnsaioService {
                     var coerente=historicoFrequencia.coletivo(p,v,FrequenciaAssistencial.valueOf(p.getStatusPresenca().name()));
                     if (coerente==null || !h.getId().equals(coerente.getId())
                             || !Objects.equals(f.ocorridoEm(),h.getOcorridoEm())) { revisar=true; continue; }
-                    numero=numeros.get(chave);
+                    desconsiderado=ev.desconsiderado(chave.fonte(),chave.id());
+                        numero=desconsiderado?null:numeros.get(chave);
                 } else if (!AvaliacaoProvenienciaClinica.acaoLocalSemFonteRegistrada(h)) { revisar=true; continue; }
                 eventos.add(new Evento(h.getId(),h.getTipo(),h.getSituacaoAtendimento(),h.getOcorridoEm(),h.getDescricao(),
                         h.getAgendamento()==null?null:h.getAgendamento().getId(),
                         h.getSessaoGrupo()==null?null:h.getSessaoGrupo().getId(),
-                        h.getProfissional()==null?null:h.getProfissional().getNome(),v.getUnidadeChave(),numero));
+                        h.getProfissional()==null?null:h.getProfissional().getNome(),v.getUnidadeChave(),numero,desconsiderado));
             } catch (ResourceNotFoundException | ConflictException incoerente) {
                 revisar=true;
             }
         }
         // Não confundir totais de fatos comprovados com totais completos do prontuário.
         long presentes=fatos.stream().filter(LinhaDoTempoFrequenciasVinculoService.Evento::presente).count();
-        return new Prontuario(l.item(),agenda,grupos,List.copyOf(eventos),presentes,fatos.size()-presentes,revisar);
+        var desconsiderados=ev.desconsiderados().stream()
+                .filter(chave->chave.fonte()==LinhaDoTempoFrequenciasVinculoService.Fonte.ATENDIMENTO_INDIVIDUAL)
+                .map(ProjecaoResolucaoFrequencia.Chave::id).sorted().toList();
+        return new Prontuario(l.item(),agenda,grupos,List.copyOf(eventos),presentes,fatos.size()-presentes,revisar,desconsiderados);
+    }
+
+    /** Mesmo escopo da agenda inicial; somente retirar faltas com resolução válida. */
+    public Long faltasInicio(List<AgendamentoDTO> agenda) {
+        var faltas=agenda.stream().filter(a->!Boolean.TRUE.equals(a.migracaoPendente())
+                && a.frequenciaAssistencial()==FrequenciaAssistencial.FALTOU)
+                .map(AgendamentoDTO::id).collect(Collectors.toSet());
+        if(faltas.isEmpty()) return 0L;
+        for(var l:lerUnidade()) {
+            var ev=l.calculo().evidencias();
+            if(ev.resolucaoInconclusiva() && ev.agendaBruta().stream().anyMatch(a->faltas.contains(a.getId())))
+                return null;
+            for(var chave:ev.desconsiderados())
+                if(chave.fonte()==LinhaDoTempoFrequenciasVinculoService.Fonte.ATENDIMENTO_INDIVIDUAL)
+                    faltas.remove(chave.id());
+        }
+        return (long)faltas.size();
     }
 
     private Map<ChaveFato,Integer> numeros(Leitura l) {

@@ -41,7 +41,7 @@ public class RelatoriosLocaisEnsaioService {
     public record Busca(List<BuscaAtivaRelatorioDTO> dados, long revisaoOuSelecaoInconclusiva,
             String periodo,String profissional,String tipo) {}
     public record Grupos(List<FrequenciaGrupoRelatorioDTO> dados,long grupos,long sessoesPendentes,
-            BigDecimal media,String periodo) {}
+            BigDecimal media,String periodo,long participacoesDesconsideradas) {}
 
     public Busca buscaAtiva(LocalDate inicio,LocalDate fim,UUID profissionalId,TipoAcompanhamento tipo) {
         validar(inicio,fim);
@@ -101,7 +101,7 @@ public class RelatoriosLocaisEnsaioService {
         if(grupoId!=null) query.setParameter("grupo",grupoId);
         var dados=new ArrayList<FrequenciaGrupoRelatorioDTO>();
         var grupos=new HashSet<Long>();
-        long pendentes=0;
+        long pendentes=0,desconsideradas=0;
         int presentes=0,ausentes=0;
         for(var s:query.getResultList()) {
             if(s.getStatus()!=StatusSessaoGrupo.REALIZADA || !contexto.unidade().equals(s.getUnidadeOrigemChave())
@@ -110,24 +110,33 @@ public class RelatoriosLocaisEnsaioService {
                     || s.getParticipantes().stream().anyMatch(p->!fatoColetivoComprovado(p,locais))) {
                 pendentes++; continue;
             }
-            var ps=s.getParticipantes().stream().filter(p->p.getStatusPresenca()==StatusPresencaGrupo.PRESENTE)
+            var validos=s.getParticipantes().stream().filter(p->!desconsiderado(p,locais)).toList();
+            desconsideradas+=s.getParticipantes().size()-validos.size();
+            var ps=validos.stream().filter(p->p.getStatusPresenca()==StatusPresencaGrupo.PRESENTE)
                     .map(p->p.getPaciente().getNome()).sorted().toList();
-            var fs=s.getParticipantes().stream().filter(p->p.getStatusPresenca()==StatusPresencaGrupo.FALTOU)
+            var fs=validos.stream().filter(p->p.getStatusPresenca()==StatusPresencaGrupo.FALTOU)
                     .map(p->p.getPaciente().getNome()).sorted().toList();
             var taxa=taxa(ps.size(),fs.size());
             dados.add(new FrequenciaGrupoRelatorioDTO(s.getDataSessao(),s.getGrupo().getTema(),
                     s.getResponsavelAtendimento().getNome(),ps.size(),fs.size(),ps,fs,taxa,percentual(taxa)));
             grupos.add(s.getGrupo().getId()); presentes+=ps.size(); ausentes+=fs.size();
         }
-        return new Grupos(List.copyOf(dados),grupos.size(),pendentes,taxa(presentes,ausentes),periodo(inicio,fim));
+        return new Grupos(List.copyOf(dados),grupos.size(),pendentes,taxa(presentes,ausentes),periodo(inicio,fim),desconsideradas);
     }
 
     private boolean fatoColetivoComprovado(SessaoGrupoParticipante p,Map<Long,Leitura> locais) {
         if(p.getPaciente()==null || !AvaliacaoProvenienciaClinica.frequenciaRegistrada(p.getStatusPresenca())) return false;
         var l=locais.get(p.getPaciente().getId());
-        return l!=null && l.calculo().evidencias().diagnostico().eventosComOrigemLocal().stream()
+        return l!=null && !l.calculo().evidencias().resolucaoInconclusiva()
+                && l.calculo().evidencias().diagnosticoBruto().eventosComOrigemLocal().stream()
                 .anyMatch(f->f.fonte()==LinhaDoTempoFrequenciasVinculoService.Fonte.SESSAO_GRUPO
                         && f.registroId().equals(p.getId()) && f.presente()==(p.getStatusPresenca()==StatusPresencaGrupo.PRESENTE));
+    }
+
+    private boolean desconsiderado(SessaoGrupoParticipante p,Map<Long,Leitura> locais) {
+        var l=locais.get(p.getPaciente().getId());
+        return l!=null && l.calculo().evidencias().desconsiderado(
+                LinhaDoTempoFrequenciasVinculoService.Fonte.SESSAO_GRUPO,p.getId());
     }
 
     public byte[] exportarBusca(LocalDate inicio,LocalDate fim,UUID prof,TipoAcompanhamento tipo,boolean xlsx) {
@@ -145,8 +154,10 @@ public class RelatoriosLocaisEnsaioService {
         var g=frequenciaGrupos(inicio,fim,grupo);
         // Não esconder uma sessão local inconclusiva em um relatório que não possui coluna de revisão.
         if(g.sessoesPendentes()>0) throw new ConflictException("Há sessões locais pendentes de conferência; exportação integral indisponível.");
-        if(xlsx) return excel.gerarFrequenciaGrupos(g.dados(),g.periodo(),g.media(),g.grupos());
-        var parametros=parametros(g.periodo());
+        String periodo=g.periodo()+(g.participacoesDesconsideradas()==0?"":
+                " — participações desconsideradas: "+g.participacoesDesconsideradas());
+        if(xlsx) return excel.gerarFrequenciaGrupos(g.dados(),periodo,g.media(),g.grupos());
+        var parametros=parametros(periodo);
         parametros.put("SESSOES",g.dados().size()); parametros.put("GRUPOS",g.grupos());
         parametros.put("PRESENCA_MEDIA",percentual(g.media())); parametros.put("sessoes",g.dados());
         return pdf.renderizar("relatorio-frequencia-grupos",parametros);

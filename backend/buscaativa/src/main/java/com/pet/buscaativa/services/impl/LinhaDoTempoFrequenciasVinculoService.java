@@ -64,7 +64,20 @@ public class LinhaDoTempoFrequenciasVinculoService {
     }
 
     record Evidencias(Diagnostico diagnostico, List<Agendamento> agenda,
-            List<SessaoGrupoParticipante> participacoes, boolean agendaLocalInconclusiva) {}
+            List<SessaoGrupoParticipante> participacoes, boolean agendaLocalInconclusiva,
+            Diagnostico diagnosticoBruto, List<Agendamento> agendaBruta,
+            List<SessaoGrupoParticipante> participacoesBrutas,
+            java.util.Set<ProjecaoResolucaoFrequencia.Chave> desconsiderados,
+            boolean resolucaoInconclusiva) {
+        Evidencias(Diagnostico diagnostico,List<Agendamento> agenda,
+                List<SessaoGrupoParticipante> participacoes,boolean agendaLocalInconclusiva) {
+            this(diagnostico,agenda,participacoes,agendaLocalInconclusiva,diagnostico,agenda,participacoes,
+                    java.util.Set.of(),false);
+        }
+        boolean desconsiderado(Fonte fonte,Long id) {
+            return desconsiderados.contains(new ProjecaoResolucaoFrequencia.Chave(fonte,id));
+        }
+    }
 
     Diagnostico analisar(VinculoAssistencial vinculo) {
         return examinarEfetivo(vinculo, false).diagnostico();
@@ -125,7 +138,8 @@ public class LinhaDoTempoFrequenciasVinculoService {
                 new ProjecaoResolucaoFrequencia.Chave(Fonte.ATENDIMENTO_INDIVIDUAL,a.getAgendamentoOriginal().getId())))).toList();
         var participacoes=bruto.participacoes().stream().filter(p->!excluidos.contains(
                 new ProjecaoResolucaoFrequencia.Chave(Fonte.SESSAO_GRUPO,p.getId()))).toList();
-        return new Evidencias(efetivo,agenda,participacoes,bruto.agendaLocalInconclusiva());
+        return new Evidencias(efetivo,agenda,participacoes,bruto.agendaLocalInconclusiva(),
+                d,bruto.agenda(),bruto.participacoes(),excluidos,projecao.inconclusivo());
     }
 
     void exigirSemResolucaoAtiva(VinculoAssistencial local,Fonte fonte,Long id) {

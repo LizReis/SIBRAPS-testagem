@@ -143,8 +143,7 @@ public class ConsultasVinculoController {
         var agenda = fatos.agenda(hoje.minusDays(6), hoje, null);
         long agendados = agenda.stream().filter(a -> hoje.equals(a.dataAgendamento())
                 && a.situacaoAtendimento() == SituacaoAtendimento.AGENDADO).count();
-        long faltasComprovadas = agenda.stream().filter(a -> !Boolean.TRUE.equals(a.migracaoPendente())
-                && a.frequenciaAssistencial() == FrequenciaAssistencial.FALTOU).count();
+        Long faltasComprovadas = pacientes.faltasInicio(agenda);
         var distribuicao = resumo.distribuicaoClassificacao();
         return new ResumoInicio(resumo.totalPacientesAtivos(), agendados, faltasComprovadas,
                 distribuicao.amarelos() + distribuicao.vermelhos(), null, resumo.pacientesPrioritarios());
