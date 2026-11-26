@@ -1,4 +1,4 @@
-package com.pet.buscaativa;
+package com.pet.buscaativa.services.impl;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -26,9 +26,6 @@ import com.pet.buscaativa.repositories.AgendamentoRepository;
 import com.pet.buscaativa.repositories.HistoricoPacienteRepository;
 import com.pet.buscaativa.repositories.SessaoGrupoRepository;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
-import com.pet.buscaativa.services.impl.AutorizacaoVinculoAssistencialService;
-import com.pet.buscaativa.services.impl.EscopoUnidadeService;
-import com.pet.buscaativa.services.impl.VerificacaoFatoRevisaoProvenienciaService;
 
 /**
  * Fase somente consultiva: prova que uma futura solicitacao nao pode
@@ -192,11 +189,13 @@ class VerificacaoFatoRevisaoProvenienciaServiceTests {
     void administradorLocalNaoPodeAtribuirOrigemSemFonteOuComFonteSemUnidade() {
         perfil(TipoUsuario.ADMINISTRADOR);
         vinculoLocal();
-        var semFonte = historicoSemOrigem(31L);
+        historicoSemOrigem(31L);
         var semUnidade = historicoSemOrigem(32L);
-        when(semUnidade.getAgendamento()).thenReturn(fonteHistorica(null));
+        var atendimentoSemUnidade = fonteHistorica(null);
+        when(semUnidade.getAgendamento()).thenReturn(atendimentoSemUnidade);
         var fonteExterna = historicoSemOrigem(33L);
-        when(fonteExterna.getAgendamento()).thenReturn(fonteHistorica("CAPS_II"));
+        var atendimentoExterno = fonteHistorica("CAPS_II");
+        when(fonteExterna.getAgendamento()).thenReturn(atendimentoExterno);
 
         for (long id : List.of(31L, 32L, 33L)) {
             assertThrows(ResourceNotFoundException.class,
@@ -215,10 +214,13 @@ class VerificacaoFatoRevisaoProvenienciaServiceTests {
         when(autorizacao.exigirVinculoIdentificado(pacienteIdPublico, vinculoId)).thenReturn(vinculo);
         var semResponsavel = historicoSemOrigem(41L);
         when(semResponsavel.getProfissional()).thenReturn(null);
-        when(semResponsavel.getAgendamento()).thenReturn(fonteHistorica("CAPS_AD"));
+        var atendimentoLocal = fonteHistorica("CAPS_AD");
+        when(semResponsavel.getAgendamento()).thenReturn(atendimentoLocal);
         var duasFontes = historicoSemOrigem(42L);
-        when(duasFontes.getAgendamento()).thenReturn(fonteHistorica("CAPS_AD"));
-        when(duasFontes.getSessaoGrupo()).thenReturn(mock(SessaoGrupo.class));
+        var outraFonteLocal = fonteHistorica("CAPS_AD");
+        var sessao = mock(SessaoGrupo.class);
+        when(duasFontes.getAgendamento()).thenReturn(outraFonteLocal);
+        when(duasFontes.getSessaoGrupo()).thenReturn(sessao);
         when(historicos.findCandidatosOrigemLocal(pacienteIdPublico, "CAPS_AD"))
                 .thenReturn(List.of(semResponsavel, duasFontes));
 
