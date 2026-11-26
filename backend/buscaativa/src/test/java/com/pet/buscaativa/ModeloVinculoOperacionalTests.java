@@ -875,8 +875,138 @@ class ModeloVinculoOperacionalTests {
                     """,UUID.randomUUID(),vinculada);
             assertThat(com.pet.buscaativa.migration.EvidenciaResolucaoHistorica.conferir(sql,unidadeChave,limite,"base").consistente()).isFalse();
             assertThat(com.pet.buscaativa.migration.EvidenciaResolucaoHistorica.conferir(sql,"CAPS_I",limite,"base").consistente()).isTrue();
+            validarResolucaoColetivaConcorrente(app,sql,unidade,prof,colega,token,tokenColega,tokenAdmin,tokenExterno);
         }
     }
+
+    /** Reutiliza o banco V26, mas com outra identidade e vínculo independentes. */
+    private void validarResolucaoColetivaConcorrente(ConfigurableApplicationContext app,JdbcTemplate sql,long unidade,
+            String prof,String colega,String tokenProf,String tokenColega,String tokenAdmin,String tokenExterno) throws Exception {
+        var novo=http(app,"POST","/api/pacientes?ignorarSimilaridade=true",tokenProf,
+                cadastro(cpfSintetico(91),cnsSintetico(91),"Reconciliação coletiva",unidade));
+        assertThat(novo.statusCode()).as(novo.body()).isEqualTo(201);
+        UUID paciente=UUID.fromString(json(app,novo).path("paciente").asString());
+        UUID vinculo=UUID.fromString(json(app,novo).path("vinculo").asString());
+        long pessoa=sql.queryForObject("select id from tb_paciente where id_publico=?",Long.class,paciente);
+        long local=sql.queryForObject("select id from tb_vinculo_assistencial where id_publico=?",Long.class,vinculo);
+        UUID coordenador=sql.queryForObject("select id_publico from tb_usuario where email=?",UUID.class,prof);
+        long outro=sql.queryForObject("select id from tb_usuario where email=?",Long.class,colega);
+        var clock=(RelogioMutavel)app.getBean(Clock.class);
+        var data=LocalDate.now(clock).plusDays(1);
+        var grupo=http(app,"POST","/api/grupos",tokenAdmin,Map.of("tema","Reconciliação coletiva sintética",
+                "coordenadorId",coordenador,"recorrencia","UNICA","dataPrimeiraSessao",data,
+                "horario","09:00","participantesIds",List.of(paciente)));
+        assertThat(grupo.statusCode()).as(grupo.body()).isEqualTo(200);
+        long grupoId=json(app,grupo).path("grupo").asLong();
+        long sessao=json(app,grupo).path("sessoes").get(0).asLong();
+        clock.avancar(data.atTime(12,0).atZone(clock.getZone()).toInstant());
+        int versaoSessao=sql.queryForObject("select version from tb_sessao_grupo where id=?",Integer.class,sessao);
+        var confirmada=http(app,"POST","/api/grupos/sessoes/"+sessao+"/confirmacao-ocorrencia",tokenProf,
+                Map.of("ocorreu",true,"version",versaoSessao,"frequencias",
+                        List.of(Map.of("pacienteId",paciente,"statusPresenca","PRESENTE"))));
+        assertThat(confirmada.statusCode()).as(confirmada.body()).isEqualTo(200);
+        long participante=sql.queryForObject("select id from tb_sessao_grupo_participante where sessao_grupo_id=? and paciente_id=?",
+                Long.class,sessao,pessoa);
+        int versaoGrupoFato=sql.queryForObject("select version from tb_sessao_grupo where id=?",Integer.class,sessao);
+        // Fixture legada deliberada, sem relaxar o bloqueio de novas reservas.
+        var falta=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.falta(app,colega,pessoa,outro,data,9);
+        assertThat(sql.queryForObject("select pendencia_empate_local from tb_vinculo_assistencial where id=?",Boolean.class,local)).isTrue();
+        String rota="/api/pacientes/"+paciente+"/vinculos/"+vinculo+"/resolucoes-frequencia";
+        String revisoes="/api/pacientes/"+paciente+"/vinculos/"+vinculo+"/revisoes";
+        String relatorio="/api/relatorios/frequencia-grupos";
+        var antes=http(app,"GET",relatorio+"?grupoId="+grupoId,tokenAdmin,null);
+        assertThat(antes.statusCode()).as(antes.body()).isEqualTo(200);
+        assertThat(json(app,antes).path("dados").get(0).path("quantidadePresentes").asInt()).isEqualTo(1);
+        var candidatos=http(app,"GET",rota+"/candidatos",tokenAdmin,null);
+        assertThat(candidatos.statusCode()).as(candidatos.body()).isEqualTo(200);
+        assertThat(json(app,candidatos).path("candidatos").get(0).path("tipo").asString()).isEqualTo("FREQUENCIAS_CONTRADITORIAS");
+        assertThat(json(app,http(app,"GET",rota+"/candidatos",tokenProf,null)).path("total").asLong()).isZero();
+        var ticketResposta=http(app,"POST",revisoes+"?version="+versaoResolucao(sql,vinculo),tokenProf,
+                Map.of("tipo","SESSAO_GRUPO","registro",sessao,"justificativa","Conferir frequência coletiva em conflito."));
+        assertThat(ticketResposta.statusCode()).as(ticketResposta.body()).isEqualTo(200);
+        UUID ticket=UUID.fromString(json(app,ticketResposta).asString());
+        var aprovada=http(app,"POST",revisoes+"/"+ticket+"/decisao?version="+versaoResolucao(sql,vinculo),tokenAdmin,
+                Map.of("decisao","APROVAR","justificativa","Revisão administrativa da frequência coletiva."));
+        assertThat(aprovada.statusCode()).as(aprovada.body()).isEqualTo(200);
+        var dados=Map.of("valido",Map.of("fonte","ATENDIMENTO_INDIVIDUAL","id",falta.id(),"versao",falta.versao()),
+                "desconsiderado",Map.of("fonte","SESSAO_GRUPO","id",participante,"versao",versaoGrupoFato),
+                "ticket",ticket,"justificativa","Conferência sintética confirma duplicidade da frequência coletiva.");
+        int versao=versaoResolucao(sql,vinculo);
+        assertThat(http(app,"POST",rota+"?version="+versao,tokenProf,dados).statusCode()).isEqualTo(403);
+        assertThat(http(app,"POST",rota+"?version="+versao,tokenColega,dados).statusCode()).isEqualTo(403);
+        var respostas=disputarResolucao(app,rota+"?version="+versao,tokenAdmin,dados);
+        UUID id=UUID.fromString(json(app,respostas.stream().filter(x->x.statusCode()==201).findFirst().orElseThrow()).path("id").asString());
+        assertThat(sql.queryForObject("select count(*) from vw_resolucao_frequencia_ativa where vinculo_id=?",Integer.class,local)).isEqualTo(1);
+        assertThat(sql.queryForObject("select indicadores_pendentes from tb_vinculo_assistencial where id=?",Boolean.class,local)).isFalse();
+        assertThat(faltasResolucao(sql,vinculo)).isEqualTo(1);
+        var leitura=http(app,"GET",relatorio+"?grupoId="+grupoId,tokenAdmin,null);
+        assertThat(leitura.statusCode()).as(leitura.body()).isEqualTo(200);
+        var dadosRelatorio=json(app,leitura);
+        assertThat(dadosRelatorio.path("sessoesPendentes").asLong()).isZero();
+        assertThat(dadosRelatorio.path("participacoesDesconsideradas").asLong()).isEqualTo(1);
+        assertThat(dadosRelatorio.path("dados").get(0).path("quantidadePresentes").asInt()).isZero();
+        assertThat(dadosRelatorio.path("dados").get(0).path("nomesPresentes").size()).isZero();
+        assertThat(sql.queryForObject("select status_presenca from tb_sessao_grupo_participante where id=?",String.class,participante)).isEqualTo("PRESENTE");
+        assertThat(http(app,"GET",relatorio+"?grupoId="+grupoId,tokenExterno,null).statusCode()).isEqualTo(404);
+        var xlsx=exportacaoResolucao(app,relatorio+"/excel?grupoId="+grupoId,tokenAdmin);
+        assertThat(xlsx.statusCode()).isEqualTo(200);
+        try(var livro=new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(xlsx.body()))) {
+            var folha=livro.getSheetAt(0);
+            assertThat(folha.getRow(2).getCell(1).getStringCellValue()).contains("participações desconsideradas: 1");
+            assertThat(folha.getRow(8).getCell(3).getNumericCellValue()).isZero();
+            assertThat(folha.getRow(8).getCell(4).getNumericCellValue()).isZero();
+        }
+        var pdf=exportacaoResolucao(app,relatorio+"/pdf?grupoId="+grupoId,tokenAdmin);
+        assertThat(pdf.statusCode()).isEqualTo(200);
+        assertThat(new String(pdf.body(),0,5,java.nio.charset.StandardCharsets.US_ASCII)).isEqualTo("%PDF-");
+        assertThat(http(app,"PATCH","/api/grupos/sessoes/"+sessao+"/frequencias",tokenProf,
+                Map.of("version",versaoGrupoFato,"frequencias",List.of(Map.of("pacienteId",paciente,"statusPresenca","FALTOU")),
+                        "justificativa","Correção sintética de registro coletivo ativo.")).statusCode()).isEqualTo(409);
+        int apos=versaoResolucao(sql,vinculo);
+        var desfazer=Map.of("justificativa","Nova conferência: os fatos devem voltar à revisão.");
+        assertThat(http(app,"POST",rota+"/"+id+"/desfazer?version="+apos,tokenProf,desfazer).statusCode()).isEqualTo(403);
+        disputarResolucao(app,rota+"/"+id+"/desfazer?version="+apos,tokenAdmin,desfazer);
+        assertThat(sql.queryForObject("select count(*) from tb_reversao_resolucao_frequencia where resolucao_id=?",Integer.class,id)).isEqualTo(1);
+        assertThat(sql.queryForObject("select indicadores_pendentes from tb_vinculo_assistencial where id=?",Boolean.class,local)).isTrue();
+        var restaurada=http(app,"GET",relatorio+"?grupoId="+grupoId,tokenAdmin,null);
+        assertThat(restaurada.statusCode()).as(restaurada.body()).isEqualTo(200);
+        assertThat(json(app,restaurada).path("dados").get(0).path("quantidadePresentes").asInt()).isEqualTo(1);
+        // Uma segunda solicitação sem aplicação não deve desaparecer quando a primeira é reaplicada.
+        var adicional=http(app,"POST",revisoes+"?version="+versaoResolucao(sql,vinculo),tokenColega,
+                Map.of("tipo","AGENDAMENTO","registro",falta.id(),"justificativa","Outra conferência ainda precisa ser realizada."));
+        assertThat(adicional.statusCode()).as(adicional.body()).isEqualTo(200);
+        var reaplicada=http(app,"POST",rota+"?version="+versaoResolucao(sql,vinculo),tokenAdmin,dados);
+        assertThat(reaplicada.statusCode()).as(reaplicada.body()).isEqualTo(201);
+        assertThat(sql.queryForObject("select indicadores_pendentes from tb_vinculo_assistencial where id=?",Boolean.class,local)).isTrue();
+        assertThat(sql.queryForObject("select count(*) from vw_aplicacao_pendencia_ativa where vinculo_id=?",Integer.class,local)).isEqualTo(1);
+        assertThat(json(app,http(app,"GET",rota,tokenAdmin,null)).path("total").asLong()).isEqualTo(2);
+    }
+
+    private List<HttpResponse<String>> disputarResolucao(ConfigurableApplicationContext app,String rota,String token,Object dados) throws Exception {
+        var prontos=new CountDownLatch(2);
+        var largada=new CountDownLatch(1);
+        try(var executor=Executors.newFixedThreadPool(2)) {
+            java.util.concurrent.Callable<HttpResponse<String>> chamada=()->{
+                aguardarLargada(prontos,largada);
+                return http(app,"POST",rota,token,dados);
+            };
+            var um=executor.submit(chamada);
+            var dois=executor.submit(chamada);
+            try {assertThat(prontos.await(10,TimeUnit.SECONDS)).isTrue();} finally {largada.countDown();}
+            var respostas=List.of(um.get(30,TimeUnit.SECONDS),dois.get(30,TimeUnit.SECONDS));
+            assertThat(respostas.stream().filter(x->x.statusCode()==201).count()).as(respostas.toString()).isEqualTo(1);
+            assertThat(respostas.stream().filter(x->x.statusCode()!=201).findFirst().orElseThrow().statusCode()).isIn(409,422);
+            return respostas;
+        }
+    }
+
+    private HttpResponse<byte[]> exportacaoResolucao(ConfigurableApplicationContext app,String rota,String token) throws Exception {
+        var host=(WebServerApplicationContext)app;
+        var requisicao=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+host.getWebServer().getPort()+rota))
+                .timeout(java.time.Duration.ofSeconds(20)).header("Authorization","Bearer "+token).GET().build();
+        return cliente.send(requisicao,HttpResponse.BodyHandlers.ofByteArray());
+    }
+
     private static int faltasResolucao(JdbcTemplate sql,UUID vinculo) {
         return sql.queryForObject("select count_faltas from tb_vinculo_assistencial where id_publico=?",Integer.class,vinculo);
     }
