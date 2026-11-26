@@ -20,9 +20,8 @@ import com.pet.buscaativa.services.impl.PlanoResolucaoFrequencia.Referencia;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Componente interno, ainda sem rota ou chamador operacional.
+ * Escritor interno utilizado exclusivamente por serviço autorizado e transacional.
  * Resolução e reversão recalculam o estado atual na mesma transação.
- * Ainda não expor rotas: prontuário, pendências e histórico mensal precisam de integração.
  */
 @Component
 @Profile("!test | (test & ensaio-estado-local)")
@@ -132,7 +131,7 @@ class PreparacaoResolucaoFrequenciaLocal {
             em.lock(local,jakarta.persistence.LockModeType.PESSIMISTIC_FORCE_INCREMENT);
     }
 
-    private static Fato carregar(LinhaDoTempoFrequenciasVinculoService.Evidencias e, Referencia ref) {
+    static Fato carregar(LinhaDoTempoFrequenciasVinculoService.Evidencias e, Referencia ref) {
         if(ref==null || ref.fonte()==null || ref.id()==null) throw naoEncontrado();
         var evento=e.diagnostico().eventosComOrigemLocal().stream()
                 .filter(f->f.fonte()==ref.fonte() && ref.id().equals(f.registroId()))

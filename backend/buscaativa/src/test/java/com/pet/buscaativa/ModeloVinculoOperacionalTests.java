@@ -730,6 +730,8 @@ class ModeloVinculoOperacionalTests {
         long unidade=usf(sql,"Resolução A");
         String prof=ator(sql,unidade,2,"resolucao-prof");
         String admin=ator(sql,unidade,1,"resolucao-admin");
+        String colega=ator(sql,unidade,2,"resolucao-colega");
+        String recepcao=ator(sql,unidade,3,"resolucao-recepcao");
         String externo=ator(sql,usf(sql,"Resolução B"),1,"resolucao-externo");
         try(var app=iniciar(banco)) {
             var token=login(app,prof);
@@ -751,7 +753,32 @@ class ModeloVinculoOperacionalTests {
             assertThat(sql.queryForObject("select count(*) from tb_evidencia_resolucao_historica",Integer.class)).isZero();
             assertThat(faltasResolucao(sql,vinculo)).isEqualTo(3);
             assertThat(versaoResolucao(sql,vinculo)).isEqualTo(versao);
-            var id=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.resolver(app,prof,paciente,vinculo,versao,a,b,false);
+            String rota="/api/pacientes/"+paciente+"/vinculos/"+vinculo+"/resolucoes-frequencia";
+            String tokenColega=login(app,colega),tokenRecepcao=login(app,recepcao),tokenExterno=login(app,externo);
+            assertThat(http(app,"GET",rota+"/candidatos",null,null).statusCode()).isEqualTo(401);
+            assertThat(http(app,"GET",rota+"/candidatos",tokenRecepcao,null).statusCode()).isEqualTo(403);
+            assertThat(http(app,"GET",rota+"/candidatos",tokenExterno,null).statusCode()).isEqualTo(404);
+            var candidatos=http(app,"GET",rota+"/candidatos",token,null);
+            assertThat(candidatos.statusCode()).as(candidatos.body()).isEqualTo(200);
+            assertThat(json(app,candidatos).path("candidatos").size()).isEqualTo(1);
+            assertThat(json(app,candidatos).path("candidatos").get(0).path("fatos").size()).isEqualTo(2);
+            assertThat(json(app,candidatos).path("versaoVinculo").asInt()).isEqualTo(versao);
+            var dadosResolucao=Map.of("valido",Map.of("fonte","ATENDIMENTO_INDIVIDUAL","id",a.id(),"versao",a.versao()),
+                    "desconsiderado",Map.of("fonte","ATENDIMENTO_INDIVIDUAL","id",b.id(),"versao",b.versao()),
+                    "justificativa","Duplicidade sintética conferida pelo profissional.");
+            assertThat(http(app,"POST",rota+"?version="+versao,tokenColega,dadosResolucao).statusCode()).isEqualTo(403);
+            assertThat(http(app,"POST",rota+"?version="+versao,tokenRecepcao,dadosResolucao).statusCode()).isEqualTo(403);
+            assertThat(http(app,"POST",rota+"?version="+versao,tokenExterno,dadosResolucao).statusCode()).isEqualTo(404);
+            var resolvida=http(app,"POST",rota+"?version="+versao,token,dadosResolucao);
+            assertThat(resolvida.statusCode()).as(resolvida.body()).isEqualTo(201);
+            var id=UUID.fromString(json(app,resolvida).path("id").asString());
+            var auditoria=http(app,"GET",rota,token,null);
+            assertThat(auditoria.statusCode()).as(auditoria.body()).isEqualTo(200);
+            assertThat(json(app,auditoria).path("registros").size()).isEqualTo(1);
+            assertThat(json(app,auditoria).path("registros").get(0).path("id").asString()).isEqualTo(id.toString());
+            assertThat(json(app,http(app,"GET",rota,tokenColega,null)).path("total").asLong()).isZero();
+            assertThat(http(app,"GET",rota,tokenExterno,null).statusCode()).isEqualTo(404);
+            assertThat(http(app,"POST",rota+"?version="+versao,token,dadosResolucao).statusCode()).isEqualTo(409);
             assertThat(faltasResolucao(sql,vinculo)).isEqualTo(2);
             var prontuario=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",token,null);
             assertThat(prontuario.statusCode()).as(prontuario.body()).isEqualTo(200);
@@ -776,8 +803,14 @@ class ModeloVinculoOperacionalTests {
             int apos=versaoResolucao(sql,vinculo);
             assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.desfazer(app,externo,paciente,vinculo,apos,id))
                     .isInstanceOf(com.pet.buscaativa.services.exceptions.ResourceNotFoundException.class);
-            com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.desfazer(app,prof,paciente,vinculo,apos,id);
+            var desfeita=http(app,"POST",rota+"/"+id+"/desfazer?version="+apos,token,
+                    Map.of("justificativa","Conferência sintética: eram atendimentos distintos."));
+            assertThat(desfeita.statusCode()).as(desfeita.body()).isEqualTo(201);
             assertThat(faltasResolucao(sql,vinculo)).isEqualTo(3);
+            var auditReversao=http(app,"GET",rota,token,null);
+            assertThat(auditReversao.statusCode()).as(auditReversao.body()).isEqualTo(200);
+            assertThat(json(app,auditReversao).path("registros").get(0).path("reversao").asString())
+                    .isEqualTo(json(app,desfeita).path("id").asString());
             var revertido=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",token,null);
             assertThat(revertido.statusCode()).as(revertido.body()).isEqualTo(200);
             assertThat(json(app,revertido).path("faltasComprovadas").asLong()).isEqualTo(3);

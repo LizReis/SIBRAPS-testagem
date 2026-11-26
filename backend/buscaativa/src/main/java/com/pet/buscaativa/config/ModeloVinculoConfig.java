@@ -41,7 +41,8 @@ public class ModeloVinculoConfig {
     @Configuration(proxyBeanMethods = false)
     @Profile("!test")
     @Import({ConsultasVinculoController.class, EscritoresVinculoController.Cadastro.class,
-            EscritoresVinculoController.Individual.class, EscritoresVinculoController.Coletivo.class})
+            EscritoresVinculoController.Individual.class, EscritoresVinculoController.Coletivo.class,
+            br.sibraps.modelovinculo.ResolucoesFrequenciaController.class})
     static class Operacional {
         @Bean
         static BeanFactoryPostProcessor protegerConfiguracao(ConfigurableEnvironment ambiente) {
