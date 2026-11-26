@@ -1188,6 +1188,9 @@ class ModeloVinculoOperacionalTests {
         assertThat(prontuario.statusCode()).as(prontuario.body()).isEqualTo(200);
         assertThat(java.util.stream.StreamSupport.stream(json(app,prontuario).path("historico").spliterator(),false)
                 .noneMatch(e->e.path("id").asLong()==h || e.path("id").asLong()==hGrupo)).isTrue();
+        // Reconhecer a origem do histórico derivado não cria outro fato clínico.
+        var consumidoresAntes=consumidoresOrigem(app,tokenAdmin,paciente);
+        var consumidoresExternosAntes=consumidoresOrigem(app,tokenExterno,paciente);
         int versaoAtual=versaoResolucao(sql,vinculo);
         assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aplicarOrigem(
                 app,prof,paciente,vinculo,versaoAtual,ticket,false))
@@ -1216,6 +1219,8 @@ class ModeloVinculoOperacionalTests {
         assertThat(http(app,"GET",auditoriaRota,tokenRecepcao,null).statusCode()).isEqualTo(403);
         assertThat(http(app,"GET",outraRota+"/"+ticket+"/origem/auditoria",tokenExterno,null).statusCode()).isEqualTo(404);
         var aplicada=resultadoOrigemConcorrente(app,aplicacaoRota,tokenAdmin,comandoOrigem);
+        assertThat(consumidoresOrigem(app,tokenAdmin,paciente)).isEqualTo(consumidoresAntes);
+        assertThat(consumidoresOrigem(app,tokenExterno,paciente)).isEqualTo(consumidoresExternosAntes);
         var auditada=http(app,"GET",auditoriaRota,tokenAdmin,null);
         assertThat(auditada.statusCode()).as(auditada.body()).isEqualTo(200);
         var trilha=json(app,auditada);
@@ -1299,6 +1304,8 @@ class ModeloVinculoOperacionalTests {
         assertThat(http(app,"POST",outraRota+"/origem/aplicacoes/"+aplicada+"/desfazer?version="+versaoResolucao(sql,outroVinculo),
                 tokenExterno,comandoReversao).statusCode()).isEqualTo(404);
         var revertida=resultadoOrigemConcorrente(app,reversaoRota,tokenAdmin,comandoReversao);
+        assertThat(consumidoresOrigem(app,tokenAdmin,paciente)).isEqualTo(consumidoresAntes);
+        assertThat(consumidoresOrigem(app,tokenExterno,paciente)).isEqualTo(consumidoresExternosAntes);
         var auditadaReversao=http(app,"GET",auditoriaRota,tokenAdmin,null);
         assertThat(auditadaReversao.statusCode()).as(auditadaReversao.body()).isEqualTo(200);
         assertThat(json(app,auditadaReversao).path("reversao").path("id").asString()).isEqualTo(revertida.toString());
@@ -1380,6 +1387,8 @@ class ModeloVinculoOperacionalTests {
         assertThat(aplicadaGrupoHttp.statusCode()).as(aplicadaGrupoHttp.body()).isEqualTo(201);
         var novaAplicacaoGrupo=UUID.fromString(json(app,aplicadaGrupoHttp).path("id").asString());
         assertThat(sql.queryForObject("select historico_id from tb_aplicacao_origem_historica where id=?",Long.class,novaAplicacaoGrupo)).isEqualTo(hGrupo);
+        assertThat(consumidoresOrigem(app,tokenAdmin,paciente)).isEqualTo(consumidoresAntes);
+        assertThat(consumidoresOrigem(app,tokenExterno,paciente)).isEqualTo(consumidoresExternosAntes);
         var reaberto=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",tokenProf,null);
         assertThat(reaberto.statusCode()).as(reaberto.body()).isEqualTo(200);
         var novosEventos=java.util.stream.StreamSupport.stream(json(app,reaberto).path("historico").spliterator(),false)
@@ -1479,6 +1488,26 @@ class ModeloVinculoOperacionalTests {
         assertThat(java.util.stream.StreamSupport.stream(json(app,leituraSemEvidencia).path("historico").spliterator(),false)
                 .noneMatch(e->e.path("id").asLong()==hGrupo)).isTrue();
         assertThat(json(app,leituraSemEvidencia).path("faltasComprovadas").asLong()).isEqualTo(1);
+    }
+
+    /** Somente os resultados clínicos; a trilha e a visibilidade do histórico mudam por desenho. */
+    private List<JsonNode> consumidoresOrigem(ConfigurableApplicationContext app,String token,UUID paciente) throws Exception {
+        var p=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",token,null);
+        var painel=http(app,"GET","/api/painel/resumo?periodoMeses=3",token,null);
+        var grupos=http(app,"GET","/api/relatorios/frequencia-grupos",token,null);
+        assertThat(p.statusCode()).as(p.body()).isEqualTo(200);
+        assertThat(painel.statusCode()).as(painel.body()).isEqualTo(200);
+        assertThat(grupos.statusCode()).as(grupos.body()).isEqualTo(200);
+        var prontuario=json(app,p);
+        var resumo=json(app,painel);
+        var relatorio=json(app,grupos);
+        var indicadores=prontuario.path("paciente").path("indicadores");
+        assertThat(indicadores.isObject()).isTrue();
+        assertThat(resumo.path("atividade").isObject()).isTrue();
+        assertThat(resumo.path("distribuicaoClassificacao").isObject()).isTrue();
+        assertThat(relatorio.path("dados").isArray()).isTrue();
+        return List.of(indicadores,prontuario.path("presencasComprovadas"),prontuario.path("faltasComprovadas"),
+                resumo.path("atividade"),resumo.path("distribuicaoClassificacao"),resumo.path("evolucao"),relatorio);
     }
 
     private static int faltasResolucao(JdbcTemplate sql,UUID vinculo) {
