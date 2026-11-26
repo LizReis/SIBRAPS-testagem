@@ -732,6 +732,8 @@ class ModeloVinculoOperacionalTests {
         assertThat(AgendaMigrationTool.migrarAplicacaoOrigem(banco).migrationsExecuted).isZero();
         assertThat(AgendaMigrationTool.migrarReversaoOrigem(banco).migrationsExecuted).isEqualTo(1);
         assertThat(AgendaMigrationTool.migrarReversaoOrigem(banco).migrationsExecuted).isZero();
+        assertThat(AgendaMigrationTool.migrarReaberturaOrigem(banco).migrationsExecuted).isEqualTo(1);
+        assertThat(AgendaMigrationTool.migrarReaberturaOrigem(banco).migrationsExecuted).isZero();
         var sql=new JdbcTemplate(banco);
         long unidade=usf(sql,"Resolução A");
         String prof=ator(sql,unidade,2,"resolucao-prof");
@@ -1234,6 +1236,64 @@ class ModeloVinculoOperacionalTests {
         assertThat(sql.queryForObject("select count(*) from tb_aplicacao_origem_historica where id=?",Integer.class,aplicada)).isEqualTo(1);
         assertThat(sql.queryForObject("select count(*) from tb_prova_aprovacao_origem where decisao_id=?",Integer.class,decisao)).isEqualTo(1);
         assertThat(faltasResolucao(sql,outroVinculo)).isZero();
+        // Uma aplicação revertida e uma aprovação coletiva obsoleta permitem novas rodadas distintas.
+        assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.reabrirOrigem(
+                app,prof,paciente,vinculo,versaoAtual,ticket,false))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.reabrirOrigem(
+                app,externoEmail,paciente,outroVinculo,versaoResolucao(sql,outroVinculo),ticket,false))
+                .isInstanceOf(com.pet.buscaativa.services.exceptions.ResourceNotFoundException.class);
+        com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.reabrirOrigem(
+                app,admin,paciente,vinculo,versaoAtual,ticket,true);
+        assertThat(sql.queryForObject("select count(*) from tb_reabertura_origem_historica",Integer.class)).isZero();
+        var nova=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.reabrirOrigem(
+                app,admin,paciente,vinculo,versaoAtual,ticket,false);
+        assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.reabrirOrigem(
+                app,admin,paciente,vinculo,versaoAtual,ticket,false))
+                .isInstanceOf(com.pet.buscaativa.services.exceptions.ConflictException.class);
+        assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aplicarOrigem(
+                app,admin,paciente,vinculo,versaoAtual,nova,false))
+                .isInstanceOf(com.pet.buscaativa.services.exceptions.ConflictException.class);
+        var novaDecisao=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aprovar(
+                app,admin,paciente,vinculo,versaoAtual,nova);
+        assertThat(novaDecisao).isNotEqualTo(decisao);
+        var novaAplicacao=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aplicarOrigem(
+                app,admin,paciente,vinculo,versaoAtual,nova,false);
+        assertThat(novaAplicacao).isNotEqualTo(aplicada);
+        assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.reabrirOrigem(
+                app,admin,paciente,vinculo,versaoAtual,nova,false))
+                .isInstanceOf(com.pet.buscaativa.services.exceptions.ConflictException.class);
+        var novaGrupo=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.reabrirOrigem(
+                app,admin,paciente,vinculo,versaoAtual,ticketGrupo,false);
+        assertThat(sql.queryForObject("select motivo from tb_reabertura_origem_historica where novo_id=?",String.class,novaGrupo))
+                .isEqualTo("APROVACAO_DESATUALIZADA");
+        assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aplicarOrigem(
+                app,admin,paciente,vinculo,versaoAtual,ticketGrupo,false))
+                .isInstanceOf(com.pet.buscaativa.services.exceptions.ConflictException.class);
+        var novaDecisaoGrupo=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aprovar(
+                app,admin,paciente,vinculo,versaoAtual,novaGrupo);
+        assertThat(novaDecisaoGrupo).isNotEqualTo(decisaoGrupo);
+        var novaAplicacaoGrupo=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aplicarOrigem(
+                app,admin,paciente,vinculo,versaoAtual,novaGrupo,false);
+        assertThat(sql.queryForObject("select historico_id from tb_aplicacao_origem_historica where id=?",Long.class,novaAplicacaoGrupo)).isEqualTo(hGrupo);
+        var reaberto=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",tokenProf,null);
+        assertThat(reaberto.statusCode()).as(reaberto.body()).isEqualTo(200);
+        var novosEventos=java.util.stream.StreamSupport.stream(json(app,reaberto).path("historico").spliterator(),false)
+                .filter(e->e.path("origemCorrigida").asBoolean()).map(e->e.path("id").asLong()).toList();
+        assertThat(novosEventos).containsExactlyInAnyOrder(h,hGrupo);
+        assertThat(json(app,reaberto).path("faltasComprovadas").asLong()).isEqualTo(3);
+        var painelNovo=http(app,"GET","/api/relatorios/pendencias?tamanho=100",tokenAdmin,null);
+        assertThat(painelNovo.statusCode()).as(painelNovo.body()).isEqualTo(200);
+        var itensNovos=java.util.stream.StreamSupport.stream(json(app,painelNovo).path("itens").spliterator(),false).toList();
+        var antigo=itensNovos.stream().filter(e->e.path("ticket").asString().equals(ticket.toString())).findFirst().orElseThrow();
+        var novoItem=itensNovos.stream().filter(e->e.path("ticket").asString().equals(nova.toString())).findFirst().orElseThrow();
+        assertThat(antigo.path("aplicacaoOrigem").asString()).isEqualTo("REVERTIDA");
+        assertThat(antigo.path("novaSolicitacao").asString()).isEqualTo(nova.toString());
+        assertThat(novoItem.path("solicitacaoAnterior").asString()).isEqualTo(ticket.toString());
+        assertThat(novoItem.path("aplicacaoOrigem").asString()).isEqualTo("ORIGEM_RECONHECIDA");
+        assertThat(sql.queryForObject("select count(*) from tb_aplicacao_origem_historica where historico_id=?",Integer.class,h)).isEqualTo(2);
+        assertThatThrownBy(()->sql.update("delete from tb_reabertura_origem_historica where novo_id=?",nova))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
     }
 
     private static int faltasResolucao(JdbcTemplate sql,UUID vinculo) {

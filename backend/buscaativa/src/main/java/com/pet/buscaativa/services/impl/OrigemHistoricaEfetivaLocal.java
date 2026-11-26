@@ -30,11 +30,21 @@ class OrigemHistoricaEfetivaLocal {
     private final VerificacaoFatoRevisaoProvenienciaService verificador;
     private final AutorizacaoVinculoAssistencialService autorizacao;
 
-    record Reconhecimento(UUID id,UUID ticket,boolean comprovada,UUID reversao) {}
+    record Reconhecimento(UUID id,UUID ticket,Long historico,boolean comprovada,UUID reversao) {}
     private record Reversao(UUID id,OffsetDateTime registradaEm) {}
     private record Aplicacao(UUID id,UUID ticket,ProvaOrigem prova,OffsetDateTime aplicadaEm,OffsetDateTime decididaEm) {}
 
     Map<Long,Reconhecimento> consultar(VinculoAssistencial local) {
+        var resultado=new LinkedHashMap<Long,Reconhecimento>();
+        for(var a:consultarPorTicket(local).values()) {
+            var anterior=resultado.get(a.historico());
+            if(anterior==null || (anterior.reversao()!=null && a.reversao()==null))
+                resultado.put(a.historico(),a);
+        }
+        return Map.copyOf(resultado);
+    }
+
+    Map<UUID,Reconhecimento> consultarPorTicket(VinculoAssistencial local) {
         var autorizado=autorizacao.exigirVinculoIdentificado(local.getPaciente().getIdPublico(),local.getIdPublico());
         if(!java.util.Objects.equals(autorizado.getId(),local.getId())
                 || !java.util.Objects.equals(autorizado.getUnidadeChave(),local.getUnidadeChave()))
@@ -50,6 +60,7 @@ class OrigemHistoricaEfetivaLocal {
                 join tb_decisao_revisao_proveniencia d on d.id=p.decisao_id and d.pendencia_id=p.pendencia_id
                     and d.paciente_id=p.paciente_id and d.unidade_chave=p.unidade_chave and d.decisao='APROVAR'
                 where a.vinculo_id=? and a.paciente_id=? and a.unidade_chave=?
+                order by a.registrado_em,a.id
                 """,(rs,n)->new Aplicacao(rs.getObject(1,UUID.class),rs.getObject(2,UUID.class),new ProvaOrigem(
                         new CandidatoOrigem(rs.getLong(3),TipoRegistro.valueOf(rs.getString(4)),rs.getLong(5),
                             rs.getObject(9,LocalDateTime.class),FrequenciaAssistencial.valueOf(rs.getString(10))),
@@ -65,14 +76,15 @@ class OrigemHistoricaEfetivaLocal {
                             new Reversao(rs.getObject(2,UUID.class),rs.getObject(3,OffsetDateTime.class))); },
                     local.getId(),local.getPaciente().getId(),local.getUnidadeChave());
         }
-        var resultado=new LinkedHashMap<Long,Reconhecimento>();
+        var resultado=new LinkedHashMap<UUID,Reconhecimento>();
+        var ativos=new java.util.HashMap<Long,Integer>();
         for(var a:registros) {
             long id=a.prova().candidato().historico();
             var reversao=reversoes.get(a.id());
             if(reversao!=null) {
                 // Reversão incompatível também impede o reconhecimento;
                 // só afirmar REVERTIDA quando a cronologia for coerente.
-                resultado.put(id,new Reconhecimento(a.id(),a.ticket(),false,
+                resultado.put(a.ticket(),new Reconhecimento(a.id(),a.ticket(),id,false,
                         reversao.registradaEm().isBefore(a.aplicadaEm())?null:reversao.id()));
                 continue;
             }
@@ -84,8 +96,12 @@ class OrigemHistoricaEfetivaLocal {
             } catch(ResourceNotFoundException e) {
                 // Divergência posterior não autoriza leitura nem apaga a aplicação.
             }
-            resultado.put(id,new Reconhecimento(a.id(),a.ticket(),comprovada,null));
+            resultado.put(a.ticket(),new Reconhecimento(a.id(),a.ticket(),id,comprovada,null));
         }
+        for(var a:resultado.values()) if(a.reversao()==null) ativos.merge(a.historico(),1,Integer::sum);
+        // Dados incompatíveis não podem produzir reconhecimento arbitrário.
+        resultado.replaceAll((ticket,a)->a.reversao()==null && ativos.getOrDefault(a.historico(),0)>1
+                ?new Reconhecimento(a.id(),a.ticket(),a.historico(),false,null):a);
         return Map.copyOf(resultado);
     }
 }

@@ -100,6 +100,15 @@ public final class OperacoesResolucaoFrequenciaTeste {
             return id;
         }));
     }
+    public static UUID reabrirOrigem(ApplicationContext app,String email,UUID paciente,UUID vinculo,Integer versao,
+            UUID ticket,boolean rollback) {
+        return como(email,()->tx(app).execute(t->{
+            var id=app.getBean(AplicacaoOrigemHistoricaLocal.class).reabrir(paciente,vinculo,versao,ticket,
+                    "Nova análise sintética da origem do registro histórico.");
+            if(rollback) t.setRollbackOnly();
+            return id;
+        }));
+    }
     public static void corrigir(ApplicationContext app,String email,Reserva r) {
         como(email,()->app.getBean(FrequenciaIndividualLocalEnsaioService.class)
                 .corrigir(r.id(),r.versao(),FrequenciaAssistencial.PRESENTE,"Correção sintética de frequência conferida."));
