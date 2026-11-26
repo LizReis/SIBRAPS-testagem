@@ -7,12 +7,14 @@ import org.flywaydb.core.api.migration.Context;
 
 /** Offline; preserva todas as solicitações, decisões, provas e aplicações existentes. */
 public class V30__reabertura_origem_historica extends BaseJavaMigration {
-    @Override public Integer getChecksum() {return 2026113030;}
+    @Override public Integer getChecksum() {return 2026113031;}
     @Override public void migrate(Context context) throws Exception {
         var c=context.getConnection();
         var nomes=new ArrayList<String>();
-        // V28 declarou UNIQUE inline; descobrir seu nome real, sem remover
-        // unicidade de decisão/ticket nem a FK do histórico.
+        // V28 declarou UNIQUE e REFERENCES inline. H2 pode compartilhar
+        // o índice UNIQUE com a FK da coluna, mantendo-o após DROP CONSTRAINT.
+        // Remover temporariamente somente essa FK, em migração offline,
+        // depois reconstruí-la sobre um índice não único.
         try(var s=c.createStatement();var r=s.executeQuery("""
                 select t.constraint_name from information_schema.table_constraints t
                 join information_schema.key_column_usage k
@@ -25,6 +27,8 @@ public class V30__reabertura_origem_historica extends BaseJavaMigration {
             while(r.next()) nomes.add(r.getString(1));
         }
         if(nomes.size()!=1) throw new SQLException("Unicidade original de histórico V28 não identificada.");
+        var fks=ReaberturaOrigemSchemaGuard.chavesHistorico(c);
+        if(fks.size()!=1) throw new SQLException("FK original de histórico V28 não identificada.");
         try(var s=c.createStatement()) {
             s.execute("""
                     CREATE TABLE tb_reabertura_origem_historica (
@@ -48,8 +52,22 @@ public class V30__reabertura_origem_historica extends BaseJavaMigration {
                     CREATE TRIGGER tr_reabertura_origem_append_only BEFORE UPDATE, DELETE
                     ON tb_reabertura_origem_historica FOR EACH ROW CALL 'com.pet.buscaativa.migration.AuditAppendOnlyTrigger'
                     """);
-            s.execute("ALTER TABLE tb_aplicacao_origem_historica DROP CONSTRAINT \""+nomes.getFirst().replace("\"","\"\"")+"\"");
+            s.execute("ALTER TABLE tb_aplicacao_origem_historica DROP CONSTRAINT "+identificador(fks.getFirst()));
+            s.execute("ALTER TABLE tb_aplicacao_origem_historica DROP CONSTRAINT "+identificador(nomes.getFirst()));
+            // Não deixar índice UNIQUE residual, mesmo se H2 não o remover
+            // automaticamente. Nenhum outro índice é elegível para remoção.
+            for(String indice:ReaberturaOrigemSchemaGuard.indicesUnicosHistorico(c))
+                s.execute("DROP INDEX "+identificador(indice));
             s.execute("CREATE INDEX ix_aplicacao_origem_historico ON tb_aplicacao_origem_historica(historico_id)");
+            s.execute("""
+                    ALTER TABLE tb_aplicacao_origem_historica ADD CONSTRAINT fk_aplicacao_origem_historico
+                    FOREIGN KEY (historico_id) REFERENCES tb_historico_paciente(id)
+                    """);
+            ReaberturaOrigemSchemaGuard.verificarIndices(c);
         }
+    }
+
+    private static String identificador(String nome) {
+        return "\""+nome.replace("\"","\"\"")+"\"";
     }
 }

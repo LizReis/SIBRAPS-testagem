@@ -34,7 +34,42 @@ public final class ReaberturaOrigemSchemaGuard {
             if(!registros.equals(java.util.List.of(true)) || !tabela || triggers!=2 || protecao!=2
                     || !ReversaoOrigemSchemaGuard.instalada(jdbc)) throw inconsistente();
             jdbc.execute("select anterior_id,novo_id,vinculo_id,paciente_id,unidade_chave,historico_id,tipo_registro,situacao_evidencia,motivo from tb_reabertura_origem_historica where 1=0");
-        } catch(DataAccessException e) {throw inconsistente();}
+            try(var c=fonte.getConnection()) {verificarIndices(c);}
+        } catch(DataAccessException | java.sql.SQLException e) {throw inconsistente();}
+    }
+    private static java.util.Map<String,java.util.List<String>> indicesUnicos(java.sql.Connection c) throws java.sql.SQLException {
+        var indices=new java.util.LinkedHashMap<String,java.util.List<String>>();
+        try(var r=c.getMetaData().getIndexInfo(c.getCatalog(),c.getSchema(),"TB_APLICACAO_ORIGEM_HISTORICA",true,false)) {
+            while(r.next()) {
+                String nome=r.getString("INDEX_NAME"),coluna=r.getString("COLUMN_NAME");
+                if(nome!=null && coluna!=null && !r.getBoolean("NON_UNIQUE"))
+                    indices.computeIfAbsent(nome,n->new java.util.ArrayList<>()).add(coluna);
+            }
+        }
+        return indices;
+    }
+    static java.util.List<String> indicesUnicosHistorico(java.sql.Connection c) throws java.sql.SQLException {
+        return indicesUnicos(c).entrySet().stream()
+                .filter(e->e.getValue().equals(java.util.List.of("HISTORICO_ID")))
+                .map(java.util.Map.Entry::getKey).toList();
+    }
+    static java.util.List<String> chavesHistorico(java.sql.Connection c) throws java.sql.SQLException {
+        var nomes=new java.util.ArrayList<String>();
+        try(var r=c.getMetaData().getImportedKeys(c.getCatalog(),c.getSchema(),"TB_APLICACAO_ORIGEM_HISTORICA")) {
+            while(r.next()) if("HISTORICO_ID".equals(r.getString("FKCOLUMN_NAME"))
+                    && "TB_HISTORICO_PACIENTE".equals(r.getString("PKTABLE_NAME"))
+                    && "ID".equals(r.getString("PKCOLUMN_NAME"))
+                    && r.getShort("KEY_SEQ")==1) nomes.add(r.getString("FK_NAME"));
+        }
+        return nomes;
+    }
+    static void verificarIndices(java.sql.Connection c) throws java.sql.SQLException {
+        var colunas=indicesUnicos(c).values();
+        if(colunas.contains(java.util.List.of("HISTORICO_ID"))
+                || !colunas.contains(java.util.List.of("DECISAO_ID"))
+                || !colunas.contains(java.util.List.of("PENDENCIA_ID"))
+                || chavesHistorico(c).size()!=1)
+            throw new java.sql.SQLException("V30: índices de aplicação ou FK de histórico incompatíveis.");
     }
     private static IllegalStateException inconsistente() {
         return new IllegalStateException("Banco operacional com estrutura V30 de reabertura de origem incompleta ou incompatível.");
