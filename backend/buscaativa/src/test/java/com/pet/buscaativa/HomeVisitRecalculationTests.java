@@ -94,6 +94,22 @@ class HomeVisitRecalculationTests extends AgendaIntegritySupport {
         recalculate(); assertTrue(visit());
         fact(4, SituacaoAtendimento.PRESENTE); recalculate(); assertFalse(visit());
     }
+    @Test void missedReplacementWithUnsubstitutedOriginalDoesNotConfirmVisit() {
+        var original = fact(8, SituacaoAtendimento.FALTOU);
+        var successor = replacement(original, 6);
+        tx(() -> {
+            var source = appointment(original.getId());
+            source.setSituacaoAtendimento(SituacaoAtendimento.AGENDADO);
+            appointments.saveAndFlush(source);
+            return null;
+        });
+
+        recalculate();
+
+        assertFalse(visit());
+        assertEquals(FrequenciaAssistencial.FALTOU, appointment(original.getId()).getFrequenciaAssistencial());
+        assertEquals(FrequenciaAssistencial.FALTOU, appointment(successor.getId()).getFrequenciaAssistencial());
+    }
     @Test void laterPresencePreventsOlderInverseCorrectionFromReactivatingAlert() throws Exception {
         var last = replacement(fact(8, SituacaoAtendimento.FALTOU), 6);
         assertEquals(200, correct(last, SituacaoAtendimento.PRESENTE));

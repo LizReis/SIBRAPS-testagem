@@ -257,6 +257,10 @@ public class LinhaDoTempoFrequenciasVinculoService {
                 if (sessao.getStatus() != null && sessao.getStatus() != StatusSessaoGrupo.REALIZADA
                         && p.getStatusPresenca() == StatusPresencaGrupo.NAO_REGISTRADA) continue;
             }
+            // Em uma sessão local agendada, o preenchimento provisório não diz respeito à sequência de fatos.
+            if (origem == AvaliacaoProvenienciaClinica.Situacao.COMPROVADA
+                    && sessao.getStatus() == StatusSessaoGrupo.AGENDADA
+                    && p.getStatusPresenca() != null) continue;
             if (origem == AvaliacaoProvenienciaClinica.Situacao.SEM_ORIGEM_COMPROVADA) {
                 gruposSemOrigem++;
             } else if (origem == AvaliacaoProvenienciaClinica.Situacao.INCONSISTENTE

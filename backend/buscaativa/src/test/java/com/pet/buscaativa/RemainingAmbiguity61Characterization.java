@@ -2,30 +2,12 @@ package com.pet.buscaativa;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import java.time.*;
-import java.util.*;
 import org.junit.jupiter.api.Test;
-import com.pet.buscaativa.entities.*;
 import com.pet.buscaativa.entities.dto.*;
 import com.pet.buscaativa.entities.enums.*;
 
 /** Observações sobre dados legados sintéticos e proteção de escopo. */
 class RemainingAmbiguity61Characterization extends Historical61Support {
-    @Test void visitTriggerCannotRelyOnAnOriginalNeverMarkedSubstituted() {
-        var original=individual61(patient,professional,SituacaoAtendimento.FALTOU,PAST.minusDays(1),"08:00");
-        var child=individual61(patient,professional,SituacaoAtendimento.FALTOU,PAST,"08:00");
-        // A cadeia é deliberadamente inválida: a origem não foi substituída.
-        tx(()->{var x=appointment(child.getId());x.setAgendamentoOriginal(appointment(original.getId()));
-            x.setSituacaoAtendimento(SituacaoAtendimento.REMARCADO);x.setRemarcacaoAposFalta(true);appointments.saveAndFlush(x);return null;});
-        recalculate61();var value=indicators61();
-        var root=appointment(original.getId());var successor=appointment(child.getId());
-        System.out.printf("E61 RF-07 originalReserve=%s successorReserve=%s originalFrequency=%s successorFrequency=%s indicators=%s%n",root.getSituacaoReserva(),successor.getSituacaoReserva(),root.getFrequenciaAssistencial(),successor.getFrequenciaAssistencial(),value);
-        assertEquals(SituacaoReserva.AGENDADA,root.getSituacaoReserva());
-        assertEquals(FrequenciaAssistencial.FALTOU,successor.getFrequenciaAssistencial());
-        // Não presumir uma visita confirmada a partir de uma cadeia comprovadamente inválida.
-        // Uma sinalização de revisão pode existir em vez de confirmar o gatilho.
-        assertFalse(Boolean.TRUE.equals(value.visit()) && !Boolean.TRUE.equals(value.pending()));
-    }
     @Test void overdueSessionTransferRecordsWhetherNewOwnerIsInferred() throws Exception {
         var g=session61(professional,PAST,SLOT,false,StatusPresencaGrupo.NAO_REGISTRADA,patient);
         var version=groups61.findById(g.group()).orElseThrow().getVersion();

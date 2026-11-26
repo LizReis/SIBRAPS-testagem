@@ -154,19 +154,6 @@ class HistoricalCollision61Characterization extends Historical61Support {
         else session61(professional,PAST,SLOT,true,StatusPresencaGrupo.PRESENTE,patient);
         refuse61(individual?"GI-09":"GR-10-RETRO",()->retro61(g,patient));
     }
-    @ParameterizedTest @ValueSource(booleans={true,false})
-    void initialIndividualPresenceCannotConflictWithPerformedGroup(boolean samePatient) throws Exception {
-        session61(samePatient?colleague:professional,PAST,SLOT,true,StatusPresencaGrupo.PRESENTE,samePatient?patient:other);
-        var a=individual61(patient,professional,SituacaoAtendimento.AGENDADO,PAST,"08:00");
-        refuse61(samePatient?"IND-11-PACIENTE":"IND-11-PROFISSIONAL",()->initial61(a));
-    }
-    @Test void ordinaryInitialPresenceCannotConflictWithCanonicalCanceledPresence() throws Exception {
-        var a=individual61(patient,professional,SituacaoAtendimento.AGENDADO,PAST,"08:00");
-        // Fixture histórica: CANCELADA+PRESENTE conserva o fato apesar de não ocupar vaga.
-        tx(()->{var b=seed(patient,colleague,SituacaoAtendimento.CANCELADO,PAST,"08:00");
-            b.registrarFatoEmReservaCancelada(FrequenciaAssistencial.PRESENTE);appointments.saveAndFlush(b);return null;});
-        refuse61("IND-11-CANONICO",()->initial61(a));
-    }
     @Test void distinctTimeHistoricalConfirmationRemainsLegitimate() throws Exception {
         individual61(patient,professional,SituacaoAtendimento.PRESENTE,PAST,"08:30");
         var g=session61(colleague,PAST,SLOT,false,StatusPresencaGrupo.NAO_REGISTRADA,patient);

@@ -11,8 +11,8 @@ import com.pet.buscaativa.entities.Agendamento;
 import com.pet.buscaativa.entities.Usuario;
 import com.pet.buscaativa.entities.enums.*;
 
-/** Diagnóstico opt-in do endpoint legado; datas passadas isolam a guarda temporal. */
-class ReschedulingChain61Characterization extends CancellationRegularizationSupport {
+/** Regressão do endpoint legado; datas passadas isolam a guarda temporal. */
+class ReschedulingStatusRegressionTests extends CancellationRegularizationSupport {
     private MockHttpServletResponse status(Usuario actor, Agendamento a, SituacaoAtendimento desired) throws Exception {
         return mvc.perform(patch("/api/agendamentos/" + a.getId() + "/status")
                 .param("novoStatus", desired.name()).param("version", a.getVersion().toString())

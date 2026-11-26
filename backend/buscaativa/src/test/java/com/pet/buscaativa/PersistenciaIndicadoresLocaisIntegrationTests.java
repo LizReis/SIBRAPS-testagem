@@ -554,8 +554,14 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
         como(recepcao, () -> coletivo.removerParticipante(futura.id(), v, b.paciente().getIdPublico()));
         assertEquals(1L, total("select count(*) from tb_sessao_grupo_participante where sessao_grupo_id=?", futura.id()));
         var passada = sessao(a.ator(), List.of(a,b), diasAtras(2), 10);
+        var antes = como(a.ator(), () -> consultasLocais.prontuario(a.paciente().getIdPublico()));
         int pv = como(a.ator(), () -> coletivo.registrarProvisoria(passada.id(), passada.versao(),
                 a.paciente().getIdPublico(), StatusPresencaGrupo.PRESENTE));
+        var durante = como(a.ator(), () -> consultasLocais.prontuario(a.paciente().getIdPublico()));
+        assertEquals(antes.paciente().indicadores(), durante.paciente().indicadores());
+        assertEquals(antes.historicoLocalRequerConferencia(), durante.historicoLocalRequerConferencia());
+        assertNull(durante.sessoes().stream().filter(s -> passada.id().equals(s.sessao()))
+                .findFirst().orElseThrow().frequencia());
         assertEquals(0, carregar(a).getCountFaltas());
         assertNull(carregar(a).getDataUltimaPresenca());
         assertEquals(0L, total("select count(*) from tb_historico_paciente where sessao_grupo_id=?", passada.id()));
