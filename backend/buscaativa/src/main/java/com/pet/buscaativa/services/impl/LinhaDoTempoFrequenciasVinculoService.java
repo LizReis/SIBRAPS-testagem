@@ -67,7 +67,65 @@ public class LinhaDoTempoFrequenciasVinculoService {
             List<SessaoGrupoParticipante> participacoes, boolean agendaLocalInconclusiva) {}
 
     Diagnostico analisar(VinculoAssistencial vinculo) {
-        return examinar(vinculo, false).diagnostico();
+        return examinarEfetivo(vinculo, false).diagnostico();
+    }
+
+    /**
+     * Somente consumidores clínicos usam a projeção. A preparação de novas
+     * resoluções continua conferindo os fatos brutos por examinar().
+     */
+    Evidencias examinarEfetivo(VinculoAssistencial vinculo, boolean incluirReservas) {
+        // Carregar responsáveis e cadeia mesmo quando o consumidor pede
+        // apenas a sequência. Sem V24 o comportamento anterior é preservado.
+        boolean instalada=((Number)em.createNativeQuery("""
+                select count(*) from information_schema.tables
+                where table_schema=current_schema() and table_name='VW_RESOLUCAO_FREQUENCIA_ATIVA'
+                """).getSingleResult()).longValue()==1;
+        if(!instalada) return examinar(vinculo,incluirReservas);
+        var bruto=examinar(vinculo,true);
+        @SuppressWarnings("unchecked")
+        List<Object[]> linhas=em.createNativeQuery("""
+                select fonte_valida,fato_valido,fonte_desconsiderada,fato_desconsiderado,
+                       horario,frequencia_valida,frequencia_desconsiderada,responsavel_valido,responsavel_desconsiderado
+                from vw_resolucao_frequencia_ativa
+                where vinculo_id=:vinculo and paciente_id=:paciente and unidade_chave=:unidade
+                """).setParameter("vinculo",vinculo.getId())
+                .setParameter("paciente",vinculo.getPaciente().getId())
+                .setParameter("unidade",vinculo.getUnidadeChave()).getResultList();
+        if(linhas.isEmpty()) return bruto;
+        var resolucoes=linhas.stream().map(r->new ProjecaoResolucaoFrequencia.Resolucao(
+                new ProjecaoResolucaoFrequencia.Chave(Fonte.valueOf(r[0].toString()),((Number)r[1]).longValue()),
+                new ProjecaoResolucaoFrequencia.Chave(Fonte.valueOf(r[2].toString()),((Number)r[3]).longValue()),
+                r[4] instanceof LocalDateTime t?t:((java.sql.Timestamp)r[4]).toLocalDateTime(),
+                "PRESENTE".equals(r[5]),"PRESENTE".equals(r[6]),
+                ((Number)r[7]).longValue(),((Number)r[8]).longValue())).toList();
+        var responsaveis=new java.util.HashMap<ProjecaoResolucaoFrequencia.Chave,Long>();
+        bruto.agenda().forEach(a->responsaveis.put(new ProjecaoResolucaoFrequencia.Chave(
+                Fonte.ATENDIMENTO_INDIVIDUAL,a.getId()),a.getUsuario().getId()));
+        bruto.participacoes().forEach(p->{
+            var responsavel=p.getSessaoGrupo().getResponsavelAtendimento();
+            if(responsavel!=null) responsaveis.put(new ProjecaoResolucaoFrequencia.Chave(
+                    Fonte.SESSAO_GRUPO,p.getId()),responsavel.getId());
+        });
+        var d=bruto.diagnostico();
+        var fatos=d.eventosComOrigemLocal().stream().map(e->new ProjecaoResolucaoFrequencia.Fato(e,
+                responsaveis.get(new ProjecaoResolucaoFrequencia.Chave(e.fonte(),e.registroId())))).toList();
+        var projecao=ProjecaoResolucaoFrequencia.aplicar(fatos,resolucoes);
+        var excluidos=projecao.desconsiderados();
+        var eventos=d.eventosComOrigemLocal().stream().filter(e->!excluidos.contains(
+                new ProjecaoResolucaoFrequencia.Chave(e.fonte(),e.registroId()))).toList();
+        var efetivo=new Diagnostico(eventos,d.agendamentosSemOrigemComFrequencia(),d.presencasGrupoSemOrigem(),
+                d.frequenciasInconsistentes()+(projecao.inconclusivo()?1:0),d.agendamentosLocaisPendentesDeEvidencia());
+        // RF22 exige tanto a falta original como a falta na remarcação válidas.
+        // Retirar do conjunto de candidatos à visita também o sucessor cujo
+        // original foi desconsiderado, sem remover esse sucessor da frequência.
+        var agenda=bruto.agenda().stream().filter(a->!excluidos.contains(
+                new ProjecaoResolucaoFrequencia.Chave(Fonte.ATENDIMENTO_INDIVIDUAL,a.getId()))
+                && (a.getAgendamentoOriginal()==null || !excluidos.contains(
+                new ProjecaoResolucaoFrequencia.Chave(Fonte.ATENDIMENTO_INDIVIDUAL,a.getAgendamentoOriginal().getId())))).toList();
+        var participacoes=bruto.participacoes().stream().filter(p->!excluidos.contains(
+                new ProjecaoResolucaoFrequencia.Chave(Fonte.SESSAO_GRUPO,p.getId()))).toList();
+        return new Evidencias(efetivo,agenda,participacoes,bruto.agendaLocalInconclusiva());
     }
 
     Evidencias examinar(VinculoAssistencial vinculo, boolean incluirReservas) {

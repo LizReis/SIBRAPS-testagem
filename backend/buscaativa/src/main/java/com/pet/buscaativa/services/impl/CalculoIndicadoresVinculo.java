@@ -38,7 +38,7 @@ class CalculoIndicadoresVinculo {
     @Transactional(propagation = Propagation.MANDATORY)
     Resultado calcular(VinculoAssistencial vinculo, LocalDate dataReferencia,
             EvidenciaStatusVinculo.Situacao provaStatus, Boolean pendencia) {
-        var evidencias = linhaDoTempo.examinar(vinculo, true);
+        var evidencias = linhaDoTempo.examinarEfetivo(vinculo, true);
         var calculo = DiagnosticoFaltasConsecutivasVinculoService.calcular(evidencias.diagnostico());
         var causasSequencia = motivosSequencia(calculo);
         var causasStatus = EnumSet.noneOf(Motivo.class);
