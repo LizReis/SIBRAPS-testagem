@@ -1030,16 +1030,19 @@ class ModeloVinculoOperacionalTests {
         var outra=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.falta(app,prof,pessoa,responsavel,dia,10);
         long h=sql.queryForObject("select id from tb_historico_paciente where agendamento_id=? and tipo='FALTA'",Long.class,falta.id());
         long divergente=sql.queryForObject("select id from tb_historico_paciente where agendamento_id=? and tipo='FALTA'",Long.class,outra.id());
+        var confirmacao=Map.of("cpf",dados.get("cpf"),"cns",dados.get("cns"),"nome",dados.get("nome"),
+                "nomeMae",dados.get("nomeMae"),"dataNascimento",dados.get("dataNascimento"),"tipoAcompanhamento","AMBOS");
+        // Estabelecer os dois vínculos enquanto a proveniência externa é comprovada.
+        // A proteção de início de acompanhamento recusa históricos sem origem.
+        var vinculada=http(app,"POST","/api/pacientes/cadastro-unico/confirmar-vinculo",tokenExterno,confirmacao);
+        assertThat(vinculada.statusCode()).as(vinculada.body()).isEqualTo(204);
+        var externo=http(app,"GET","/api/pacientes/"+paciente+"/detalhe",tokenExterno,null);
+        assertThat(externo.statusCode()).as(externo.body()).isEqualTo(200);
+        UUID outroVinculo=UUID.fromString(json(app,externo).path("paciente").path("vinculo").asString());
         // Apenas fixture sintética: reproduzir campo legado vazio e fonte temporal divergente.
         sql.update("update tb_historico_paciente set unidade_origem_chave=null where id=?",h);
         sql.update("update tb_historico_paciente set unidade_origem_chave=null,ocorrido_em=? where id=?",
                 dia.atTime(11,0),divergente);
-        var confirmacao=Map.of("cpf",dados.get("cpf"),"cns",dados.get("cns"),"nome",dados.get("nome"),
-                "nomeMae",dados.get("nomeMae"),"dataNascimento",dados.get("dataNascimento"),"tipoAcompanhamento","AMBOS");
-        assertThat(http(app,"POST","/api/pacientes/cadastro-unico/confirmar-vinculo",tokenExterno,confirmacao).statusCode()).isEqualTo(204);
-        var externo=http(app,"GET","/api/pacientes/"+paciente+"/detalhe",tokenExterno,null);
-        assertThat(externo.statusCode()).as(externo.body()).isEqualTo(200);
-        UUID outroVinculo=UUID.fromString(json(app,externo).path("paciente").path("vinculo").asString());
         String rota="/api/pacientes/"+paciente+"/vinculos/"+vinculo+"/revisoes";
         String outraRota="/api/pacientes/"+paciente+"/vinculos/"+outroVinculo+"/revisoes";
         var candidatos=http(app,"GET",rota+"/candidatos-origem",tokenAdmin,null);
