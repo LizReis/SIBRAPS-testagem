@@ -10,7 +10,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.jdbc.core.JdbcTemplate;
-import com.pet.buscaativa.migration.ReversaoResolucaoSchemaGuard;
+import com.pet.buscaativa.migration.EvidenciaResolucaoSchemaGuard;
+import com.pet.buscaativa.migration.EvidenciaResolucaoHistorica;
 import com.pet.buscaativa.services.PoliticaJustificativaCorrecao;
 import com.pet.buscaativa.services.exceptions.ConflictException;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
@@ -47,7 +48,7 @@ class PreparacaoResolucaoFrequenciaLocal {
     UUID registrar(UUID paciente, UUID vinculo, Integer versaoVinculo, Referencia valido,
             Referencia desconsiderado, String justificativa, UUID ticket) {
         var contexto=atores.autorizar(false);
-        if(!ReversaoResolucaoSchemaGuard.instalada(jdbc))
+        if(!EvidenciaResolucaoSchemaGuard.instalada(jdbc))
             throw new ConflictException("Estrutura de resolução não instalada.");
         var bloqueados=coordenacao.paraVinculo(contexto,paciente,vinculo,null);
         var local=bloqueados.vinculos().get(paciente);
@@ -75,6 +76,7 @@ class PreparacaoResolucaoFrequenciaLocal {
                 a.horario(),ator.getId(),ator.getTipoUsuario().name(),motivo,
                 OffsetDateTime.ofInstant(clock.instant().truncatedTo(ChronoUnit.MICROS),ZoneOffset.UTC));
         if(decisao!=null) aplicacoes.registrar(local,id,ticket,decisao);
+        EvidenciaResolucaoHistorica.registrar(jdbc,"RESOLUCAO",id,local.getUnidadeChave());
         atualizar(local,ator,empateAnterior,versaoVinculo,decisao!=null);
         return id;
     }
@@ -83,7 +85,7 @@ class PreparacaoResolucaoFrequenciaLocal {
 
     UUID desfazer(UUID paciente, UUID vinculo, Integer versaoVinculo, UUID resolucao, String justificativa) {
         var contexto=atores.autorizar(false);
-        if(!ReversaoResolucaoSchemaGuard.instalada(jdbc))
+        if(!EvidenciaResolucaoSchemaGuard.instalada(jdbc))
             throw new ConflictException("Estrutura de reversão não instalada.");
         var bloqueados=coordenacao.paraVinculo(contexto,paciente,vinculo,null);
         var local=bloqueados.vinculos().get(paciente);
@@ -113,6 +115,7 @@ class PreparacaoResolucaoFrequenciaLocal {
                 original.responsavelValido(),original.responsavelDesconsiderado(),ator.getId(),
                 ator.getTipoUsuario().name(),motivo,
                 OffsetDateTime.ofInstant(clock.instant().truncatedTo(ChronoUnit.MICROS),ZoneOffset.UTC));
+        EvidenciaResolucaoHistorica.registrar(jdbc,"REVERSAO",id,local.getUnidadeChave());
         atualizar(local,ator,false,versaoVinculo,false);
         return id;
     }

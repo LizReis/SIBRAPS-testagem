@@ -422,6 +422,7 @@ class ModeloVinculoOperacionalTests {
         AgendaMigrationTool.migrarResolucaoFrequencia(banco);
         AgendaMigrationTool.migrarReversaoResolucao(banco);
         AgendaMigrationTool.migrarAplicacaoPendencia(banco);
+        AgendaMigrationTool.migrarEvidenciaResolucao(banco);
         var sql = new JdbcTemplate(banco);
         long usfA = usf(sql,"Automático A");
         long usfB = usf(sql,"Automático B");
@@ -723,6 +724,8 @@ class ModeloVinculoOperacionalTests {
         AgendaMigrationTool.migrarReversaoResolucao(banco);
         assertThat(AgendaMigrationTool.migrarAplicacaoPendencia(banco).migrationsExecuted).isEqualTo(1);
         assertThat(AgendaMigrationTool.migrarAplicacaoPendencia(banco).migrationsExecuted).isZero();
+        assertThat(AgendaMigrationTool.migrarEvidenciaResolucao(banco).migrationsExecuted).isEqualTo(1);
+        assertThat(AgendaMigrationTool.migrarEvidenciaResolucao(banco).migrationsExecuted).isZero();
         var sql=new JdbcTemplate(banco);
         long unidade=usf(sql,"Resolução A");
         String prof=ator(sql,unidade,2,"resolucao-prof");
@@ -745,6 +748,7 @@ class ModeloVinculoOperacionalTests {
             int versao=versaoResolucao(sql,vinculo);
             com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.resolver(app,prof,paciente,vinculo,versao,a,b,true);
             assertThat(sql.queryForObject("select count(*) from tb_resolucao_frequencia_local",Integer.class)).isZero();
+            assertThat(sql.queryForObject("select count(*) from tb_evidencia_resolucao_historica",Integer.class)).isZero();
             assertThat(faltasResolucao(sql,vinculo)).isEqualTo(3);
             assertThat(versaoResolucao(sql,vinculo)).isEqualTo(versao);
             var id=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.resolver(app,prof,paciente,vinculo,versao,a,b,false);
@@ -809,6 +813,24 @@ class ModeloVinculoOperacionalTests {
             assertThat(json(app,painelRevertido).path("itens").get(0).path("aplicacao").asString()).isEqualTo("REVERTIDA");
             assertThatThrownBy(()->sql.update("delete from tb_aplicacao_pendencia_resolucao where resolucao_id=?",vinculada))
                     .isInstanceOf(org.springframework.dao.DataAccessException.class);
+            assertThat(sql.queryForObject("select count(*) from tb_evidencia_resolucao_historica",Integer.class)).isEqualTo(4);
+            var limite=Instant.parse("2026-11-25T00:00:00Z");
+            var unidadeChave="USF:"+unidade;
+            assertThat(com.pet.buscaativa.migration.EvidenciaResolucaoHistorica.conferir(sql,unidadeChave,limite,"base").consistente()).isTrue();
+            assertThatThrownBy(()->sql.update("delete from tb_evidencia_resolucao_historica where evento_id=?",vinculada))
+                    .isInstanceOf(org.springframework.dao.DataAccessException.class);
+            // Inserção SQL sintética sem passagem pelo escritor: não fabricar comprovante.
+            sql.update("""
+                    insert into tb_resolucao_frequencia_local
+                    (id,vinculo_id,paciente_id,unidade_chave,fonte_valida,fato_valido,versao_valida,frequencia_valida,responsavel_valido,
+                     fonte_desconsiderada,fato_desconsiderado,versao_desconsiderada,frequencia_desconsiderada,responsavel_desconsiderado,
+                     horario,ator_id,perfil,justificativa,registrado_em)
+                    select ?,vinculo_id,paciente_id,unidade_chave,fonte_valida,fato_valido,versao_valida,frequencia_valida,responsavel_valido,
+                     fonte_desconsiderada,fato_desconsiderado,versao_desconsiderada,frequencia_desconsiderada,responsavel_desconsiderado,
+                     horario,ator_id,perfil,justificativa,registrado_em from tb_resolucao_frequencia_local where id=?
+                    """,UUID.randomUUID(),vinculada);
+            assertThat(com.pet.buscaativa.migration.EvidenciaResolucaoHistorica.conferir(sql,unidadeChave,limite,"base").consistente()).isFalse();
+            assertThat(com.pet.buscaativa.migration.EvidenciaResolucaoHistorica.conferir(sql,"CAPS_I",limite,"base").consistente()).isTrue();
         }
     }
     private static int faltasResolucao(JdbcTemplate sql,UUID vinculo) {

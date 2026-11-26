@@ -25,6 +25,7 @@ import com.pet.buscaativa.migration.FechamentoAutomaticoSchemaGuard;
 import com.pet.buscaativa.migration.ResolucaoFrequenciaSchemaGuard;
 import com.pet.buscaativa.migration.ReversaoResolucaoSchemaGuard;
 import com.pet.buscaativa.migration.AplicacaoPendenciaSchemaGuard;
+import com.pet.buscaativa.migration.EvidenciaResolucaoSchemaGuard;
 
 @Configuration(proxyBeanMethods = false)
 public class ModeloVinculoConfig {
@@ -79,6 +80,7 @@ public class ModeloVinculoConfig {
                         ResolucaoFrequenciaSchemaGuard.verificar(fonte);
                         ReversaoResolucaoSchemaGuard.verificar(fonte);
                         AplicacaoPendenciaSchemaGuard.verificar(fonte);
+                        EvidenciaResolucaoSchemaGuard.verificar(fonte);
                     }
                     return bean;
                 }
