@@ -1001,6 +1001,51 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
     }
 
     @Test
+    void origemDesconhecidaNaoViraFrequenciaOuVisitaConfirmadaEmNenhumaDasDuasUsfs() {
+        var a=novoLocal(UnidadeAtuacao.USF);
+        var b=iniciar(a.paciente(),tx.execute(t->usuario(UnidadeAtuacao.USF)));
+        var falta=reserva(a,diasAtras(3),9,SituacaoAtendimento.AGENDADO,true);
+        como(a.ator(),()->individual.registrar(falta.id(),falta.versao(),FrequenciaAssistencial.FALTOU));
+        var presenca=reserva(b,diasAtras(2),10,SituacaoAtendimento.AGENDADO,true);
+        como(b.ator(),()->individual.registrar(presenca.id(),presenca.versao(),FrequenciaAssistencial.PRESENTE));
+        // Fato legado sem origem: não atribuir pela lotação do profissional da fixture.
+        var desconhecido=reserva(a,diasAtras(1),11,SituacaoAtendimento.FALTOU,false);
+        var colunas=LegacyMigrationFixture.columns(fonte);
+        var antes=LegacyMigrationFixture.snapshot(fonte,colunas);
+        for (var local:List.of(a,b)) {
+            long faltas=local==a?1:0;
+            long presencas=local==a?0:1;
+            var p=como(local.ator(),()->consultasLocais.prontuario(local.paciente().getIdPublico()));
+            var i=p.paciente().indicadores();
+            assertNull(i.countFaltas());
+            assertNull(i.classificacaoRisco());
+            assertNull(i.gatilhoVisitaAcionado());
+            assertFalse(i.ultimaPresencaConclusiva());
+            assertTrue(i.revisaoNecessaria());
+            assertEquals(faltas,p.faltasComprovadas());
+            assertEquals(presencas,p.presencasComprovadas());
+            assertEquals(1,p.atendimentos().size());
+            assertEquals(local==a?falta.id():presenca.id(),p.atendimentos().getFirst().id());
+            assertTrue(p.atendimentos().stream().noneMatch(x->desconhecido.id().equals(x.id())));
+            var painel=como(local.ator(),()->painelLocal.painel(3,null,null,null));
+            assertEquals(1,painel.totalPacientesAtivos());
+            assertEquals(1,painel.distribuicaoClassificacao().naoConfirmados());
+            assertEquals(0,painel.distribuicaoClassificacao().vermelhos());
+            assertEquals(faltas,painel.atividade().faltasComprovadas());
+            assertEquals(presencas,painel.atividade().presencasComprovadas());
+            assertEquals(1,painel.atividade().semPresencaRecenteIndeterminada());
+            var busca=como(local.ator(),painelLocal::buscaAtiva);
+            // Revisão histórica pode aparecer, mas não uma ação clínica confirmada.
+            assertTrue(busca.alertas().stream().allMatch(x->"REVISAO_HISTORICA".equals(x.acao().name())
+                    && x.gatilhoVisitaAcionado()==null && x.localBusca()==null));
+            var relatorio=como(local.ator(),()->relatoriosLocais.buscaAtiva(null,null,null,null));
+            assertTrue(relatorio.dados().isEmpty());
+            assertEquals(1,relatorio.revisaoOuSelecaoInconclusiva());
+        }
+        assertEquals(antes,LegacyMigrationFixture.snapshot(fonte,colunas));
+    }
+
+    @Test
     void pesquisaPorDocumentoEProximaReservaRespeitamVinculoERecepcao() {
         var a=novoLocal(UnidadeAtuacao.CAPS_II);
         var b=iniciar(a.paciente(),tx.execute(t->usuario(UnidadeAtuacao.CAPS_I)));
