@@ -137,6 +137,7 @@ public class FrequenciaIndividualLocalEnsaioService {
                     PersistenciaIndicadoresVinculoEnsaioService.Situacao.SEM_ALTERACAO, false, local.getVersion()));
         }
         String motivo = correcao || regularizacao ? justificativas.validar(justificativa) : null;
+        historico.exigirSemResolucaoAtiva(local,LinhaDoTempoFrequenciasVinculoService.Fonte.ATENDIMENTO_INDIVIDUAL,id);
         var evento = historico.individual(fato, local, antes);
         if (cancelado && correcao && !LocalDateTime.of(fato.getDataAgendamento(), fato.getHoraAtendimento())
                 .equals(evento.getOcorridoEm()))

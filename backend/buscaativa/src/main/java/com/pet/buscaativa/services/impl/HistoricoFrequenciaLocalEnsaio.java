@@ -64,6 +64,10 @@ class HistoricoFrequenciaLocalEnsaio {
         }
     }
 
+    void exigirSemResolucaoAtiva(VinculoAssistencial local,LinhaDoTempoFrequenciasVinculoService.Fonte fonte,Long id) {
+        linha.exigirSemResolucaoAtiva(local,fonte,id);
+    }
+
     HistoricoPaciente individual(Agendamento a, VinculoAssistencial local, FrequenciaAssistencial antes) {
         var eventos = historicos.findByAgendamento(a).stream().filter(h -> h.getTipo() == TipoEventoHistoricoPaciente.FALTA
                 || h.getTipo() == TipoEventoHistoricoPaciente.PRESENCA

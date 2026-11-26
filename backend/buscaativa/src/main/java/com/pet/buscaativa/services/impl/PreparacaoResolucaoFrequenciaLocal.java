@@ -1,7 +1,6 @@
 package com.pet.buscaativa.services.impl;
 
 import java.time.Clock;
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
@@ -21,8 +20,8 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * Componente interno, ainda sem rota ou chamador operacional.
- * A etapa 6.4C deve consumir a resolução e recalcular todos os indicadores
- * na mesma transação antes de permitir sua aplicação real.
+ * Resolução e reversão recalculam o estado atual na mesma transação.
+ * Ainda não expor rotas: prontuário, pendências e histórico mensal precisam de integração.
  */
 @Component
 @Profile("!test | (test & ensaio-estado-local)")
@@ -35,6 +34,9 @@ class PreparacaoResolucaoFrequenciaLocal {
     private final PoliticaJustificativaCorrecao justificativas;
     private final JdbcTemplate jdbc;
     private final Clock clock;
+    private final PersistenciaIndicadoresVinculoEnsaioService indicadores;
+    private final HistoricoFrequenciaLocalEnsaio historico;
+    private final jakarta.persistence.EntityManager em;
 
     UUID registrar(UUID paciente, UUID vinculo, Integer versaoVinculo, Referencia valido,
             Referencia desconsiderado, String justificativa) {
@@ -52,6 +54,7 @@ class PreparacaoResolucaoFrequenciaLocal {
         PlanoResolucaoFrequencia.validar(valido,desconsiderado,a,b,ator.getId(),ator.getTipoUsuario());
         if(jaDesconsiderado(valido) || jaDesconsiderado(desconsiderado) || possuiDependentes(desconsiderado))
             throw new ConflictException("Os fatos já participam de resolução incompatível.");
+        boolean empateAnterior=indicadores.empateConhecidoAntesDaCorrecao(local);
         var id=UUID.randomUUID();
         jdbc.update("""
                 insert into tb_resolucao_frequencia_local
@@ -64,6 +67,7 @@ class PreparacaoResolucaoFrequenciaLocal {
                 desconsiderado.fonte().name(),desconsiderado.id(),desconsiderado.versao(),frequencia(b),b.responsavel(),
                 a.horario(),ator.getId(),ator.getTipoUsuario().name(),motivo,
                 OffsetDateTime.ofInstant(clock.instant().truncatedTo(ChronoUnit.MICROS),ZoneOffset.UTC));
+        atualizar(local,ator,empateAnterior,versaoVinculo);
         return id;
     }
 
@@ -101,7 +105,19 @@ class PreparacaoResolucaoFrequenciaLocal {
                 original.responsavelValido(),original.responsavelDesconsiderado(),ator.getId(),
                 ator.getTipoUsuario().name(),motivo,
                 OffsetDateTime.ofInstant(clock.instant().truncatedTo(ChronoUnit.MICROS),ZoneOffset.UTC));
+        atualizar(local,ator,false,versaoVinculo);
         return id;
+    }
+
+    private void atualizar(com.pet.buscaativa.entities.VinculoAssistencial local,
+            com.pet.buscaativa.entities.Usuario ator,boolean empateAnterior,Integer versaoAnterior) {
+        // JDBC participa da mesma transação JPA. Incerteza clínica mantém
+        // a pendência, falha técnica propaga e desfaz a operação inteira.
+        indicadores.aplicar(indicadores.avaliarAposCorrecao(local,empateAnterior),ator);
+        historico.renumerar(local);
+        em.flush();
+        if(java.util.Objects.equals(versaoAnterior,local.getVersion()))
+            em.lock(local,jakarta.persistence.LockModeType.PESSIMISTIC_FORCE_INCREMENT);
     }
 
     private static Fato carregar(LinhaDoTempoFrequenciasVinculoService.Evidencias e, Referencia ref) {

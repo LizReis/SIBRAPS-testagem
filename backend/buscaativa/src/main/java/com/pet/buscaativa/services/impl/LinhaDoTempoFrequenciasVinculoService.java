@@ -128,6 +128,24 @@ public class LinhaDoTempoFrequenciasVinculoService {
         return new Evidencias(efetivo,agenda,participacoes,bruto.agendaLocalInconclusiva());
     }
 
+    void exigirSemResolucaoAtiva(VinculoAssistencial local,Fonte fonte,Long id) {
+        boolean instalada=((Number)em.createNativeQuery("""
+                select count(*) from information_schema.tables
+                where table_schema=current_schema() and table_name='VW_RESOLUCAO_FREQUENCIA_ATIVA'
+                """).getSingleResult()).longValue()==1;
+        if(!instalada) return;
+        var total=((Number)em.createNativeQuery("""
+                select count(*) from vw_resolucao_frequencia_ativa
+                where vinculo_id=:vinculo and paciente_id=:paciente and unidade_chave=:unidade
+                  and ((fonte_valida=:fonte and fato_valido=:id)
+                    or (fonte_desconsiderada=:fonte and fato_desconsiderado=:id))
+                """).setParameter("vinculo",local.getId()).setParameter("paciente",local.getPaciente().getId())
+                .setParameter("unidade",local.getUnidadeChave()).setParameter("fonte",fonte.name())
+                .setParameter("id",id).getSingleResult()).longValue();
+        if(total>0) throw new com.pet.buscaativa.services.exceptions.ConflictException(
+                "Este fato participa de resolução ativa. Desfaça a resolução antes de corrigir a frequência.");
+    }
+
     Evidencias examinar(VinculoAssistencial vinculo, boolean incluirReservas) {
         Long pacienteId = vinculo.getPaciente().getId();
         String unidade = vinculo.getUnidadeChave();

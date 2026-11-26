@@ -107,6 +107,7 @@ public class FrequenciaColetivaLocalEnsaioService {
             if (correcao && (p.getStatusPresenca() != PRESENTE && p.getStatusPresenca() != FALTOU))
                 throw new ConflictException("Frequência anterior não comprovada.");
             var local = recursos.vinculos().get(registro.paciente());
+            if (correcao) historico.exigirSemResolucaoAtiva(local,LinhaDoTempoFrequenciasVinculoService.Fonte.SESSAO_GRUPO,p.getId());
             if (destino == PRESENTE) guardasGrupo.validarPresencaColetiva(p.getPaciente(), sessao, local);
             var anterior = correcao ? FrequenciaAssistencial.valueOf(p.getStatusPresenca().name())
                     : FrequenciaAssistencial.NAO_REGISTRADA;

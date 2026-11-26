@@ -691,6 +691,66 @@ class ModeloVinculoOperacionalTests {
         throw new AssertionError("Mês não retornado: "+mes);
     }
 
+    @Test
+    void resolucaoEReversaoAtualizamIndicadoresNaMesmaTransacao() throws Exception {
+        var banco=LegacyMigrationFixture.legacy(temp.resolve("resolucao-v24"));
+        AgendaMigrationTool.migrar(banco);
+        AgendaMigrationTool.migrarIdentidade(banco);
+        AgendaMigrationTool.migrarTransicao(banco);
+        AgendaMigrationTool.migrarCoberturaHistorica(banco);
+        AgendaMigrationTool.migrarMarcoHistorico(banco);
+        AgendaMigrationTool.migrarEvidenciaClinica(banco);
+        AgendaMigrationTool.migrarFechamentoAutomatico(banco);
+        AgendaMigrationTool.migrarResolucaoFrequencia(banco);
+        AgendaMigrationTool.migrarReversaoResolucao(banco);
+        var sql=new JdbcTemplate(banco);
+        long unidade=usf(sql,"Resolução A");
+        String prof=ator(sql,unidade,2,"resolucao-prof");
+        String externo=ator(sql,usf(sql,"Resolução B"),1,"resolucao-externo");
+        try(var app=iniciar(banco)) {
+            var token=login(app,prof);
+            var resposta=http(app,"POST","/api/pacientes?ignorarSimilaridade=true",token,
+                    cadastro("11144477735","800000000000001","Resolução",unidade));
+            assertThat(resposta.statusCode()).as(resposta.body()).isEqualTo(201);
+            var novo=json(app,resposta);
+            var paciente=UUID.fromString(novo.path("paciente").asString());
+            var vinculo=UUID.fromString(novo.path("vinculo").asString());
+            long pessoa=sql.queryForObject("select id from tb_paciente where id_publico=?",Long.class,paciente);
+            long responsavel=sql.queryForObject("select id from tb_usuario where email=?",Long.class,prof);
+            var a=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.falta(app,prof,pessoa,responsavel,HOJE.minusDays(2),9);
+            var b=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.falta(app,prof,pessoa,responsavel,HOJE.minusDays(2),9);
+            var c=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.falta(app,prof,pessoa,responsavel,HOJE.minusDays(1),9);
+            assertThat(faltasResolucao(sql,vinculo)).isEqualTo(3);
+            int versao=versaoResolucao(sql,vinculo);
+            com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.resolver(app,prof,paciente,vinculo,versao,a,b,true);
+            assertThat(sql.queryForObject("select count(*) from tb_resolucao_frequencia_local",Integer.class)).isZero();
+            assertThat(faltasResolucao(sql,vinculo)).isEqualTo(3);
+            assertThat(versaoResolucao(sql,vinculo)).isEqualTo(versao);
+            var id=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.resolver(app,prof,paciente,vinculo,versao,a,b,false);
+            assertThat(faltasResolucao(sql,vinculo)).isEqualTo(2);
+            assertThat(sql.queryForObject("select count(*) from vw_resolucao_frequencia_ativa",Integer.class)).isEqualTo(1);
+            assertThat(versaoResolucao(sql,vinculo)).isGreaterThan(versao);
+            assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.corrigir(app,prof,b))
+                    .isInstanceOf(com.pet.buscaativa.services.exceptions.ConflictException.class)
+                    .hasMessageContaining("resolução ativa");
+            int apos=versaoResolucao(sql,vinculo);
+            assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.desfazer(app,externo,paciente,vinculo,apos,id))
+                    .isInstanceOf(com.pet.buscaativa.services.exceptions.ResourceNotFoundException.class);
+            com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.desfazer(app,prof,paciente,vinculo,apos,id);
+            assertThat(faltasResolucao(sql,vinculo)).isEqualTo(3);
+            assertThat(sql.queryForObject("select count(*) from vw_resolucao_frequencia_ativa",Integer.class)).isZero();
+            assertThat(sql.queryForObject("select count(*) from tb_resolucao_frequencia_local",Integer.class)).isEqualTo(1);
+            assertThat(sql.queryForObject("select count(*) from tb_reversao_resolucao_frequencia",Integer.class)).isEqualTo(1);
+            assertThat(sql.queryForObject("select count(*) from tb_agendamento where id in (?,?,?) and frequencia_assistencial='FALTOU'",Integer.class,a.id(),b.id(),c.id())).isEqualTo(3);
+        }
+    }
+    private static int faltasResolucao(JdbcTemplate sql,UUID vinculo) {
+        return sql.queryForObject("select count_faltas from tb_vinculo_assistencial where id_publico=?",Integer.class,vinculo);
+    }
+    private static int versaoResolucao(JdbcTemplate sql,UUID vinculo) {
+        return sql.queryForObject("select version from tb_vinculo_assistencial where id_publico=?",Integer.class,vinculo);
+    }
+
     private String atorCaps(JdbcTemplate sql,int unidade,String nome) {
         String email=nome+"@test.local";
         sql.update("""
