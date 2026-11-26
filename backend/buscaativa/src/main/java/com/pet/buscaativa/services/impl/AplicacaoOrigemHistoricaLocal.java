@@ -22,7 +22,7 @@ import com.pet.buscaativa.services.impl.VerificacaoFatoRevisaoProvenienciaServic
 import com.pet.buscaativa.services.impl.VerificacaoFatoRevisaoProvenienciaService.ProvaOrigem;
 import lombok.RequiredArgsConstructor;
 
-/** Escritor interno. Não expor rota antes de integrar todos os consumidores. */
+/** Escritor interno, acessado pelo serviço transacional de revisão de origem. */
 @Component
 @Profile("!test | (test & ensaio-estado-local)")
 @RequiredArgsConstructor

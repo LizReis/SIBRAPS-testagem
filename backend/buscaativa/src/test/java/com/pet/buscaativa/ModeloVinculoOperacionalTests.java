@@ -1026,6 +1026,11 @@ class ModeloVinculoOperacionalTests {
         return cliente.send(requisicao,HttpResponse.BodyHandlers.ofByteArray());
     }
 
+    private UUID resultadoOrigemConcorrente(ConfigurableApplicationContext app,String rota,String token,Object dados) throws Exception {
+        var respostas=disputarResolucao(app,rota,token,dados);
+        return UUID.fromString(json(app,respostas.stream().filter(r->r.statusCode()==201).findFirst().orElseThrow()).path("id").asString());
+    }
+
     private void validarRevisaoOrigemHistorico(ConfigurableApplicationContext app,JdbcTemplate sql,long unidade,
             String tokenProf,String tokenAdmin,String tokenExterno,String tokenRecepcao,String prof,String admin,String externoEmail) throws Exception {
         var dados=cadastro(cpfSintetico(92),cnsSintetico(92),"Origem histórica",unidade);
@@ -1140,8 +1145,33 @@ class ModeloVinculoOperacionalTests {
         com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aplicarOrigem(
                 app,admin,paciente,vinculo,versaoAtual,ticket,true);
         assertThat(sql.queryForObject("select count(*) from tb_aplicacao_origem_historica",Integer.class)).isZero();
-        var aplicada=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aplicarOrigem(
-                app,admin,paciente,vinculo,versaoAtual,ticket,false);
+        String aplicacaoRota=rota+"/"+ticket+"/origem/aplicar?version="+versaoAtual;
+        String auditoriaRota=rota+"/"+ticket+"/origem/auditoria";
+        var comandoOrigem=Map.of("justificativa","Aplicação sintética após conferência da fonte assistencial.");
+        assertThat(http(app,"POST",aplicacaoRota,null,comandoOrigem).statusCode()).isEqualTo(401);
+        assertThat(http(app,"POST",aplicacaoRota,tokenProf,comandoOrigem).statusCode()).isEqualTo(403);
+        assertThat(http(app,"POST",aplicacaoRota,tokenRecepcao,comandoOrigem).statusCode()).isEqualTo(403);
+        assertThat(http(app,"POST",outraRota+"/"+ticket+"/origem/aplicar?version="+versaoResolucao(sql,outroVinculo),
+                tokenExterno,comandoOrigem).statusCode()).isEqualTo(404);
+        assertThat(http(app,"POST",rota+"/"+ticket+"/origem/aplicar?version="+(versaoAtual+1),
+                tokenAdmin,comandoOrigem).statusCode()).isEqualTo(422);
+        assertThat(http(app,"POST",aplicacaoRota,tokenAdmin,Map.of("justificativa","")).statusCode()).isEqualTo(422);
+        var antesAplicacao=http(app,"GET",auditoriaRota,tokenAdmin,null);
+        assertThat(antesAplicacao.statusCode()).as(antesAplicacao.body()).isEqualTo(200);
+        assertThat(json(app,antesAplicacao).path("estadoAplicacao").asString()).isEqualTo("SEM_APLICACAO");
+        assertThat(http(app,"GET",auditoriaRota,tokenProf,null).statusCode()).isEqualTo(403);
+        assertThat(http(app,"GET",auditoriaRota,tokenRecepcao,null).statusCode()).isEqualTo(403);
+        assertThat(http(app,"GET",outraRota+"/"+ticket+"/origem/auditoria",tokenExterno,null).statusCode()).isEqualTo(404);
+        var aplicada=resultadoOrigemConcorrente(app,aplicacaoRota,tokenAdmin,comandoOrigem);
+        var auditada=http(app,"GET",auditoriaRota,tokenAdmin,null);
+        assertThat(auditada.statusCode()).as(auditada.body()).isEqualTo(200);
+        var trilha=json(app,auditada);
+        assertThat(trilha.path("solicitacao").path("id").asString()).isEqualTo(ticket.toString());
+        assertThat(trilha.path("decisao").path("evento").path("id").asString()).isEqualTo(decisao.toString());
+        assertThat(trilha.path("aplicacao").path("id").asString()).isEqualTo(aplicada.toString());
+        assertThat(trilha.path("aplicacao").path("justificativa").asString()).isEqualTo(comandoOrigem.get("justificativa"));
+        assertThat(trilha.path("estadoAplicacao").asString()).isEqualTo("ORIGEM_RECONHECIDA");
+        assertThat(trilha.path("integridadeEventos").asBoolean()).isTrue();
         assertThat(sql.queryForObject("select decisao_id from tb_aplicacao_origem_historica where id=?",UUID.class,aplicada)).isEqualTo(decisao);
         assertThat(sql.queryForObject("select historico_id from tb_aplicacao_origem_historica where id=?",Long.class,aplicada)).isEqualTo(h);
         assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aplicarOrigem(
@@ -1210,8 +1240,16 @@ class ModeloVinculoOperacionalTests {
         assertThat(itemInconclusivo.path("aplicacaoOrigem").asString()).isEqualTo("INCONCLUSIVA");
         assertThat(sql.queryForObject("select count(*) from tb_aplicacao_origem_historica where id=?",Integer.class,aplicada)).isEqualTo(1);
         // Reversão deve funcionar inclusive depois que a fonte se tornou incompatível.
-        var revertida=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.desfazerOrigem(
-                app,admin,paciente,vinculo,versaoAtual,aplicada,false);
+        String reversaoRota=rota+"/origem/aplicacoes/"+aplicada+"/desfazer?version="+versaoAtual;
+        var comandoReversao=Map.of("justificativa","Nova conferência sintética: retirar o reconhecimento de origem.");
+        assertThat(http(app,"POST",reversaoRota,tokenProf,comandoReversao).statusCode()).isEqualTo(403);
+        assertThat(http(app,"POST",outraRota+"/origem/aplicacoes/"+aplicada+"/desfazer?version="+versaoResolucao(sql,outroVinculo),
+                tokenExterno,comandoReversao).statusCode()).isEqualTo(404);
+        var revertida=resultadoOrigemConcorrente(app,reversaoRota,tokenAdmin,comandoReversao);
+        var auditadaReversao=http(app,"GET",auditoriaRota,tokenAdmin,null);
+        assertThat(auditadaReversao.statusCode()).as(auditadaReversao.body()).isEqualTo(200);
+        assertThat(json(app,auditadaReversao).path("reversao").path("id").asString()).isEqualTo(revertida.toString());
+        assertThat(json(app,auditadaReversao).path("estadoAplicacao").asString()).isEqualTo("REVERTIDA");
         assertThat(sql.queryForObject("select aplicacao_id from tb_reversao_origem_historica where id=?",UUID.class,revertida)).isEqualTo(aplicada);
         assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.desfazerOrigem(
                 app,admin,paciente,vinculo,versaoAtual,aplicada,false))
@@ -1248,8 +1286,17 @@ class ModeloVinculoOperacionalTests {
         com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.reabrirOrigem(
                 app,admin,paciente,vinculo,versaoAtual,ticket,true);
         assertThat(sql.queryForObject("select count(*) from tb_reabertura_origem_historica",Integer.class)).isZero();
-        var nova=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.reabrirOrigem(
-                app,admin,paciente,vinculo,versaoAtual,ticket,false);
+        String reaberturaRota=rota+"/"+ticket+"/origem/reabrir?version="+versaoAtual;
+        var comandoReabertura=Map.of("justificativa","Nova análise sintética da origem do registro histórico.");
+        assertThat(http(app,"POST",reaberturaRota,tokenProf,comandoReabertura).statusCode()).isEqualTo(403);
+        assertThat(http(app,"POST",outraRota+"/"+ticket+"/origem/reabrir?version="+versaoResolucao(sql,outroVinculo),
+                tokenExterno,comandoReabertura).statusCode()).isEqualTo(404);
+        var nova=resultadoOrigemConcorrente(app,reaberturaRota,tokenAdmin,comandoReabertura);
+        var auditadaReabertura=http(app,"GET",rota+"/"+nova+"/origem/auditoria",tokenAdmin,null);
+        assertThat(auditadaReabertura.statusCode()).as(auditadaReabertura.body()).isEqualTo(200);
+        assertThat(json(app,auditadaReabertura).path("reaberturaAnterior").path("anterior").asString()).isEqualTo(ticket.toString());
+        assertThat(json(app,auditadaReabertura).path("reaberturaAnterior").path("motivo").asString()).isEqualTo("APLICACAO_REVERTIDA");
+        assertThat(json(app,auditadaReabertura).path("estadoAplicacao").asString()).isEqualTo("SEM_APLICACAO");
         assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.reabrirOrigem(
                 app,admin,paciente,vinculo,versaoAtual,ticket,false))
                 .isInstanceOf(com.pet.buscaativa.services.exceptions.ConflictException.class);
@@ -1275,8 +1322,10 @@ class ModeloVinculoOperacionalTests {
         var novaDecisaoGrupo=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aprovar(
                 app,admin,paciente,vinculo,versaoAtual,novaGrupo);
         assertThat(novaDecisaoGrupo).isNotEqualTo(decisaoGrupo);
-        var novaAplicacaoGrupo=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aplicarOrigem(
-                app,admin,paciente,vinculo,versaoAtual,novaGrupo,false);
+        var aplicadaGrupoHttp=http(app,"POST",rota+"/"+novaGrupo+"/origem/aplicar?version="+versaoAtual,
+                tokenAdmin,comandoOrigem);
+        assertThat(aplicadaGrupoHttp.statusCode()).as(aplicadaGrupoHttp.body()).isEqualTo(201);
+        var novaAplicacaoGrupo=UUID.fromString(json(app,aplicadaGrupoHttp).path("id").asString());
         assertThat(sql.queryForObject("select historico_id from tb_aplicacao_origem_historica where id=?",Long.class,novaAplicacaoGrupo)).isEqualTo(hGrupo);
         var reaberto=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",tokenProf,null);
         assertThat(reaberto.statusCode()).as(reaberto.body()).isEqualTo(200);
@@ -1368,6 +1417,10 @@ class ModeloVinculoOperacionalTests {
         var grupoSemEvidencia=java.util.stream.StreamSupport.stream(json(app,painelSemEvidencia).path("itens").spliterator(),false)
                 .filter(e->e.path("ticket").asString().equals(novaGrupo.toString())).findFirst().orElseThrow();
         assertThat(grupoSemEvidencia.path("aplicacaoOrigem").asString()).isEqualTo("INCONCLUSIVA");
+        var auditoriaInconclusiva=http(app,"GET",rota+"/"+novaGrupo+"/origem/auditoria",tokenAdmin,null);
+        assertThat(auditoriaInconclusiva.statusCode()).as(auditoriaInconclusiva.body()).isEqualTo(200);
+        assertThat(json(app,auditoriaInconclusiva).path("integridadeEventos").asBoolean()).isFalse();
+        assertThat(json(app,auditoriaInconclusiva).path("estadoAplicacao").asString()).isEqualTo("INCONCLUSIVA");
         var leituraSemEvidencia=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",tokenProf,null);
         assertThat(leituraSemEvidencia.statusCode()).as(leituraSemEvidencia.body()).isEqualTo(200);
         assertThat(java.util.stream.StreamSupport.stream(json(app,leituraSemEvidencia).path("historico").spliterator(),false)
