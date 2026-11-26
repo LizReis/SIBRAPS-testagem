@@ -22,20 +22,22 @@ class AplicacaoPendenciaResolucaoLocal {
     private final JdbcTemplate jdbc;
     private final HistoricoFrequenciaLocalEnsaio historico;
 
-    private record Ticket(String tipo,Long registro,UUID decisao,String resultado) {}
+    private record Ticket(String tipo,Long registro,UUID decisao,String resultado,String situacao) {}
 
     UUID conferir(VinculoAssistencial local,LinhaDoTempoFrequenciasVinculoService.Evidencias bruto,
             PlanoResolucaoFrequencia.Referencia desconsiderado,UUID ticket) {
         if(!AplicacaoPendenciaSchemaGuard.instalada(jdbc))
             throw new ConflictException("Estrutura de aplicação de pendência não instalada.");
         var p=jdbc.query("""
-                select p.tipo_registro,p.registro_id,d.id,d.decisao from tb_pendencia_revisao_proveniencia p
+                select p.tipo_registro,p.registro_id,d.id,d.decisao,p.situacao_evidencia from tb_pendencia_revisao_proveniencia p
                 left join tb_decisao_revisao_proveniencia d on d.pendencia_id=p.id
                     and d.paciente_id=p.paciente_id and d.unidade_chave=p.unidade_chave
                 where p.id=? and p.vinculo_id=? and p.paciente_id=? and p.unidade_chave=?
-                """,(rs,n)->new Ticket(rs.getString(1),rs.getLong(2),rs.getObject(3,UUID.class),rs.getString(4)),
+                """,(rs,n)->new Ticket(rs.getString(1),rs.getLong(2),rs.getObject(3,UUID.class),rs.getString(4),rs.getString(5)),
                 ticket,local.getId(),local.getPaciente().getId(),local.getUnidadeChave()).stream().findFirst()
                 .orElseThrow(()->new ResourceNotFoundException("Pendência não encontrada."));
+        if(!"COMPATIVEL_SOMENTE_PARA_CONFERENCIA".equals(p.situacao()))
+            throw new ConflictException("Pendência de origem não autoriza resolução de duplicidade.");
         if(!"APROVAR".equals(p.resultado()) || p.decisao()==null)
             throw new ConflictException("Pendência de revisão sem aprovação administrativa.");
         boolean corresponde=switch(desconsiderado.fonte()) {

@@ -51,15 +51,18 @@ public class VerificacaoFatoRevisaoProvenienciaService {
     /** Apenas o minimo necessario para uma futura etapa INTERNA de solicitacao. */
     public record FatoLocalVerificado(
             TipoRegistro tipoRegistro, Long registroId, Long pacienteId, String unidadeChave,
-            boolean historicoSemOrigemComFonteLocal) {
+            boolean historicoSemOrigemComFonteLocal, ProvaOrigem provaOrigem) {
         public FatoLocalVerificado(TipoRegistro tipoRegistro,Long registroId,Long pacienteId,String unidadeChave) {
-            this(tipoRegistro,registroId,pacienteId,unidadeChave,false);
+            this(tipoRegistro,registroId,pacienteId,unidadeChave,false,null);
         }
     }
 
     public record CandidatoOrigem(Long historico,TipoRegistro fonte,Long registroFonte,LocalDateTime ocorridoEm,
             FrequenciaAssistencial frequencia) {}
     public record CandidatosOrigem(Integer versaoVinculo,List<CandidatoOrigem> candidatos) {}
+    /** Somente uso interno, não faz parte do DTO de consulta HTTP. */
+    public record ProvaOrigem(CandidatoOrigem candidato,Integer versaoFonte,Long participanteId,Long responsavelId,
+            TipoEventoHistoricoPaciente tipoHistorico) {}
 
     /** Somente análise administrativa: não libera o prontuário nem grava origem. */
     public CandidatosOrigem candidatosOrigem(UUID pacienteId,UUID vinculoId) {
@@ -69,7 +72,7 @@ public class VerificacaoFatoRevisaoProvenienciaService {
         var vinculo=autorizacao.exigirVinculoIdentificado(pacienteId,vinculoId);
         var candidatos=historicos.findCandidatosOrigemLocal(pacienteId,vinculo.getUnidadeChave()).stream()
                 .flatMap(h->{
-                    try {return java.util.stream.Stream.of(conferirHistoricoSemOrigem(h,vinculo));}
+                    try {return java.util.stream.Stream.of(conferirHistoricoSemOrigem(h,vinculo).candidato());}
                     catch(ResourceNotFoundException e) {return java.util.stream.Stream.empty();}
                 }).toList();
         return new CandidatosOrigem(vinculo.getVersion(),candidatos);
@@ -111,8 +114,8 @@ public class VerificacaoFatoRevisaoProvenienciaService {
                     throw naoEncontrado();
                 if(AvaliacaoProvenienciaClinica.origemAusente(fato.getUnidadeOrigemChave())) {
                     if(perfil!=TipoUsuario.ADMINISTRADOR) throw naoEncontrado();
-                    conferirHistoricoSemOrigem(fato,vinculo);
-                    return new FatoLocalVerificado(tipoRegistro,registroId,paciente.getId(),unidade,true);
+                    var prova=conferirHistoricoSemOrigem(fato,vinculo);
+                    return new FatoLocalVerificado(tipoRegistro,registroId,paciente.getId(),unidade,true,prova);
                 }
                 if(!Objects.equals(unidade,fato.getUnidadeOrigemChave())) throw naoEncontrado();
                 autorizacao.validarHistoricoLocal(fato);
@@ -146,7 +149,7 @@ public class VerificacaoFatoRevisaoProvenienciaService {
         return new FatoLocalVerificado(tipoRegistro, registroId, paciente.getId(), unidade);
     }
 
-    private CandidatoOrigem conferirHistoricoSemOrigem(HistoricoPaciente h,VinculoAssistencial local) {
+    private ProvaOrigem conferirHistoricoSemOrigem(HistoricoPaciente h,VinculoAssistencial local) {
         if(!AvaliacaoProvenienciaClinica.origemAusente(h.getUnidadeOrigemChave())
                 || h.getPaciente()==null || !Objects.equals(h.getPaciente().getId(),local.getPaciente().getId())
                 || h.getProfissional()==null || h.getProfissional().getId()==null || h.getOcorridoEm()==null
@@ -155,7 +158,8 @@ public class VerificacaoFatoRevisaoProvenienciaService {
         String unidade=local.getUnidadeChave();
         FrequenciaAssistencial frequencia;
         LocalDateTime horario;
-        Long responsavel,fonteId;
+        Long responsavel,fonteId,participanteId=null;
+        Integer versaoFonte;
         TipoRegistro fonte;
         List<HistoricoPaciente> associados;
         if(h.getAgendamento()!=null) {
@@ -167,6 +171,7 @@ public class VerificacaoFatoRevisaoProvenienciaService {
             frequencia=a.getFrequenciaAssistencial();
             horario=LocalDateTime.of(a.getDataAgendamento(),a.getHoraAtendimento());
             responsavel=a.getUsuario().getId();fonteId=a.getId();fonte=TipoRegistro.AGENDAMENTO;
+            versaoFonte=a.getVersion();
             associados=historicos.findByAgendamento(a).stream().filter(VerificacaoFatoRevisaoProvenienciaService::eventoFrequencia).toList();
         } else {
             var s=h.getSessaoGrupo();
@@ -182,6 +187,8 @@ public class VerificacaoFatoRevisaoProvenienciaService {
             frequencia=FrequenciaAssistencial.valueOf(ps.getFirst().getStatusPresenca().name());
             horario=LocalDateTime.of(s.getDataSessao(),s.getHorario());
             responsavel=s.getResponsavelAtendimento().getId();fonteId=s.getId();fonte=TipoRegistro.SESSAO_GRUPO;
+            versaoFonte=s.getVersion();participanteId=ps.getFirst().getId();
+            if(participanteId==null || participanteId<=0) throw naoEncontrado();
             associados=historicos.findAllByPacienteAndSessaoGrupo(local.getPaciente(),s);
         }
         boolean tipoCorreto=frequencia==FrequenciaAssistencial.FALTOU?h.getTipo()==TipoEventoHistoricoPaciente.FALTA
@@ -192,7 +199,9 @@ public class VerificacaoFatoRevisaoProvenienciaService {
                 || h.getSituacaoAtendimento()!=SituacaoAtendimento.valueOf(frequencia.name())
                 || associados.size()!=1 || h.getId()==null || !Objects.equals(h.getId(),associados.getFirst().getId()))
             throw naoEncontrado();
-        return new CandidatoOrigem(h.getId(),fonte,fonteId,horario,frequencia);
+        if(versaoFonte==null || versaoFonte<0 || responsavel==null) throw naoEncontrado();
+        return new ProvaOrigem(new CandidatoOrigem(h.getId(),fonte,fonteId,horario,frequencia),
+                versaoFonte,participanteId,responsavel,h.getTipo());
     }
 
     private static boolean eventoFrequencia(HistoricoPaciente h) {

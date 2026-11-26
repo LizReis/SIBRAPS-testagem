@@ -46,6 +46,8 @@ public class RegistroDecisaoRevisaoProvenienciaService {
     private final FilaPendenciasRevisaoProvenienciaRepository fila;
     private final DecisaoRevisaoProvenienciaComandoRepository comandos;
     private final Clock clock;
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager em;
 
     @Transactional
     public UUID registrar(UUID pacienteIdPublico, UUID pendenciaId,
@@ -106,7 +108,36 @@ public class RegistroDecisaoRevisaoProvenienciaService {
 
         var evento = DecisaoRevisaoProveniencia.registrarRevisaoHumana(
                 pendencia, decisao, motivo, revisor, Instant.now(clock));
-        comandos.save(evento);
+        if(revisaoOrigem && decisao==Decisao.APROVAR) {
+            var prova=fato.provaOrigem();
+            boolean instalada=((Number)em.createNativeQuery("""
+                    select count(*) from information_schema.tables where table_schema=current_schema()
+                    and table_name='TB_PROVA_APROVACAO_ORIGEM'
+                    """).getSingleResult()).longValue()==1;
+            if(!instalada || prova==null)
+                throw new com.pet.buscaativa.services.exceptions.ConflictException("Estrutura de prova de origem não instalada ou evidência ausente.");
+            comandos.save(evento);
+            // A FK exige a decisão V13 já persistida; o flush não confirma a transação.
+            em.flush();
+            var c=prova.candidato();
+            em.createNativeQuery("""
+                    insert into tb_prova_aprovacao_origem
+                    (decisao_id,pendencia_id,vinculo_id,paciente_id,unidade_chave,tipo_registro,historico_id,
+                     situacao_evidencia,decisao,fonte,fonte_id,versao_fonte,participante_id,responsavel_id,
+                     ocorrido_em,frequencia,tipo_historico)
+                    values (:decisao,:ticket,:vinculo,:paciente,:unidade,'HISTORICO',:historico,
+                     'REVISAR_ORIGEM_DESCONHECIDA','APROVAR',:fonte,:fonteId,:versao,:participante,
+                     :responsavel,:horario,:frequencia,:tipo)
+                    """).setParameter("decisao",evento.getId()).setParameter("ticket",pendenciaId)
+                    .setParameter("vinculo",bloqueado.getId()).setParameter("paciente",fato.pacienteId())
+                    .setParameter("unidade",unidade).setParameter("historico",c.historico())
+                    .setParameter("fonte",c.fonte().name()).setParameter("fonteId",c.registroFonte())
+                    .setParameter("versao",prova.versaoFonte())
+                    .setParameter("participante",prova.participanteId())
+                    .setParameter("responsavel",prova.responsavelId()).setParameter("horario",c.ocorridoEm())
+                    .setParameter("frequencia",c.frequencia().name()).setParameter("tipo",prova.tipoHistorico().name())
+                    .executeUpdate();
+        } else comandos.save(evento);
         return evento.getId();
     }
 

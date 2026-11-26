@@ -726,6 +726,8 @@ class ModeloVinculoOperacionalTests {
         assertThat(AgendaMigrationTool.migrarAplicacaoPendencia(banco).migrationsExecuted).isZero();
         assertThat(AgendaMigrationTool.migrarEvidenciaResolucao(banco).migrationsExecuted).isEqualTo(1);
         assertThat(AgendaMigrationTool.migrarEvidenciaResolucao(banco).migrationsExecuted).isZero();
+        assertThat(AgendaMigrationTool.migrarProvaOrigem(banco).migrationsExecuted).isEqualTo(1);
+        assertThat(AgendaMigrationTool.migrarProvaOrigem(banco).migrationsExecuted).isZero();
         var sql=new JdbcTemplate(banco);
         long unidade=usf(sql,"Resolução A");
         String prof=ator(sql,unidade,2,"resolucao-prof");
@@ -1039,7 +1041,26 @@ class ModeloVinculoOperacionalTests {
         var externo=http(app,"GET","/api/pacientes/"+paciente+"/detalhe",tokenExterno,null);
         assertThat(externo.statusCode()).as(externo.body()).isEqualTo(200);
         UUID outroVinculo=UUID.fromString(json(app,externo).path("paciente").path("vinculo").asString());
+        // Reutilizar a criação/realização coletiva já validada em 6.4D.
+        var clock=(RelogioMutavel)app.getBean(Clock.class);
+        var dataGrupo=LocalDate.now(clock).plusDays(1);
+        UUID coordenador=sql.queryForObject("select id_publico from tb_usuario where email=?",UUID.class,prof);
+        var grupo=http(app,"POST","/api/grupos",tokenAdmin,Map.of("tema","Origem coletiva sintética",
+                "coordenadorId",coordenador,"recorrencia","UNICA","dataPrimeiraSessao",dataGrupo,
+                "horario","09:00","participantesIds",List.of(paciente)));
+        assertThat(grupo.statusCode()).as(grupo.body()).isEqualTo(200);
+        long sessao=json(app,grupo).path("sessoes").get(0).asLong();
+        clock.avancar(dataGrupo.atTime(12,0).atZone(clock.getZone()).toInstant());
+        int versaoSessao=sql.queryForObject("select version from tb_sessao_grupo where id=?",Integer.class,sessao);
+        var confirmada=http(app,"POST","/api/grupos/sessoes/"+sessao+"/confirmacao-ocorrencia",tokenProf,
+                Map.of("ocorreu",true,"version",versaoSessao,"frequencias",
+                        List.of(Map.of("pacienteId",paciente,"statusPresenca","FALTOU"))));
+        assertThat(confirmada.statusCode()).as(confirmada.body()).isEqualTo(200);
+        long hGrupo=sql.queryForObject("select id from tb_historico_paciente where sessao_grupo_id=? and paciente_id=? and tipo='FALTA'",Long.class,sessao,pessoa);
+        long participante=sql.queryForObject("select id from tb_sessao_grupo_participante where sessao_grupo_id=? and paciente_id=?",
+                Long.class,sessao,pessoa);
         // Apenas fixture sintética: reproduzir campo legado vazio e fonte temporal divergente.
+        sql.update("update tb_historico_paciente set unidade_origem_chave=null where id=?",hGrupo);
         sql.update("update tb_historico_paciente set unidade_origem_chave=null where id=?",h);
         sql.update("update tb_historico_paciente set unidade_origem_chave=null,ocorrido_em=? where id=?",
                 dia.atTime(11,0),divergente);
@@ -1048,9 +1069,13 @@ class ModeloVinculoOperacionalTests {
         var candidatos=http(app,"GET",rota+"/candidatos-origem",tokenAdmin,null);
         assertThat(candidatos.statusCode()).as(candidatos.body()).isEqualTo(200);
         var lista=json(app,candidatos).path("candidatos");
-        assertThat(lista.size()).isEqualTo(1);
-        assertThat(lista.get(0).path("historico").asLong()).isEqualTo(h);
-        assertThat(lista.get(0).path("registroFonte").asLong()).isEqualTo(falta.id());
+        assertThat(lista.size()).isEqualTo(2);
+        var itens=java.util.stream.StreamSupport.stream(lista.spliterator(),false).toList();
+        assertThat(itens.stream().map(e->e.path("historico").asLong()).toList()).containsExactlyInAnyOrder(h,hGrupo);
+        assertThat(itens.stream().filter(e->e.path("historico").asLong()==h).findFirst().orElseThrow()
+                .path("registroFonte").asLong()).isEqualTo(falta.id());
+        assertThat(itens.stream().filter(e->e.path("historico").asLong()==hGrupo).findFirst().orElseThrow()
+                .path("registroFonte").asLong()).isEqualTo(sessao);
         assertThat(http(app,"GET",rota+"/candidatos-origem",tokenProf,null).statusCode()).isEqualTo(403);
         assertThat(http(app,"GET",rota+"/candidatos-origem",tokenRecepcao,null).statusCode()).isEqualTo(403);
         assertThat(http(app,"GET",rota+"/candidatos-origem",tokenExterno,null).statusCode()).isEqualTo(404);
@@ -1072,13 +1097,31 @@ class ModeloVinculoOperacionalTests {
         var aprovada=http(app,"POST",rota+"/"+ticket+"/decisao?version="+versaoResolucao(sql,vinculo),tokenAdmin,
                 Map.of("decisao","APROVAR","justificativa","Origem comprovada pela fonte individual da unidade."));
         assertThat(aprovada.statusCode()).as(aprovada.body()).isEqualTo(200);
-        assertThat(sql.queryForObject("select unidade_origem_chave from tb_historico_paciente where id=?",String.class,h)).isNull();
-        assertThat(faltasResolucao(sql,vinculo)).isEqualTo(2);
+        UUID decisao=UUID.fromString(json(app,aprovada).asString());
+        assertThat(sql.queryForObject("select fonte_id from tb_prova_aprovacao_origem where decisao_id=?",Long.class,decisao)).isEqualTo(falta.id());
+        assertThat(sql.queryForObject("select versao_fonte from tb_prova_aprovacao_origem where decisao_id=?",Integer.class,decisao)).isEqualTo(falta.versao());
+        assertThat(sql.queryForObject("select participante_id from tb_prova_aprovacao_origem where decisao_id=?",Long.class,decisao)).isNull();
+        assertThatThrownBy(()->sql.update("delete from tb_prova_aprovacao_origem where decisao_id=?",decisao))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        var solicitacaoGrupo=http(app,"POST",rota+"?version="+versaoResolucao(sql,vinculo),tokenAdmin,
+                Map.of("tipo","HISTORICO","registro",hGrupo,"justificativa","Conferência sintética da origem da sessão coletiva."));
+        assertThat(solicitacaoGrupo.statusCode()).as(solicitacaoGrupo.body()).isEqualTo(200);
+        UUID ticketGrupo=UUID.fromString(json(app,solicitacaoGrupo).asString());
+        var aprovadaGrupo=http(app,"POST",rota+"/"+ticketGrupo+"/decisao?version="+versaoResolucao(sql,vinculo),tokenAdmin,
+                Map.of("decisao","APROVAR","justificativa","Sessão e participação comprovadas na unidade local."));
+        assertThat(aprovadaGrupo.statusCode()).as(aprovadaGrupo.body()).isEqualTo(200);
+        UUID decisaoGrupo=UUID.fromString(json(app,aprovadaGrupo).asString());
+        assertThat(sql.queryForObject("select fonte_id from tb_prova_aprovacao_origem where decisao_id=?",Long.class,decisaoGrupo)).isEqualTo(sessao);
+        assertThat(sql.queryForObject("select participante_id from tb_prova_aprovacao_origem where decisao_id=?",Long.class,decisaoGrupo)).isEqualTo(participante);
+        assertThat(sql.queryForObject("select responsavel_id from tb_prova_aprovacao_origem where decisao_id=?",Long.class,decisaoGrupo)).isEqualTo(responsavel);
+        assertThat(sql.queryForObject("select count(*) from tb_prova_aprovacao_origem",Integer.class)).isEqualTo(2);
+        assertThat(sql.queryForObject("select count(*) from tb_historico_paciente where id in (?,?) and unidade_origem_chave is null",Integer.class,h,hGrupo)).isEqualTo(2);
+        assertThat(faltasResolucao(sql,vinculo)).isEqualTo(3);
         assertThat(faltasResolucao(sql,outroVinculo)).isZero();
         var prontuario=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",tokenAdmin,null);
         assertThat(prontuario.statusCode()).as(prontuario.body()).isEqualTo(200);
         assertThat(java.util.stream.StreamSupport.stream(json(app,prontuario).path("historico").spliterator(),false)
-                .noneMatch(e->e.path("id").asLong()==h)).isTrue();
+                .noneMatch(e->e.path("id").asLong()==h || e.path("id").asLong()==hGrupo)).isTrue();
     }
 
     private static int faltasResolucao(JdbcTemplate sql,UUID vinculo) {
