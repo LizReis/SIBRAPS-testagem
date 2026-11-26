@@ -30,6 +30,7 @@ import com.pet.buscaativa.migration.ProvaOrigemSchemaGuard;
 import com.pet.buscaativa.migration.AplicacaoOrigemSchemaGuard;
 import com.pet.buscaativa.migration.ReversaoOrigemSchemaGuard;
 import com.pet.buscaativa.migration.ReaberturaOrigemSchemaGuard;
+import com.pet.buscaativa.migration.EvidenciaOrigemSchemaGuard;
 
 @Configuration(proxyBeanMethods = false)
 public class ModeloVinculoConfig {
@@ -90,6 +91,7 @@ public class ModeloVinculoConfig {
                         AplicacaoOrigemSchemaGuard.verificar(fonte);
                         ReversaoOrigemSchemaGuard.verificar(fonte);
                         ReaberturaOrigemSchemaGuard.verificar(fonte);
+                        EvidenciaOrigemSchemaGuard.verificar(fonte);
                     }
                     return bean;
                 }

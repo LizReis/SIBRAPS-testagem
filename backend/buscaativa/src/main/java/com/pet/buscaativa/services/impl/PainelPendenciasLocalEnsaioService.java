@@ -54,6 +54,7 @@ public class PainelPendenciasLocalEnsaioService {
         boolean instalada=com.pet.buscaativa.migration.AplicacaoPendenciaSchemaGuard.instalada(jdbc);
         var origens=new java.util.HashMap<Long,java.util.Map<UUID,OrigemHistoricaEfetivaLocal.Reconhecimento>>();
         boolean reabertura=com.pet.buscaativa.migration.ReaberturaOrigemSchemaGuard.instalada(jdbc);
+        var integridade=new java.util.HashMap<Long,java.util.Set<Long>>();
         long offset=(long)pagina*tamanho;
         var itens=offset>=total?java.util.List.<Item>of():q.setFirstResult(Math.toIntExact(offset)).setMaxResults(tamanho)
                 .getResultList().stream().map(row->{
@@ -62,8 +63,9 @@ public class PainelPendenciasLocalEnsaioService {
                     var aplicacao=instalada?situacaoAplicacao(p):new SituacaoAplicacao(Aplicacao.SEM_APLICACAO,null);
                     boolean revisaoOrigem=p.getSituacaoEvidencia()==com.pet.buscaativa.migration.ClassificadorEvidenciaClinicaLocal.Situacao.REVISAR_ORIGEM_DESCONHECIDA;
                     var origem=revisaoOrigem?origens.computeIfAbsent(v.getId(),id->origemEfetiva.consultarPorTicket(v)).get(p.getId()):null;
+                    boolean inconclusiva=revisaoOrigem && integridade.computeIfAbsent(v.getId(),id->origemEfetiva.inconsistentes(v)).contains(p.getRegistroId());
                     UUID anterior=null,nova=null;
-                    if(reabertura && revisaoOrigem) {
+                    if(reabertura && revisaoOrigem && !inconclusiva) {
                         anterior=relacaoOrigem(p,false);
                         nova=relacaoOrigem(p,true);
                     }
@@ -72,7 +74,7 @@ public class PainelPendenciasLocalEnsaioService {
                             d.getDecisao()==DecisaoRevisaoProveniencia.Decisao.APROVAR?Estado.APROVADA:Estado.REJEITADA,
                             d==null?null:d.getId(),d==null?null:d.getDecididaEm(), v.getVersion(),
                             p.getRegistroId(), p.getJustificativa(), d==null?null:d.getJustificativa(), aplicacao.estado(),aplicacao.resolucao(),revisaoOrigem,
-                            origem==null?AplicacaoOrigem.SEM_APLICACAO:origem.reversao()!=null?AplicacaoOrigem.REVERTIDA:
+                            inconclusiva?AplicacaoOrigem.INCONCLUSIVA:origem==null?AplicacaoOrigem.SEM_APLICACAO:origem.reversao()!=null?AplicacaoOrigem.REVERTIDA:
                             origem.comprovada()?AplicacaoOrigem.ORIGEM_RECONHECIDA:AplicacaoOrigem.INCONCLUSIVA,
                             origem==null?null:origem.id(),origem==null?null:origem.reversao(),anterior,nova);
                 }).toList();

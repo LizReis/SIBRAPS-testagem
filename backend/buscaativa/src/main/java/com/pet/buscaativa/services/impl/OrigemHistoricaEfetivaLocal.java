@@ -112,6 +112,11 @@ class OrigemHistoricaEfetivaLocal {
         return Map.copyOf(resultado);
     }
 
+    java.util.Set<Long> inconsistentes(VinculoAssistencial local) {
+        return com.pet.buscaativa.migration.EvidenciaOrigemHistorica.inconsistentes(jdbc,
+                local.getId(),local.getPaciente().getId(),local.getUnidadeChave());
+    }
+
     Map<UUID,Reconhecimento> consultarPorTicket(VinculoAssistencial local) {
         var autorizado=autorizacao.exigirVinculoIdentificado(local.getPaciente().getIdPublico(),local.getIdPublico());
         if(!java.util.Objects.equals(autorizado.getId(),local.getId())
@@ -144,10 +149,15 @@ class OrigemHistoricaEfetivaLocal {
                             new Reversao(rs.getObject(2,UUID.class),rs.getObject(3,OffsetDateTime.class))); },
                     local.getId(),local.getPaciente().getId(),local.getUnidadeChave());
         }
+        var invalidos=inconsistentes(local);
         var resultado=new LinkedHashMap<UUID,Reconhecimento>();
         var ativos=new java.util.HashMap<Long,Integer>();
         for(var a:registros) {
             long id=a.prova().candidato().historico();
+            if(invalidos.contains(id)) {
+                resultado.put(a.ticket(),new Reconhecimento(a.id(),a.ticket(),id,false,null));
+                continue;
+            }
             var reversao=reversoes.get(a.id());
             if(reversao!=null) {
                 // Reversão incompatível também impede o reconhecimento;

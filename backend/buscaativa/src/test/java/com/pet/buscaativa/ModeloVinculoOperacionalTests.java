@@ -734,6 +734,8 @@ class ModeloVinculoOperacionalTests {
         assertThat(AgendaMigrationTool.migrarReversaoOrigem(banco).migrationsExecuted).isZero();
         assertThat(AgendaMigrationTool.migrarReaberturaOrigem(banco).migrationsExecuted).isEqualTo(1);
         assertThat(AgendaMigrationTool.migrarReaberturaOrigem(banco).migrationsExecuted).isZero();
+        assertThat(AgendaMigrationTool.migrarEvidenciaOrigem(banco).migrationsExecuted).isEqualTo(1);
+        assertThat(AgendaMigrationTool.migrarEvidenciaOrigem(banco).migrationsExecuted).isZero();
         var sql=new JdbcTemplate(banco);
         long unidade=usf(sql,"Resolução A");
         String prof=ator(sql,unidade,2,"resolucao-prof");
@@ -1344,6 +1346,33 @@ class ModeloVinculoOperacionalTests {
         assertThat(semProvaPosterior.statusCode()).as(semProvaPosterior.body()).isEqualTo(200);
         assertThat(java.util.stream.StreamSupport.stream(json(app,semProvaPosterior).path("historico").spliterator(),false)
                 .noneMatch(e->e.path("id").asLong()==h)).isTrue();
+        // Três aplicações, uma reversão e duas reaberturas, sem eventos de rollback.
+        assertThat(sql.queryForObject("select count(*) from tb_evidencia_origem_historica",Integer.class)).isEqualTo(6);
+        long localId=sql.queryForObject("select id from tb_vinculo_assistencial where id_publico=?",Long.class,vinculo);
+        String unidadeChave="USF:"+unidade;
+        assertThat(com.pet.buscaativa.migration.EvidenciaOrigemHistorica.inconsistentes(sql,localId,pessoa,unidadeChave)).isEmpty();
+        assertThatThrownBy(()->sql.update("delete from tb_evidencia_origem_historica where evento_id=?",novaAplicacaoGrupo))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        // Fixture privilegiada: reversão inserida sem o comprovante do escritor.
+        sql.update("""
+                insert into tb_reversao_origem_historica
+                (id,aplicacao_id,vinculo_id,paciente_id,unidade_chave,historico_id,ator_id,perfil,justificativa,registrado_em)
+                select ?,id,vinculo_id,paciente_id,unidade_chave,historico_id,ator_id,perfil,
+                    'Reversão sintética sem evidência do escritor.',registrado_em
+                from tb_aplicacao_origem_historica where id=?
+                """,UUID.randomUUID(),novaAplicacaoGrupo);
+        assertThat(com.pet.buscaativa.migration.EvidenciaOrigemHistorica.inconsistentes(sql,localId,pessoa,unidadeChave))
+                .containsExactly(hGrupo);
+        var painelSemEvidencia=http(app,"GET","/api/relatorios/pendencias?tamanho=100",tokenAdmin,null);
+        assertThat(painelSemEvidencia.statusCode()).as(painelSemEvidencia.body()).isEqualTo(200);
+        var grupoSemEvidencia=java.util.stream.StreamSupport.stream(json(app,painelSemEvidencia).path("itens").spliterator(),false)
+                .filter(e->e.path("ticket").asString().equals(novaGrupo.toString())).findFirst().orElseThrow();
+        assertThat(grupoSemEvidencia.path("aplicacaoOrigem").asString()).isEqualTo("INCONCLUSIVA");
+        var leituraSemEvidencia=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",tokenProf,null);
+        assertThat(leituraSemEvidencia.statusCode()).as(leituraSemEvidencia.body()).isEqualTo(200);
+        assertThat(java.util.stream.StreamSupport.stream(json(app,leituraSemEvidencia).path("historico").spliterator(),false)
+                .noneMatch(e->e.path("id").asLong()==hGrupo)).isTrue();
+        assertThat(json(app,leituraSemEvidencia).path("faltasComprovadas").asLong()).isEqualTo(1);
     }
 
     private static int faltasResolucao(JdbcTemplate sql,UUID vinculo) {

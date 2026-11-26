@@ -39,6 +39,18 @@ class AplicacaoOrigemHistoricaLocal {
     private final com.pet.buscaativa.repositories.PendenciaRevisaoProvenienciaComandoRepository pendencias;
 
     private record Aprovacao(UUID decisao,ProvaOrigem prova,OffsetDateTime decididaEm) {}
+    private void exigirIntegridade(com.pet.buscaativa.entities.VinculoAssistencial local,long historico) {
+        if(!com.pet.buscaativa.migration.EvidenciaOrigemSchemaGuard.instalada(jdbc))
+            throw new ConflictException("Estrutura de evidência de origem não instalada.");
+        if(com.pet.buscaativa.migration.EvidenciaOrigemHistorica.inconsistentes(jdbc,
+                local.getId(),local.getPaciente().getId(),local.getUnidadeChave()).contains(historico))
+            throw new ConflictException("Trilha de origem inconclusiva; operação não realizada.");
+    }
+    private void comprovar(com.pet.buscaativa.entities.VinculoAssistencial local,long historico,UUID id,
+            com.pet.buscaativa.migration.EvidenciaOrigemHistorica.Tipo tipo) {
+        com.pet.buscaativa.migration.EvidenciaOrigemHistorica.registrar(jdbc,tipo,id,local.getId(),
+                local.getPaciente().getId(),local.getUnidadeChave(),historico);
+    }
     private record AplicacaoAnterior(Long historico,OffsetDateTime registradaEm) {}
 
     UUID aplicar(UUID paciente,UUID vinculo,Integer versao,UUID ticket,String justificativa) {
@@ -51,6 +63,7 @@ class AplicacaoOrigemHistoricaLocal {
             throw new ConflictException("Estrutura de aplicação de origem não instalada.");
         // Localizar o ticket antes da prova, para não diferenciar casos de outra unidade.
         long historico=historicoDoTicket(local,ticket);
+        exigirIntegridade(local,historico);
         var aprovacao=aprovacao(local,ticket,historico);
         if(substituida(ticket)) throw new ConflictException("Solicitação substituída por nova rodada de análise.");
         if(Boolean.TRUE.equals(jdbc.queryForObject("""
@@ -73,6 +86,7 @@ class AplicacaoOrigemHistoricaLocal {
                 values (?,?,?,?,?,?,?,?,'ADMINISTRADOR',?,?)
                 """,id,aprovacao.decisao(),ticket,local.getId(),local.getPaciente().getId(),
                 local.getUnidadeChave(),historico,ator.getId(),motivo,instante);
+        comprovar(local,historico,id,com.pet.buscaativa.migration.EvidenciaOrigemHistorica.Tipo.APLICACAO);
         // O reconhecimento não cria frequência. Reaproveita apenas a
         // numeração derivada dos fatos comprovados, dentro da transação.
         historicoFrequencia.renumerar(local);
@@ -129,6 +143,7 @@ class AplicacaoOrigemHistoricaLocal {
         if(!com.pet.buscaativa.migration.ReaberturaOrigemSchemaGuard.instalada(jdbc))
             throw new ConflictException("Estrutura de reabertura de origem não instalada.");
         long historico=historicoDoTicket(local,ticket);
+        exigirIntegridade(local,historico);
         var anterior=aprovacao(local,ticket,historico);
         if(substituida(ticket)) throw new ConflictException("Solicitação já possui nova rodada de análise.");
         if(possuiAplicacaoAtiva(historico))
@@ -160,6 +175,7 @@ class AplicacaoOrigemHistoricaLocal {
                 values (?,?,?,?,?,?,'HISTORICO','REVISAR_ORIGEM_DESCONHECIDA',?)
                 """,ticket,nova.getId(),local.getId(),local.getPaciente().getId(),local.getUnidadeChave(),
                 historico,revertida?"APLICACAO_REVERTIDA":"APROVACAO_DESATUALIZADA");
+        comprovar(local,historico,nova.getId(),com.pet.buscaativa.migration.EvidenciaOrigemHistorica.Tipo.REABERTURA);
         return nova.getId();
     }
 
@@ -179,6 +195,7 @@ class AplicacaoOrigemHistoricaLocal {
                 """,(rs,n)->new AplicacaoAnterior(rs.getLong(1),rs.getObject(2,OffsetDateTime.class)),
                 aplicacao,local.getId(),local.getPaciente().getId(),local.getUnidadeChave())
                 .stream().findFirst().orElseThrow(()->new ResourceNotFoundException("Aplicação não encontrada."));
+        exigirIntegridade(local,anterior.historico());
         if(Boolean.TRUE.equals(jdbc.queryForObject("""
                 select exists(select 1 from tb_reversao_origem_historica where aplicacao_id=?)
                 """,Boolean.class,aplicacao))) throw new ConflictException("Aplicação de origem já revertida.");
@@ -193,6 +210,7 @@ class AplicacaoOrigemHistoricaLocal {
                 values (?,?,?,?,?,?,?,'ADMINISTRADOR',?,?)
                 """,id,aplicacao,local.getId(),local.getPaciente().getId(),local.getUnidadeChave(),
                 anterior.historico(),ator.getId(),motivo,instante);
+        comprovar(local,anterior.historico(),id,com.pet.buscaativa.migration.EvidenciaOrigemHistorica.Tipo.REVERSAO);
         return id;
     }
 }
