@@ -875,6 +875,14 @@ class ModeloVinculoOperacionalTests {
                     """,UUID.randomUUID(),vinculada);
             assertThat(com.pet.buscaativa.migration.EvidenciaResolucaoHistorica.conferir(sql,unidadeChave,limite,"base").consistente()).isFalse();
             assertThat(com.pet.buscaativa.migration.EvidenciaResolucaoHistorica.conferir(sql,"CAPS_I",limite,"base").consistente()).isTrue();
+            var inconclusivo=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",token,null);
+            assertThat(inconclusivo.statusCode()).as(inconclusivo.body()).isEqualTo(200);
+            var semProva=json(app,inconclusivo);
+            assertThat(semProva.path("atendimentos").size()).isEqualTo(3);
+            assertThat(semProva.path("atendimentosDesconsiderados").size()).isZero();
+            assertThat(semProva.path("faltasComprovadas").isNull()).isTrue();
+            assertThat(semProva.path("presencasComprovadas").isNull()).isTrue();
+            assertThat(semProva.path("historicoLocalRequerConferencia").asBoolean()).isTrue();
             validarResolucaoColetivaConcorrente(app,sql,unidade,prof,colega,token,tokenColega,tokenAdmin,tokenExterno);
         }
     }

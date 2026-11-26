@@ -105,6 +105,20 @@ public class LinhaDoTempoFrequenciasVinculoService {
                 """).setParameter("vinculo",vinculo.getId())
                 .setParameter("paciente",vinculo.getPaciente().getId())
                 .setParameter("unidade",vinculo.getUnidadeChave()).getResultList();
+        // Conferir inclusive quando uma reversão fez a visão ativa ficar vazia.
+        // A conexão da sessão mantém a verificação no mesmo snapshot/transação JPA.
+        boolean comprovada=em.unwrap(org.hibernate.Session.class).doReturningWork(conexao->
+                com.pet.buscaativa.migration.EvidenciaResolucaoHistorica.conferirVinculo(
+                        new org.springframework.jdbc.core.JdbcTemplate(
+                                new org.springframework.jdbc.datasource.SingleConnectionDataSource(conexao,true)),
+                        vinculo.getUnidadeChave(),vinculo.getId(),vinculo.getPaciente().getId()));
+        if(!comprovada) {
+            var d=bruto.diagnostico();
+            var inconclusivo=new Diagnostico(d.eventosComOrigemLocal(),d.agendamentosSemOrigemComFrequencia(),
+                    d.presencasGrupoSemOrigem(),d.frequenciasInconsistentes()+1,d.agendamentosLocaisPendentesDeEvidencia());
+            return new Evidencias(inconclusivo,bruto.agenda(),bruto.participacoes(),bruto.agendaLocalInconclusiva(),
+                    d,bruto.agenda(),bruto.participacoes(),java.util.Set.of(),true);
+        }
         if(linhas.isEmpty()) return bruto;
         var resolucoes=linhas.stream().map(r->new ProjecaoResolucaoFrequencia.Resolucao(
                 new ProjecaoResolucaoFrequencia.Chave(Fonte.valueOf(r[0].toString()),((Number)r[1]).longValue()),

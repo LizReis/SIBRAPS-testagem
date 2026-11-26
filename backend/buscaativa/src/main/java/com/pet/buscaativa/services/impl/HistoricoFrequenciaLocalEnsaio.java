@@ -34,7 +34,16 @@ class HistoricoFrequenciaLocalEnsaio {
      * Empate entre faltas impede atribuição do número a cada fato.
      */
     void renumerar(VinculoAssistencial local) {
-        var diagnostico = linha.analisar(local);
+        var evidencias=linha.examinarEfetivo(local,true);
+        // A numeração é derivada: retirar somente do fato desconsiderado comprovado,
+        // inclusive quando a ordem das demais faltas não pode ser atribuída.
+        for(var evento:evidencias.diagnosticoBruto().eventosComOrigemLocal()) {
+            if(!evidencias.desconsiderado(evento.fonte(),evento.registroId())) continue;
+            var registro=historicoCoerente(local,evento);
+            if(registro!=null && registro.getNumeroFaltaConsecutiva()!=null)
+                registro.setNumeroFaltaConsecutiva(null);
+        }
+        var diagnostico = evidencias.diagnostico();
         if (!DiagnosticoFaltasConsecutivasVinculoService.calcular(diagnostico).podeAvaliarSequencia()) return;
         var eventos = diagnostico.eventosComOrigemLocal();
         for (int i = 1; i < eventos.size(); i++) {
@@ -45,23 +54,21 @@ class HistoricoFrequenciaLocalEnsaio {
         int faltas = 0;
         for (var evento : eventos) {
             faltas = evento.presente() ? 0 : faltas + 1;
-            var frequencia = evento.presente() ? FrequenciaAssistencial.PRESENTE : FrequenciaAssistencial.FALTOU;
-            HistoricoPaciente h;
-            try {
-                if (evento.fonte() == LinhaDoTempoFrequenciasVinculoService.Fonte.ATENDIMENTO_INDIVIDUAL) {
-                    var a = em.find(Agendamento.class, evento.registroId());
-                    h = individual(a, local, frequencia);
-                } else {
-                    var p = em.find(SessaoGrupoParticipante.class, evento.registroId());
-                    h = coletivo(p, local, frequencia);
-                }
-            } catch (ConflictException inconclusivo) {
-                continue;
-            }
-            if (h == null || !evento.ocorridoEm().equals(h.getOcorridoEm())) continue;
+            HistoricoPaciente h=historicoCoerente(local,evento);
+            if(h==null) continue;
             Integer numero = evento.presente() ? null : faltas;
             if (!Objects.equals(h.getNumeroFaltaConsecutiva(), numero)) h.setNumeroFaltaConsecutiva(numero);
         }
+    }
+
+    private HistoricoPaciente historicoCoerente(VinculoAssistencial local,LinhaDoTempoFrequenciasVinculoService.Evento evento) {
+        var frequencia=evento.presente()?FrequenciaAssistencial.PRESENTE:FrequenciaAssistencial.FALTOU;
+        try {
+            var h=evento.fonte()==LinhaDoTempoFrequenciasVinculoService.Fonte.ATENDIMENTO_INDIVIDUAL
+                    ?individual(em.find(Agendamento.class,evento.registroId()),local,frequencia)
+                    :coletivo(em.find(SessaoGrupoParticipante.class,evento.registroId()),local,frequencia);
+            return h!=null && evento.ocorridoEm().equals(h.getOcorridoEm())?h:null;
+        } catch(ConflictException inconclusivo) {return null;}
     }
 
     void exigirSemResolucaoAtiva(VinculoAssistencial local,LinhaDoTempoFrequenciasVinculoService.Fonte fonte,Long id) {

@@ -43,12 +43,18 @@ public final class EvidenciaResolucaoHistorica {
     }
 
     private static Map<UUID,String> aplicacoes(JdbcTemplate jdbc,String unidade) {
+        return aplicacoes(jdbc,unidade,null,null);
+    }
+
+    private static Map<UUID,String> aplicacoes(JdbcTemplate jdbc,String unidade,Long vinculo,Long paciente) {
         if(!AplicacaoPendenciaSchemaGuard.instalada(jdbc)) return Map.of();
         var mapa=new HashMap<UUID,String>();
         jdbc.query("""
                 select resolucao_id,pendencia_id,decisao_id,vinculo_id,paciente_id,unidade_chave,decisao
                 from tb_aplicacao_pendencia_resolucao where unidade_chave=?
-                """,rs->{ mapa.put(rs.getObject(1,UUID.class),assinatura("APLICACAO",rs,7)); },unidade);
+                """+(vinculo==null?"":" and vinculo_id=? and paciente_id=?"),
+                rs->{ mapa.put(rs.getObject(1,UUID.class),assinatura("APLICACAO",rs,7)); },
+                argumentos(unidade,vinculo,paciente));
         return mapa;
     }
 
@@ -73,19 +79,48 @@ public final class EvidenciaResolucaoHistorica {
                 """,tipo,id,unidade,valor);
     }
 
+    private static Object[] argumentos(String unidade,Long vinculo,Long paciente) {
+        return vinculo==null?new Object[]{unidade}:new Object[]{unidade,vinculo,paciente};
+    }
+
     public static Local conferir(JdbcTemplate jdbc,String unidade,Instant corte,String anterior) {
+        return conferir(jdbc,unidade,corte,anterior,null,null);
+    }
+
+    /** Mesma verificação de assinaturas para o vínculo atual, inclusive reversões.
+     * Comprovantes órfãos sem vínculo identificável continuam tratados no fechamento da unidade. */
+    public static boolean conferirVinculo(JdbcTemplate jdbc,String unidade,Long vinculo,Long paciente) {
+        java.util.Objects.requireNonNull(vinculo);
+        java.util.Objects.requireNonNull(paciente);
+        return conferir(jdbc,unidade,Instant.MAX,"ATUAL",vinculo,paciente).consistente();
+    }
+
+    private static Local conferir(JdbcTemplate jdbc,String unidade,Instant corte,String anterior,Long vinculo,Long paciente) {
         if(!ReversaoResolucaoSchemaGuard.instalada(jdbc)) return new Local(true,anterior);
+        String filtro=" where unidade_chave=?"+(vinculo==null?"":" and vinculo_id=? and paciente_id=?");
+        var args=argumentos(unidade,vinculo,paciente);
         var digest=EscopoEvidenciaHistorica.digest();
         EscopoEvidenciaHistorica.adicionar(digest,"SIBRAPS-RESOLUCAO-HISTORICA-V2");
         EscopoEvidenciaHistorica.adicionar(digest,anterior);
         var resolucoes=new HashMap<UUID,Instant>();
         var comprovantes=new HashMap<Chave,String>();
-        if(EvidenciaResolucaoSchemaGuard.instalada(jdbc)) jdbc.query("""
-                select tipo,evento_id,assinatura from tb_evidencia_resolucao_historica where unidade_chave=?
-                """,rs->{ comprovantes.put(new Chave(rs.getString(1),rs.getObject(2,UUID.class)),rs.getString(3)); },unidade);
-        var aplicacoes=aplicacoes(jdbc,unidade);
+        if(EvidenciaResolucaoSchemaGuard.instalada(jdbc)) {
+            String consulta="select tipo,evento_id,assinatura from tb_evidencia_resolucao_historica where unidade_chave=?";
+            Object[] parametros={unidade};
+            if(vinculo!=null) {
+                consulta+="""
+                         and ((tipo='RESOLUCAO' and evento_id in
+                            (select id from tb_resolucao_frequencia_local where unidade_chave=? and vinculo_id=? and paciente_id=?))
+                         or (tipo='REVERSAO' and evento_id in
+                            (select id from tb_reversao_resolucao_frequencia where unidade_chave=? and vinculo_id=? and paciente_id=?)))
+                        """;
+                parametros=new Object[]{unidade,unidade,vinculo,paciente,unidade,vinculo,paciente};
+            }
+            jdbc.query(consulta,rs->{ comprovantes.put(new Chave(rs.getString(1),rs.getObject(2,UUID.class)),rs.getString(3)); },parametros);
+        }
+        var aplicacoes=aplicacoes(jdbc,unidade,vinculo,paciente);
         boolean[] ok={true};
-        jdbc.query(RESOLUCAO+" where unidade_chave=? order by id",rs->{
+        jdbc.query(RESOLUCAO+filtro+" order by id",rs->{
             var instante=rs.getObject(19,OffsetDateTime.class).toInstant();
             if(instante.isAfter(corte)) ok[0]=false;
             var id=rs.getObject(1,UUID.class);
@@ -94,8 +129,8 @@ public final class EvidenciaResolucaoHistorica {
             if(!valor.equals(comprovantes.remove(new Chave("RESOLUCAO",id)))) ok[0]=false;
             EscopoEvidenciaHistorica.adicionar(digest,"RESOLUCAO");
             EscopoEvidenciaHistorica.adicionar(digest,valor);
-        },unidade);
-        jdbc.query(REVERSAO+" where unidade_chave=? order by id",rs->{
+        },args);
+        jdbc.query(REVERSAO+filtro+" order by id",rs->{
             var instante=rs.getObject(11,OffsetDateTime.class).toInstant();
             var original=resolucoes.get(rs.getObject(2,UUID.class));
             if(original==null || instante.isBefore(original) || instante.isAfter(corte)) ok[0]=false;
@@ -103,7 +138,7 @@ public final class EvidenciaResolucaoHistorica {
             if(!valor.equals(comprovantes.remove(new Chave("REVERSAO",rs.getObject(1,UUID.class))))) ok[0]=false;
             EscopoEvidenciaHistorica.adicionar(digest,"REVERSAO");
             EscopoEvidenciaHistorica.adicionar(digest,valor);
-        },unidade);
+        },args);
         if(!comprovantes.isEmpty() || !resolucoes.keySet().containsAll(aplicacoes.keySet())) ok[0]=false;
         // Sem eventos, não alterar a assinatura de unidades não afetadas.
         return new Local(ok[0],resolucoes.isEmpty() && ok[0]?anterior:HexFormat.of().formatHex(digest.digest()));

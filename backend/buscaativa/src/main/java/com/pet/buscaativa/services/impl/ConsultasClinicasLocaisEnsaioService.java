@@ -65,7 +65,7 @@ public class ConsultasClinicasLocaisEnsaioService {
             LocalDateTime ocorridoEm, String descricao, Long agendamentoId, Long sessaoId,
             String nomeResponsavel, String unidadeOrigem, Integer numeroFaltaConsecutiva, boolean desconsiderado) {}
     public record Prontuario(Item paciente, List<AgendamentoDTO> atendimentos, List<Participacao> sessoes,
-            List<Evento> historico, long presencasComprovadas, long faltasComprovadas,
+            List<Evento> historico, Long presencasComprovadas, Long faltasComprovadas,
             boolean historicoLocalRequerConferencia, List<Long> atendimentosDesconsiderados) {}
 
     record Leitura(VinculoAssistencial local, CalculoIndicadoresVinculo.Resultado calculo, Item item) {}
@@ -211,7 +211,9 @@ public class ConsultasClinicasLocaisEnsaioService {
         var desconsiderados=ev.desconsiderados().stream()
                 .filter(chave->chave.fonte()==LinhaDoTempoFrequenciasVinculoService.Fonte.ATENDIMENTO_INDIVIDUAL)
                 .map(ProjecaoResolucaoFrequencia.Chave::id).sorted().toList();
-        return new Prontuario(l.item(),agenda,grupos,List.copyOf(eventos),presentes,fatos.size()-presentes,revisar,desconsiderados);
+        return new Prontuario(l.item(),agenda,grupos,List.copyOf(eventos),
+                ev.resolucaoInconclusiva()?null:presentes,ev.resolucaoInconclusiva()?null:fatos.size()-presentes,
+                revisar,desconsiderados);
     }
 
     /** Mesmo escopo da agenda inicial; somente retirar faltas com resolução válida. */
