@@ -423,6 +423,11 @@ class ModeloVinculoOperacionalTests {
         AgendaMigrationTool.migrarReversaoResolucao(banco);
         AgendaMigrationTool.migrarAplicacaoPendencia(banco);
         AgendaMigrationTool.migrarEvidenciaResolucao(banco);
+        AgendaMigrationTool.migrarProvaOrigem(banco);
+        AgendaMigrationTool.migrarAplicacaoOrigem(banco);
+        AgendaMigrationTool.migrarReversaoOrigem(banco);
+        AgendaMigrationTool.migrarReaberturaOrigem(banco);
+        AgendaMigrationTool.migrarEvidenciaOrigem(banco);
         var sql = new JdbcTemplate(banco);
         long usfA = usf(sql,"Automático A");
         long usfB = usf(sql,"Automático B");
@@ -597,6 +602,61 @@ class ModeloVinculoOperacionalTests {
                     select indicadores from tb_observacao_historico_mensal where unidade=? and mes=? and fase='FECHADO'
                     """,String.class,unidadeA,mes.atDay(1))).isEqualTo(indicadores);
             assertThat(tecnico.executar().fechados()).isZero();
+            // 6.5D: o mês já está fechado. Simular apenas a ausência de origem
+            // no histórico derivado do segundo atendimento, com fonte íntegra.
+            long idAtendimento=Long.parseLong(atendimento.substring(atendimento.lastIndexOf('/')+1));
+            long h=sql.queryForObject("select id from tb_historico_paciente where agendamento_id=? and tipo='PRESENCA'",
+                    Long.class,idAtendimento);
+            String fechadosSql="select unidade,indicadores from tb_observacao_historico_mensal where mes=? and fase='FECHADO' order by unidade";
+            var fechadosAntes=sql.query(fechadosSql,(rs,n)->Map.entry(rs.getString(1),rs.getString(2)),mes.atDay(1));
+            assertThat(fechadosAntes).isNotEmpty();
+            var atualAntes=json(app,http(app,"GET",painel,a,null)).path("pontoAtual");
+            var atividadeAntes=json(app,http(app,"GET",painel,a,null)).path("atividade");
+            sql.update("update tb_historico_paciente set unidade_origem_chave=null where id=?",h);
+            String rotaOrigem="/api/pacientes/"+paciente+"/vinculos/"+vinculo+"/revisoes";
+            var sol=http(app,"POST",rotaOrigem+"?version="+versaoResolucao(sql,vinculo),a,
+                    Map.of("tipo","HISTORICO","registro",h,"justificativa","Conferência sintética da origem após fechamento."));
+            assertThat(sol.statusCode()).as(sol.body()).isEqualTo(200);
+            UUID ticketOrigem=UUID.fromString(json(app,sol).asString());
+            var motivoOrigem=Map.of("justificativa","Conferência sintética da fonte original após fechamento.");
+            for(int rodada=0;rodada<2;rodada++) {
+                var decisaoOrigem=http(app,"POST",rotaOrigem+"/"+ticketOrigem+"/decisao?version="+versaoResolucao(sql,vinculo),a,
+                        Map.of("decisao","APROVAR","justificativa","Fonte local comprovada após fechamento."));
+                assertThat(decisaoOrigem.statusCode()).as(decisaoOrigem.body()).isEqualTo(200);
+                var aplicacaoOrigem=http(app,"POST",rotaOrigem+"/"+ticketOrigem+"/origem/aplicar?version="+versaoResolucao(sql,vinculo),a,motivoOrigem);
+                assertThat(aplicacaoOrigem.statusCode()).as(aplicacaoOrigem.body()).isEqualTo(201);
+                UUID aplicacaoId=UUID.fromString(json(app,aplicacaoOrigem).path("id").asString());
+                var prontuarioOrigem=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",a,null);
+                assertThat(prontuarioOrigem.statusCode()).as(prontuarioOrigem.body()).isEqualTo(200);
+                assertThat(java.util.stream.StreamSupport.stream(json(app,prontuarioOrigem).path("historico").spliterator(),false)
+                        .anyMatch(e->e.path("id").asLong()==h && e.path("origemCorrigida").asBoolean())).isTrue();
+                assertThat(evolucao(app,painel,a,mes)).isEqualTo(historicoA);
+                assertThat(sql.query(fechadosSql,(rs,n)->Map.entry(rs.getString(1),rs.getString(2)),mes.atDay(1)))
+                        .isEqualTo(fechadosAntes);
+                if(rodada==0) {
+                    var reversaoOrigem=http(app,"POST",rotaOrigem+"/origem/aplicacoes/"+aplicacaoId+"/desfazer?version="+versaoResolucao(sql,vinculo),a,motivoOrigem);
+                    assertThat(reversaoOrigem.statusCode()).as(reversaoOrigem.body()).isEqualTo(201);
+                    var leituraRevertida=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",a,null);
+                    assertThat(leituraRevertida.statusCode()).as(leituraRevertida.body()).isEqualTo(200);
+                    assertThat(java.util.stream.StreamSupport.stream(json(app,leituraRevertida).path("historico").spliterator(),false)
+                            .noneMatch(e->e.path("id").asLong()==h)).isTrue();
+                    assertThat(evolucao(app,painel,a,mes)).isEqualTo(historicoA);
+                    assertThat(sql.query(fechadosSql,(rs,n)->Map.entry(rs.getString(1),rs.getString(2)),mes.atDay(1)))
+                            .isEqualTo(fechadosAntes);
+                    var novaRodada=http(app,"POST",rotaOrigem+"/"+ticketOrigem+"/origem/reabrir?version="+versaoResolucao(sql,vinculo),a,motivoOrigem);
+                    assertThat(novaRodada.statusCode()).as(novaRodada.body()).isEqualTo(201);
+                    ticketOrigem=UUID.fromString(json(app,novaRodada).path("id").asString());
+                }
+            }
+            assertThat(sql.queryForObject("select unidade_origem_chave from tb_historico_paciente where id=?",String.class,h)).isNull();
+            assertThat(sql.queryForObject("select count(*) from tb_aplicacao_origem_historica where historico_id=?",Integer.class,h)).isEqualTo(2);
+            var painelOrigem=json(app,http(app,"GET",painel,a,null));
+            assertThat(painelOrigem.path("pontoAtual")).isEqualTo(atualAntes);
+            assertThat(painelOrigem.path("atividade")).isEqualTo(atividadeAntes);
+            assertThat(evolucao(app,painel,i,mes).path("verdes").asLong()).isEqualTo(1);
+            assertThat(tecnico.executar().fechados()).isZero();
+            assertThat(sql.query(fechadosSql,(rs,n)->Map.entry(rs.getString(1),rs.getString(2)),mes.atDay(1)))
+                    .isEqualTo(fechadosAntes);
             // Carga progressiva de leitores, sem recriar o cenário ou simular volume de pacientes.
             for (int leitores : List.of(1,4,12)) {
                 var prontos=new CountDownLatch(leitores);
