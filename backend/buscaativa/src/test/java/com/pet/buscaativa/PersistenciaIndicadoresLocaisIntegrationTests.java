@@ -215,6 +215,34 @@ class PersistenciaIndicadoresLocaisIntegrationTests extends SecurityTestSupport 
     }
 
     @Test
+    void administradorNaoCorrigeSessaoRealizadaSemResponsavelHistoricoComprovado() {
+        var local = novoLocal(UnidadeAtuacao.CAPS_AD);
+        var admin = tx.execute(t -> {
+            var ator = usuario(UnidadeAtuacao.CAPS_AD);
+            ator.setTipoUsuario(TipoUsuario.ADMINISTRADOR);
+            return ator;
+        });
+        var agendada = sessao(local.ator(), List.of(local), diasAtras(2), 10);
+        int versao = tx.execute(t -> {
+            var sessao = em.find(SessaoGrupo.class, agendada.id());
+            sessao.setStatus(StatusSessaoGrupo.REALIZADA);
+            sessao.getParticipantes().getFirst().setStatusPresenca(StatusPresencaGrupo.FALTOU);
+            em.flush();
+            assertTrue(sessao.isResponsabilidadePendente());
+            assertNull(sessao.getResponsavelAtendimento());
+            return sessao.getVersion();
+        });
+
+        var colunas = LegacyMigrationFixture.columns(fonte);
+        var antes = LegacyMigrationFixture.snapshot(fonte, colunas);
+        var recusada = assertThrows(ConflictException.class, () -> como(admin,
+                () -> coletivo.corrigir(agendada.id(), versao,
+                        Map.of(local.paciente().getIdPublico(), StatusPresencaGrupo.PRESENTE), JUSTIFICATIVA)));
+        assertEquals("A sessão não tem estado ou proveniência compatível.", recusada.getMessage());
+        assertEquals(antes, LegacyMigrationFixture.snapshot(fonte, colunas));
+    }
+
+    @Test
     void confirmaECorrigeLoteDeDoisPacientesComAuditoriaUnicaPorOperacao() {
         var a = novoLocal(UnidadeAtuacao.USF);
         var b = iniciar(novoPaciente(), a.ator());

@@ -86,6 +86,7 @@ class ClinicalAuditMigrationTests {
     }
     @Test void realCorrectionSurvivesApplicationRestartAndLatestBackupRestore() throws Exception {
         var source=LegacyMigrationFixture.legacy(temp.resolve("application-cycle"));AgendaMigrationTool.migrar(source);
+        LegacyMigrationFixture.prepararMapeamentoAtualDeSessao(source);
         var id=new AtomicReference<String>();var alertPatient=new AtomicReference<UUID>();var alertEvent=new AtomicReference<String>();var reason="Correção sintética após conferência no registro de atendimento.";
         application(source,"test","validate").run(context->{
             assertThat(context).hasNotFailed();var mvc=MockMvcBuilders.webAppContextSetup((WebApplicationContext)context.getSourceApplicationContext()).addFilters(context.getBean("springSecurityFilterChain",jakarta.servlet.Filter.class)).build();

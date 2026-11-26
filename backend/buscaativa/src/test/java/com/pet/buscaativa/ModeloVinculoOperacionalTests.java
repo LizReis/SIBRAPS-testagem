@@ -119,7 +119,7 @@ class ModeloVinculoOperacionalTests {
         var backupV17 = temp.resolve("controle-v17.sql");
         LegacyMigrationFixture.backup(banco, backupV17);
         var controleV17 = LegacyMigrationFixture.restore(temp.resolve("controle-v17"), backupV17);
-        prepararSessaoNosEnsaiosDeEsquemaAnterior(controleV17);
+        LegacyMigrationFixture.prepararMapeamentoAtualDeSessao(controleV17);
         try (var anterior = iniciar(controleV17)) {
             var tokenAdmin = login(anterior, administrador);
             var marcoSemV18 = http(anterior, "POST", "/api/painel/historico/marco", tokenAdmin, null);
@@ -201,14 +201,6 @@ class ModeloVinculoOperacionalTests {
             assertThat(sql.queryForObject("select status_paciente from tb_paciente where id_publico=?", Integer.class, UUID.fromString(pessoa)))
                     .isNull();
         }
-    }
-
-    private static void prepararSessaoNosEnsaiosDeEsquemaAnterior(javax.sql.DataSource banco) {
-        // Os testes históricos exercitam portões anteriores à V31 com o mapeamento JPA atual.
-        // Aplicar apenas o formato da sessão nesta fixture preserva a validação de esquema.
-        var script = new org.springframework.core.io.ClassPathResource(
-                "agenda-migration/h2/V32__designacao_profissional_sessao.sql");
-        new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(script).execute(banco);
     }
 
     private static void migrarDaV17AteV32(javax.sql.DataSource banco) throws Exception {
@@ -351,7 +343,7 @@ class ModeloVinculoOperacionalTests {
         AgendaMigrationTool.migrarIdentidade(banco);
         assertThat(AgendaMigrationTool.migrarTransicao(banco).migrationsExecuted).isEqualTo(1);
         assertThat(AgendaMigrationTool.migrarTransicao(banco).migrationsExecuted).isZero();
-        prepararSessaoNosEnsaiosDeEsquemaAnterior(banco);
+        LegacyMigrationFixture.prepararMapeamentoAtualDeSessao(banco);
         var sql = new JdbcTemplate(banco);
         long unidadeA = usf(sql, "Histórico A");
         long unidadeB = usf(sql, "Histórico B");

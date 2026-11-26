@@ -59,6 +59,7 @@ class GroupResponsibilityMigrationTests {
     @Test void migratedLegacyGroupWithInconsistentClinicalAuthorRequiresReviewWithoutMutation() throws Exception {
         var source=v4("legacy-inconsistent-clinical-author");
         AgendaMigrationTool.migrar(source);
+        LegacyMigrationFixture.prepararMapeamentoAtualDeSessao(source);
         var jdbc=new JdbcTemplate(source);
         // O fixture V4 original registra no histórico o administrador (1), não o responsável A (2).
         // A nova proteção deve RECUSAR a correção, sem atribuir responsabilidade automaticamente.
@@ -96,7 +97,9 @@ class GroupResponsibilityMigrationTests {
         // Não é migração nem regra de reparação automática; o fixture V4 original permanece intacto.
         assertEquals(1L,jdbc.queryForObject("select profissional_id from tb_historico_paciente where sessao_grupo_id=1",Long.class));
         assertEquals(1,jdbc.update("update tb_historico_paciente set profissional_id=2 where sessao_grupo_id=1 and profissional_id=1"));
-        AgendaMigrationTool.migrar(source);var oldAudits=jdbc.queryForList("select * from tb_auditoria_correcao_frequencia order by id");
+        AgendaMigrationTool.migrar(source);
+        LegacyMigrationFixture.prepararMapeamentoAtualDeSessao(source);
+        var oldAudits=jdbc.queryForList("select * from tb_auditoria_correcao_frequencia order by id");
         CorrectiveMigrationApplication.application(source).run(context->{
             assertThat(context).hasNotFailed();var mvc=MockMvcBuilders.webAppContextSetup((WebApplicationContext)context.getSourceApplicationContext()).addFilters(context.getBean("springSecurityFilterChain",jakarta.servlet.Filter.class)).build();var users=context.getBean(UsuarioRepository.class);var json=context.getBean(ObjectMapper.class);var tokenService=context.getBean(TokenService.class);var a=users.findById(2L).orElseThrow();var b=users.findById(3L).orElseThrow();var admin=users.findById(1L).orElseThrow();var p=context.getBean(PacienteRepository.class).findById(1L).orElseThrow();
             new org.springframework.transaction.support.TransactionTemplate(context.getBean(org.springframework.transaction.PlatformTransactionManager.class)).execute(tx->{

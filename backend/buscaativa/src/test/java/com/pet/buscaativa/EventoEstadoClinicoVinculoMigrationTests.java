@@ -1,5 +1,6 @@
 package com.pet.buscaativa;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Path;
@@ -64,7 +65,8 @@ class EventoEstadoClinicoVinculoMigrationTests {
 
         var colunas = LegacyMigrationFixture.columns(fonte);
         var antes = LegacyMigrationFixture.snapshot(fonte, colunas);
-        CorrectiveMigrationApplication.application(fonte).run(c -> assertNotNull(c.getStartupFailure()));
+        CorrectiveMigrationApplication.application(fonte).run(c -> assertThat(c.getStartupFailure())
+                .hasRootCauseMessage("Schema validation: missing table [tb_evento_estado_clinico_vinculo]"));
         assertEquals(antes, LegacyMigrationFixture.snapshot(fonte, colunas));
         assertEquals(1, LegacyMigrationFixture.migrarAte(fonte, "14").migrationsExecuted);
         colunas.remove("sibraps_agenda_schema_history");
@@ -102,6 +104,7 @@ class EventoEstadoClinicoVinculoMigrationTests {
         assertEquals(0, LegacyMigrationFixture.migrarAte(fonte, "15").migrationsExecuted);
         assertEquals(dadosAtualizados, LegacyMigrationFixture.snapshot(fonte, colsAtualizadas));
 
+        LegacyMigrationFixture.prepararMapeamentoAtualDeSessao(fonte);
         CorrectiveMigrationApplication.application(fonte)
                 .withPropertyValues("spring.profiles.active=test,diagnostico-migracao")
                 .run(ctx -> {
@@ -127,6 +130,7 @@ class EventoEstadoClinicoVinculoMigrationTests {
         var dadosLegados = LegacyMigrationFixture.snapshot(fonte, colunasLegadas);
         assertEquals(16, AgendaMigrationTool.migrar(fonte).migrationsExecuted);
         assertEquals(dadosLegados, LegacyMigrationFixture.snapshot(fonte, colunasLegadas));
+        LegacyMigrationFixture.prepararMapeamentoAtualDeSessao(fonte);
         var jdbc = new JdbcTemplate(fonte);
         var ids = new UUID[2];
         CorrectiveMigrationApplication.application(fonte)

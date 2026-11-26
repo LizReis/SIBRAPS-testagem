@@ -8,6 +8,7 @@
 | Commit inicial | `c826f58ddadd3c8713f8a9fe67fa38b5837bd385` |
 | Código da CI de referência | `95f9142098d9c0bb425e2507982be2f3abd311b3`, [Actions 45883144969](https://github.com/LizReis/SIBRAPS-testagem/actions/runs/45883144969) |
 | Base da correção final | `1b83e2eb95d8596d0471b0d62a26771ab27c42e7`, [Actions 45887197987](https://github.com/LizReis/SIBRAPS-testagem/actions/runs/45887197987) |
+| Base da correção de compatibilidade | `0d1e50e0c628dab0dfd4a0686838bde43ca785ba`, [Actions 45890945926](https://github.com/LizReis/SIBRAPS-testagem/actions/runs/45890945926) |
 | Commit final da entrega | O commit Git que contém esta atualização e o pacote descrito abaixo. O SHA integral é verificável no [histórico do arquivo](https://github.com/LizReis/SIBRAPS-testagem/commits/correcao-cadastro-unico-isolamento/docs/etapa6-6-validacao-final.md). |
 | Referência da main observada no início | `967d5162dd543ec9005608739128423903e75e30` |
 
@@ -205,6 +206,24 @@ O Maven `verify` do commit `1b83e2e` executou 1.427 testes Java, com 1.426 aprov
 | `DiagnosticoConsolidadoMigracaoClinicaIntegrationTests.java`, `GroupHistoricalResponsibilityTests.java`, `PersistenciaIndicadoresLocaisIntegrationTests.java`, `ModeloVinculoOperacionalTests.java` | Regressões do diagnóstico, responsabilidade, concorrência, migração e restauração. |
 | `docs/etapa6-6-validacao-final.md` | Matriz, evidências e parecer atualizado. |
 
+## Compatibilidade das fixtures históricas com o mapeamento V32
+
+O `verify` da CI 45890945926 registrou 1.429 testes, com 1.409 aprovações, 13 falhas e sete erros. Os jobs de Angular, contrato HTTP e builds passaram. Os XMLs registram `Schema validation: missing column [profissional_designado_id] in table [tb_sessao_grupo]` nas tentativas de inicialização. Depois da primeira falha em cada contexto do Spring compartilhado, cinco testes tiveram a inicialização interrompida pelo limiar de falhas do próprio Spring. [Execução](https://github.com/LizReis/SIBRAPS-testagem/actions/runs/45890945926) · [Artefato](https://github.com/LizReis/SIBRAPS-testagem/actions/runs/45890945926/artifacts/15152405015).
+
+A V32 mapeia a designação tanto na tabela da sessão quanto no Envers. Etapas históricas como V6, V13, V14, V15 e V16 continuam com as sequências, portões e asserções de migração originais. Antes de um boot positivo do Hibernate atual no perfil de teste, a fixture sintética recebe explicitamente apenas o DDL aditivo de sessão da V32, sem registrar a migration no Flyway. A preparação ocorre na cópia gravável antes de fazer o snapshot final, o backup ou abrir a cópia somente leitura. Os reinícios e restaurações conferem a estrutura já preparada e não executam esse DDL outra vez. O caso de boot negativo em V13 confere especificamente a ausência da tabela de eventos de estado.
+
+`LegacyMigrationFixture` concentra o preparo que antes era local a `ModeloVinculoOperacionalTests`. Os cenários de instalação operacional continuam passando pela sequência explícita de migrações até V32. `CorrectiveMigrationApplication`, `AgendaMigrationTool`, `DesignacaoSessaoSchemaGuard`, `ModeloVinculoConfig` e as migrations V1–V32 mantêm seu comportamento. O Hibernate segue em `validate` nos testes com bancos migrados. Não há preparação automática na inicialização operacional.
+
+A guarda de `AvaliacaoProvenienciaClinica.origemSessao` já exige responsabilidade comprovada para sessão realizada. `FrequenciaColetivaLocalEnsaioService` retorna conflito antes de ler o responsável, mesmo para administrador. O teste direcionado confirma a recusa controlada e a igualdade integral do snapshot, incluindo frequência, autoria, histórico e auditoria. A lógica da RESP-09 permanece a mesma.
+
+| Arquivos de teste ajustados | Cobertura |
+| --- | --- |
+| `LegacyMigrationFixture.java` e `ModeloVinculoOperacionalTests.java` | Compartilhamento do preparo explícito de sessão para os ensaios de versões antigas. |
+| `CancellationMigrationPersistenceTests.java`, `ClinicalAuditMigrationTests.java`, `GroupResponsibilityMigrationTests.java`, `RiskVisitMigratedHistoryTests.java`, `SpecificCorrectionPersistenceTests.java` | Inicializações de compatibilidade, correções, auditoria e restaurações sobre o esquema histórico examinado. |
+| `DiagnosticoConsolidadoMigracaoClinicaIntegrationTests.java`, `EventoEstadoClinicoVinculoMigrationTests.java`, `LevantamentoOrigemLegadaTests.java` | Diagnóstico, snapshots históricos e leitura de cópias restauradas com o mapeamento atual. |
+| `MigratedAgendaHttpTests.java` e `MigratedIndicatorsInitializationTests.java` | Preparação dos bancos sintéticos usados pelo boot validado do Hibernate. |
+| `PersistenciaIndicadoresLocaisIntegrationTests.java` | Recusa de correção por administrador quando a sessão realizada não tem responsável comprovado. |
+
 ## Execuções e parecer
 
 | Execução | Resultado verificado |
@@ -215,6 +234,7 @@ O Maven `verify` do commit `1b83e2e` executou 1.427 testes Java, com 1.426 aprov
 | Promoções RM e IND e reprodução da marcação provisória | Sete aprovações nas variantes promovidas. Uma falha intencional de reprodução em `inscricaoRemocaoEProvisoriaLocaisNaoProduzemFrequenciaAteConfirmacao`, pela mudança indevida dos indicadores de conhecidos para inconclusivos. Zero erros ou ignorados. |
 | Provisória após a correção | Oito aprovações, zero falhas, erros ou ignorados em `PersistenciaIndicadoresLocaisIntegrationTests`. Métodos selecionados pelo vínculo com confirmação, cancelamento, cronologia, RF22, origem desconhecida, leitura inconclusiva e relatórios. |
 | Correção da CI e RESP-09 | 31 testes direcionados aprovados, sem falhas, erros ou ignorados. Incluem o diagnóstico que falhou na CI, a suíte de responsabilidade histórica, quatro métodos de integração local de séries e frequência e três jornadas operacionais de instalação, migração e restauração. Os 97 testes da rodada anterior ficaram fora desta seleção. |
+| Compatibilidade V32 e guarda de autoria | 42 testes aprovados em uma execução direcionada das dez classes afetadas e do caso de recusa por administrador. Os dois testes de boot V6 e V13–V15 foram reexecutados após o ajuste final que manteve as fixtures iniciais e seus snapshots intactos. As duas execuções terminaram sem falhas, erros ou ignorados. |
 | Regressão completa do pacote | Aguardando validação automatizada no SHA da entrega. O workflow existente executa Maven `verify`, depois os 12 testes opt-in de concorrência em uma etapa própria, suíte Angular, contrato HTTP e builds. [Execuções da branch](https://github.com/LizReis/SIBRAPS-testagem/actions/workflows/cadastro-unico-diagnostico.yml?query=branch%3Acorrecao-cadastro-unico-isolamento). |
 
 A revisão reaproveitou a CI anterior e o histórico de 6.1–6.5. Os testes locais usaram Java 21 e o cache Maven do ambiente, com `test` direcionado. A execução histórica de 925 casos, as classes diagnósticas completas, a matriz adicional de concorrência, os builds locais Angular e o `verify` integral local ficaram fora da repetição. O workflow permanece como fonte de evidência integrada para o pacote.

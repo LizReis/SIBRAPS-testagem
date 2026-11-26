@@ -96,6 +96,7 @@ class LevantamentoOrigemLegadaTests {
 
         var copiaV16 = restaurar(leituraV13, "copia-v16");
         assertThat(AgendaMigrationTool.migrar(copiaV16).migrationsExecuted).isEqualTo(3);
+        LegacyMigrationFixture.prepararMapeamentoAtualDeSessao(copiaV16);
         var leituraV16 = somenteLeitura(copiaV16);
         var colunasV16 = LegacyMigrationFixture.columns(leituraV16);
         var antesV16 = LegacyMigrationFixture.snapshot(leituraV16, colunasV16);

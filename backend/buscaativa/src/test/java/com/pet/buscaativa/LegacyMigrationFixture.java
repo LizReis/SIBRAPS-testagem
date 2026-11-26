@@ -6,8 +6,10 @@ import java.io.*;
 import java.util.*;
 import javax.sql.DataSource;
 import org.h2.tools.RunScript;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 
 final class LegacyMigrationFixture {
     private LegacyMigrationFixture() {}
@@ -32,6 +34,14 @@ final class LegacyMigrationFixture {
                         new com.pet.buscaativa.migration.V6__identificar_responsabilidade_historica())
                 .target(versao).cleanDisabled(true).load().migrate();
     }
+    /** Prepara uma fixture histórica gravável antes de usar o mapeamento JPA atual. */
+    static void prepararMapeamentoAtualDeSessao(DataSource source) {
+        // Apenas o DDL aditivo da sessão, sem avançar a versão histórica ensaiada.
+        var script = new ClassPathResource(
+                "agenda-migration/h2/V32__designacao_profissional_sessao.sql");
+        new ResourceDatabasePopulator(script).execute(source);
+    }
+
     static Map<String, List<String>> columns(DataSource source) {
         var jdbc = new JdbcTemplate(source); var result = new TreeMap<String, List<String>>();
         for (String table : jdbc.queryForList("select table_name from information_schema.tables where table_schema='PUBLIC'", String.class)) {

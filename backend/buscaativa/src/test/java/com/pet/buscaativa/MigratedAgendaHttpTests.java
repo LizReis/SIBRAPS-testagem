@@ -33,6 +33,7 @@ class MigratedAgendaHttpTests extends SecurityTestSupport {
         @Bean DataSource dataSource() throws Exception {
             var source = LegacyMigrationFixture.legacy(Files.createTempDirectory("sibraps-migrated-http-").resolve("legacy"));
             AgendaMigrationTool.migrar(source);
+            LegacyMigrationFixture.prepararMapeamentoAtualDeSessao(source);
             return source;
         }
     }

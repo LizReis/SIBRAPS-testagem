@@ -173,6 +173,7 @@ class DiagnosticoConsolidadoMigracaoClinicaIntegrationTests extends SecurityTest
 
         // A base V13 recebe V14 (eventos de estado), V15 (causa de pendência) e V16 (controle RF26).
         assertEquals(3, AgendaMigrationTool.migrar(copia).migrationsExecuted);
+        LegacyMigrationFixture.prepararMapeamentoAtualDeSessao(copia);
         var colunasV16 = LegacyMigrationFixture.columns(copia);
         var antesV16 = LegacyMigrationFixture.snapshot(copia, colunasV16);
         var somenteLeitura = new DriverManagerDataSource(copia.getUrl() + ";ACCESS_MODE_DATA=r",

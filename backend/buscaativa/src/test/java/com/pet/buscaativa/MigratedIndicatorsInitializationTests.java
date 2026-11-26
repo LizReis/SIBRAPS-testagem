@@ -43,6 +43,7 @@ class MigratedIndicatorsInitializationTests extends SecurityTestSupport {
                 (8,3,2,14,'FALTA',3,TIMESTAMP '2026-01-02 10:00:00','Remarcação sintética comprovada')
                 """);
             AgendaMigrationTool.migrar(source);
+            LegacyMigrationFixture.prepararMapeamentoAtualDeSessao(source);
             return source;
         }
     }

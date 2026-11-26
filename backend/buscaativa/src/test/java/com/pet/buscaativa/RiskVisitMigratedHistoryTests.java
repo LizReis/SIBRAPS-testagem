@@ -22,6 +22,7 @@ class RiskVisitMigratedHistoryTests {
         var source=LegacyMigrationFixture.legacy(temp.resolve("unknown-risk"));var jdbc=new JdbcTemplate(source);
         // Explicitly reproduce an unconfirmed old flag before migrating the actual legacy SQL schema.
         jdbc.update("update tb_paciente set classificacao_risco=1,gatilho_visita=true where id=1");AgendaMigrationTool.migrar(source);
+        LegacyMigrationFixture.prepararMapeamentoAtualDeSessao(source);
         var facts=jdbc.queryForList("select id,situacao_atendimento,situacao_reserva,frequencia_assistencial,migracao_pendente,version from tb_agendamento order by id");long history=jdbc.queryForObject("select count(*) from tb_historico_paciente",Long.class);
         CorrectiveMigrationApplication.application(source).run(context->{
             assertThat(context).hasNotFailed();var p=context.getBean(PacienteRepository.class).findById(1L).orElseThrow();assertTrue(p.getIndicadoresPendentes());
