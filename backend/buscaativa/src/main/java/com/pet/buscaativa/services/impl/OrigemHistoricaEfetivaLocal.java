@@ -30,7 +30,8 @@ class OrigemHistoricaEfetivaLocal {
     private final VerificacaoFatoRevisaoProvenienciaService verificador;
     private final AutorizacaoVinculoAssistencialService autorizacao;
 
-    record Reconhecimento(UUID id,UUID ticket,boolean comprovada) {}
+    record Reconhecimento(UUID id,UUID ticket,boolean comprovada,UUID reversao) {}
+    private record Reversao(UUID id,OffsetDateTime registradaEm) {}
     private record Aplicacao(UUID id,UUID ticket,ProvaOrigem prova,OffsetDateTime aplicadaEm,OffsetDateTime decididaEm) {}
 
     Map<Long,Reconhecimento> consultar(VinculoAssistencial local) {
@@ -55,9 +56,26 @@ class OrigemHistoricaEfetivaLocal {
                         rs.getInt(6),rs.getObject(7,Long.class),rs.getLong(8),
                         TipoEventoHistoricoPaciente.valueOf(rs.getString(11))),rs.getObject(12,OffsetDateTime.class),
                         rs.getObject(13,OffsetDateTime.class)),local.getId(),local.getPaciente().getId(),local.getUnidadeChave());
+        var reversoes=new LinkedHashMap<UUID,Reversao>();
+        if(com.pet.buscaativa.migration.ReversaoOrigemSchemaGuard.instalada(jdbc)) {
+            jdbc.query("""
+                    select aplicacao_id,id,registrado_em from tb_reversao_origem_historica
+                    where vinculo_id=? and paciente_id=? and unidade_chave=?
+                    """,rs->{ reversoes.put(rs.getObject(1,UUID.class),
+                            new Reversao(rs.getObject(2,UUID.class),rs.getObject(3,OffsetDateTime.class))); },
+                    local.getId(),local.getPaciente().getId(),local.getUnidadeChave());
+        }
         var resultado=new LinkedHashMap<Long,Reconhecimento>();
         for(var a:registros) {
             long id=a.prova().candidato().historico();
+            var reversao=reversoes.get(a.id());
+            if(reversao!=null) {
+                // Reversão incompatível também impede o reconhecimento;
+                // só afirmar REVERTIDA quando a cronologia for coerente.
+                resultado.put(id,new Reconhecimento(a.id(),a.ticket(),false,
+                        reversao.registradaEm().isBefore(a.aplicadaEm())?null:reversao.id()));
+                continue;
+            }
             boolean comprovada=false;
             try {
                 var h=historicos.findById(id).orElseThrow(()->new ResourceNotFoundException("Histórico não encontrado."));
@@ -66,7 +84,7 @@ class OrigemHistoricaEfetivaLocal {
             } catch(ResourceNotFoundException e) {
                 // Divergência posterior não autoriza leitura nem apaga a aplicação.
             }
-            resultado.put(id,new Reconhecimento(a.id(),a.ticket(),comprovada));
+            resultado.put(id,new Reconhecimento(a.id(),a.ticket(),comprovada,null));
         }
         return Map.copyOf(resultado);
     }

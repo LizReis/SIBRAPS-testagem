@@ -91,6 +91,15 @@ public final class OperacoesResolucaoFrequenciaTeste {
             return id;
         }));
     }
+    public static UUID desfazerOrigem(ApplicationContext app,String email,UUID paciente,UUID vinculo,Integer versao,
+            UUID aplicacao,boolean rollback) {
+        return como(email,()->tx(app).execute(t->{
+            var id=app.getBean(AplicacaoOrigemHistoricaLocal.class).desfazer(paciente,vinculo,versao,aplicacao,
+                    "Nova conferência sintética: retirar o reconhecimento de origem.");
+            if(rollback) t.setRollbackOnly();
+            return id;
+        }));
+    }
     public static void corrigir(ApplicationContext app,String email,Reserva r) {
         como(email,()->app.getBean(FrequenciaIndividualLocalEnsaioService.class)
                 .corrigir(r.id(),r.versao(),FrequenciaAssistencial.PRESENTE,"Correção sintética de frequência conferida."));

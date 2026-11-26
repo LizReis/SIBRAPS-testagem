@@ -36,6 +36,7 @@ class AplicacaoOrigemHistoricaLocal {
     private final Clock clock;
 
     private record Aprovacao(UUID decisao,ProvaOrigem prova,OffsetDateTime decididaEm) {}
+    private record AplicacaoAnterior(Long historico,OffsetDateTime registradaEm) {}
 
     UUID aplicar(UUID paciente,UUID vinculo,Integer versao,UUID ticket,String justificativa) {
         var contexto=atores.autorizar(true);
@@ -87,6 +88,39 @@ class AplicacaoOrigemHistoricaLocal {
                 values (?,?,?,?,?,?,?,?,'ADMINISTRADOR',?,?)
                 """,id,aprovacao.decisao(),ticket,local.getId(),local.getPaciente().getId(),
                 local.getUnidadeChave(),historico,ator.getId(),motivo,instante);
+        return id;
+    }
+
+    UUID desfazer(UUID paciente,UUID vinculo,Integer versao,UUID aplicacao,String justificativa) {
+        var contexto=atores.autorizar(true);
+        var bloqueados=coordenacao.paraVinculo(contexto,paciente,vinculo,null);
+        var local=bloqueados.vinculos().get(paciente);
+        var ator=bloqueados.atores().ator();
+        CoordenacaoEscritaClinicaEnsaio.validarVersao(versao,local.getVersion());
+        if(!com.pet.buscaativa.migration.ReversaoOrigemSchemaGuard.instalada(jdbc))
+            throw new ConflictException("Estrutura de reversão de origem não instalada.");
+        // A reversão retira o reconhecimento, não corrige a fonte. É permitida
+        // mesmo se a aplicação já estiver inconclusiva, sem revalidar a origem.
+        var anterior=jdbc.query("""
+                select historico_id,registrado_em from tb_aplicacao_origem_historica
+                where id=? and vinculo_id=? and paciente_id=? and unidade_chave=?
+                """,(rs,n)->new AplicacaoAnterior(rs.getLong(1),rs.getObject(2,OffsetDateTime.class)),
+                aplicacao,local.getId(),local.getPaciente().getId(),local.getUnidadeChave())
+                .stream().findFirst().orElseThrow(()->new ResourceNotFoundException("Aplicação não encontrada."));
+        if(Boolean.TRUE.equals(jdbc.queryForObject("""
+                select exists(select 1 from tb_reversao_origem_historica where aplicacao_id=?)
+                """,Boolean.class,aplicacao))) throw new ConflictException("Aplicação de origem já revertida.");
+        String motivo=justificativas.validar(justificativa);
+        var instante=OffsetDateTime.ofInstant(clock.instant().truncatedTo(ChronoUnit.MICROS),ZoneOffset.UTC);
+        if(instante.isBefore(anterior.registradaEm()))
+            throw new ConflictException("Instante de reversão anterior à aplicação.");
+        var id=UUID.randomUUID();
+        jdbc.update("""
+                insert into tb_reversao_origem_historica
+                (id,aplicacao_id,vinculo_id,paciente_id,unidade_chave,historico_id,ator_id,perfil,justificativa,registrado_em)
+                values (?,?,?,?,?,?,?,'ADMINISTRADOR',?,?)
+                """,id,aplicacao,local.getId(),local.getPaciente().getId(),local.getUnidadeChave(),
+                anterior.historico(),ator.getId(),motivo,instante);
         return id;
     }
 }

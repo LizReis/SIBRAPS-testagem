@@ -66,6 +66,10 @@ public final class AgendaMigrationTool {
         return migrar(source, "28");
     }
 
+    public static MigrateResult migrarReversaoOrigem(DataSource source) throws java.sql.SQLException {
+        return migrar(source, "29");
+    }
+
     private static MigrateResult migrar(DataSource source, String destino) throws java.sql.SQLException {
         try (var connection = source.getConnection()) {
             if (!"H2".equals(connection.getMetaData().getDatabaseProductName())
@@ -88,8 +92,23 @@ public final class AgendaMigrationTool {
         if (!destino.equals("16")) {
             var atual = flyway.info().current();
             var versao = atual == null ? "" : atual.getVersion().getVersion();
-            if (destino.equals("28")) {
-                if (!java.util.Set.of("27", "28").contains(versao))
+            if (destino.equals("29")) {
+                if (!java.util.Set.of("28", "29").contains(versao))
+                    throw new IllegalStateException("V29 requer V28 concluída.");
+                IdentidadeDocumentalPreflight.verificarOperacional(source);
+                TransicaoLocalSchemaGuard.verificar(source);
+                InventarioHistoricoSchemaGuard.verificar(source);
+                MarcoHistoricoSchemaGuard.verificar(source);
+                EvidenciaClinicaSchemaGuard.verificar(source);
+                FechamentoAutomaticoSchemaGuard.verificar(source);
+                ResolucaoFrequenciaSchemaGuard.verificar(source);
+                ReversaoResolucaoSchemaGuard.verificar(source);
+                AplicacaoPendenciaSchemaGuard.verificar(source);
+                EvidenciaResolucaoSchemaGuard.verificar(source);
+                ProvaOrigemSchemaGuard.verificar(source);
+                AplicacaoOrigemSchemaGuard.verificar(source);
+            } else if (destino.equals("28")) {
+                if (!java.util.Set.of("27", "28", "29").contains(versao))
                     throw new IllegalStateException("V28 requer V27 concluída.");
                 IdentidadeDocumentalPreflight.verificarOperacional(source);
                 TransicaoLocalSchemaGuard.verificar(source);
@@ -103,7 +122,7 @@ public final class AgendaMigrationTool {
                 EvidenciaResolucaoSchemaGuard.verificar(source);
                 ProvaOrigemSchemaGuard.verificar(source);
             } else if (destino.equals("27")) {
-                if (!java.util.Set.of("26", "27", "28").contains(versao))
+                if (!java.util.Set.of("26", "27", "28", "29").contains(versao))
                     throw new IllegalStateException("V27 requer V26 concluída.");
                 IdentidadeDocumentalPreflight.verificarOperacional(source);
                 TransicaoLocalSchemaGuard.verificar(source);
@@ -116,7 +135,7 @@ public final class AgendaMigrationTool {
                 AplicacaoPendenciaSchemaGuard.verificar(source);
                 EvidenciaResolucaoSchemaGuard.verificar(source);
             } else if (destino.equals("26")) {
-                if (!java.util.Set.of("25", "26", "27", "28").contains(versao))
+                if (!java.util.Set.of("25", "26", "27", "28", "29").contains(versao))
                     throw new IllegalStateException("V26 requer V25 concluída.");
                 IdentidadeDocumentalPreflight.verificarOperacional(source);
                 TransicaoLocalSchemaGuard.verificar(source);
@@ -128,7 +147,7 @@ public final class AgendaMigrationTool {
                 ReversaoResolucaoSchemaGuard.verificar(source);
                 AplicacaoPendenciaSchemaGuard.verificar(source);
             } else if (destino.equals("25")) {
-                if (!java.util.Set.of("24", "25", "26", "27", "28").contains(versao))
+                if (!java.util.Set.of("24", "25", "26", "27", "28", "29").contains(versao))
                     throw new IllegalStateException("V25 requer V24 concluída.");
                 IdentidadeDocumentalPreflight.verificarOperacional(source);
                 TransicaoLocalSchemaGuard.verificar(source);
@@ -139,7 +158,7 @@ public final class AgendaMigrationTool {
                 ResolucaoFrequenciaSchemaGuard.verificar(source);
                 ReversaoResolucaoSchemaGuard.verificar(source);
             } else if (destino.equals("24")) {
-                if (!java.util.Set.of("23", "24", "25", "26", "27", "28").contains(versao))
+                if (!java.util.Set.of("23", "24", "25", "26", "27", "28", "29").contains(versao))
                     throw new IllegalStateException("V24 requer V23 concluída.");
                 IdentidadeDocumentalPreflight.verificarOperacional(source);
                 TransicaoLocalSchemaGuard.verificar(source);
@@ -149,7 +168,7 @@ public final class AgendaMigrationTool {
                 FechamentoAutomaticoSchemaGuard.verificar(source);
                 ResolucaoFrequenciaSchemaGuard.verificar(source);
             } else if (destino.equals("23")) {
-                if (!java.util.Set.of("22", "23", "24", "25", "26", "27", "28").contains(versao))
+                if (!java.util.Set.of("22", "23", "24", "25", "26", "27", "28", "29").contains(versao))
                     throw new IllegalStateException("V23 requer V22 concluída.");
                 IdentidadeDocumentalPreflight.verificarOperacional(source);
                 TransicaoLocalSchemaGuard.verificar(source);
@@ -158,7 +177,7 @@ public final class AgendaMigrationTool {
                 EvidenciaClinicaSchemaGuard.verificar(source);
                 FechamentoAutomaticoSchemaGuard.verificar(source);
             } else if (destino.equals("22")) {
-                if (!java.util.Set.of("21", "22", "23", "24", "25", "26", "27", "28").contains(versao))
+                if (!java.util.Set.of("21", "22", "23", "24", "25", "26", "27", "28", "29").contains(versao))
                     throw new IllegalStateException("V22 requer V21 concluída.");
                 IdentidadeDocumentalPreflight.verificarOperacional(source);
                 TransicaoLocalSchemaGuard.verificar(source);
@@ -166,28 +185,28 @@ public final class AgendaMigrationTool {
                 MarcoHistoricoSchemaGuard.verificar(source);
                 EvidenciaClinicaSchemaGuard.verificar(source);
             } else if (destino.equals("21")) {
-                if (!java.util.Set.of("20", "21", "22", "23", "24", "25", "26", "27", "28").contains(versao))
+                if (!java.util.Set.of("20", "21", "22", "23", "24", "25", "26", "27", "28", "29").contains(versao))
                     throw new IllegalStateException("V21 requer V20 concluída.");
                 IdentidadeDocumentalPreflight.verificarOperacional(source);
                 TransicaoLocalSchemaGuard.verificar(source);
                 InventarioHistoricoSchemaGuard.verificar(source);
                 MarcoHistoricoSchemaGuard.verificar(source);
             } else if (destino.equals("20")) {
-                if (!java.util.Set.of("19", "20", "21", "22", "23", "24", "25", "26", "27", "28").contains(versao))
+                if (!java.util.Set.of("19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29").contains(versao))
                     throw new IllegalStateException("V20 requer V19 concluída.");
                 IdentidadeDocumentalPreflight.verificarOperacional(source);
                 TransicaoLocalSchemaGuard.verificar(source);
                 InventarioHistoricoSchemaGuard.verificar(source);
             } else if (destino.equals("19")) {
-                if (!java.util.Set.of("18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28").contains(versao))
+                if (!java.util.Set.of("18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29").contains(versao))
                     throw new IllegalStateException("V19 requer V18 concluída.");
                 IdentidadeDocumentalPreflight.verificarOperacional(source);
                 TransicaoLocalSchemaGuard.verificar(source);
             } else if (destino.equals("18")) {
-                if (!java.util.Set.of("17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28").contains(versao))
+                if (!java.util.Set.of("17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29").contains(versao))
                     throw new IllegalStateException("V18 requer V17 concluída.");
                 IdentidadeDocumentalPreflight.verificarOperacional(source);
-            } else if (!java.util.Set.of("16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28").contains(versao)) {
+            } else if (!java.util.Set.of("16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29").contains(versao)) {
                 throw new IllegalStateException("V17 requer V16 concluída antes do diagnóstico documental.");
             }
             if (versao.equals("16")) {
@@ -198,17 +217,18 @@ public final class AgendaMigrationTool {
         }
         var result = flyway.migrate();
         if (!destino.equals("16")) IdentidadeDocumentalPreflight.verificarRestricoes(source);
-        if (destino.equals("18") || destino.equals("19") || destino.equals("20") || destino.equals("21") || destino.equals("22") || destino.equals("23") || destino.equals("24") || destino.equals("25") || destino.equals("26") || destino.equals("27") || destino.equals("28")) TransicaoLocalSchemaGuard.verificar(source);
-        if (destino.equals("19") || destino.equals("20") || destino.equals("21") || destino.equals("22") || destino.equals("23") || destino.equals("24") || destino.equals("25") || destino.equals("26") || destino.equals("27") || destino.equals("28")) InventarioHistoricoSchemaGuard.verificar(source);
-        if (destino.equals("20") || destino.equals("21") || destino.equals("22") || destino.equals("23") || destino.equals("24") || destino.equals("25") || destino.equals("26") || destino.equals("27") || destino.equals("28")) MarcoHistoricoSchemaGuard.verificar(source);
-        if (destino.equals("21") || destino.equals("22") || destino.equals("23") || destino.equals("24") || destino.equals("25") || destino.equals("26") || destino.equals("27") || destino.equals("28")) EvidenciaClinicaSchemaGuard.verificar(source);
-        if (destino.equals("22") || destino.equals("23") || destino.equals("24") || destino.equals("25") || destino.equals("26") || destino.equals("27") || destino.equals("28")) FechamentoAutomaticoSchemaGuard.verificar(source);
-        if (destino.equals("23") || destino.equals("24") || destino.equals("25") || destino.equals("26") || destino.equals("27") || destino.equals("28")) ResolucaoFrequenciaSchemaGuard.verificar(source);
-        if (destino.equals("24") || destino.equals("25") || destino.equals("26") || destino.equals("27") || destino.equals("28")) ReversaoResolucaoSchemaGuard.verificar(source);
-        if (destino.equals("25") || destino.equals("26") || destino.equals("27") || destino.equals("28")) AplicacaoPendenciaSchemaGuard.verificar(source);
-        if (destino.equals("26") || destino.equals("27") || destino.equals("28")) EvidenciaResolucaoSchemaGuard.verificar(source);
-        if (destino.equals("27") || destino.equals("28")) ProvaOrigemSchemaGuard.verificar(source);
-        if (destino.equals("28")) AplicacaoOrigemSchemaGuard.verificar(source);
+        if (destino.equals("18") || destino.equals("19") || destino.equals("20") || destino.equals("21") || destino.equals("22") || destino.equals("23") || destino.equals("24") || destino.equals("25") || destino.equals("26") || destino.equals("27") || destino.equals("28") || destino.equals("29")) TransicaoLocalSchemaGuard.verificar(source);
+        if (destino.equals("19") || destino.equals("20") || destino.equals("21") || destino.equals("22") || destino.equals("23") || destino.equals("24") || destino.equals("25") || destino.equals("26") || destino.equals("27") || destino.equals("28") || destino.equals("29")) InventarioHistoricoSchemaGuard.verificar(source);
+        if (destino.equals("20") || destino.equals("21") || destino.equals("22") || destino.equals("23") || destino.equals("24") || destino.equals("25") || destino.equals("26") || destino.equals("27") || destino.equals("28") || destino.equals("29")) MarcoHistoricoSchemaGuard.verificar(source);
+        if (destino.equals("21") || destino.equals("22") || destino.equals("23") || destino.equals("24") || destino.equals("25") || destino.equals("26") || destino.equals("27") || destino.equals("28") || destino.equals("29")) EvidenciaClinicaSchemaGuard.verificar(source);
+        if (destino.equals("22") || destino.equals("23") || destino.equals("24") || destino.equals("25") || destino.equals("26") || destino.equals("27") || destino.equals("28") || destino.equals("29")) FechamentoAutomaticoSchemaGuard.verificar(source);
+        if (destino.equals("23") || destino.equals("24") || destino.equals("25") || destino.equals("26") || destino.equals("27") || destino.equals("28") || destino.equals("29")) ResolucaoFrequenciaSchemaGuard.verificar(source);
+        if (destino.equals("24") || destino.equals("25") || destino.equals("26") || destino.equals("27") || destino.equals("28") || destino.equals("29")) ReversaoResolucaoSchemaGuard.verificar(source);
+        if (destino.equals("25") || destino.equals("26") || destino.equals("27") || destino.equals("28") || destino.equals("29")) AplicacaoPendenciaSchemaGuard.verificar(source);
+        if (destino.equals("26") || destino.equals("27") || destino.equals("28") || destino.equals("29")) EvidenciaResolucaoSchemaGuard.verificar(source);
+        if (destino.equals("27") || destino.equals("28") || destino.equals("29")) ProvaOrigemSchemaGuard.verificar(source);
+        if (destino.equals("28") || destino.equals("29")) AplicacaoOrigemSchemaGuard.verificar(source);
+        if (destino.equals("29")) ReversaoOrigemSchemaGuard.verificar(source);
         CanonicalAgendaGuard.verificar(source);
         AuditoriaSchemaGuard.verificar(source);
         ResponsabilidadeSessaoGuard.verificar(source);
@@ -269,6 +289,7 @@ public final class AgendaMigrationTool {
             case "--evidencia-resolucao" -> migrarEvidenciaResolucao(source);
             case "--prova-origem" -> migrarProvaOrigem(source);
             case "--aplicacao-origem" -> migrarAplicacaoOrigem(source);
+            case "--reversao-origem" -> migrarReversaoOrigem(source);
             default -> throw new IllegalArgumentException("Argumento desconhecido.");
         };
         System.out.println("Migrações de agenda executadas: " + result.migrationsExecuted);

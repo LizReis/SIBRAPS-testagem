@@ -730,6 +730,8 @@ class ModeloVinculoOperacionalTests {
         assertThat(AgendaMigrationTool.migrarProvaOrigem(banco).migrationsExecuted).isZero();
         assertThat(AgendaMigrationTool.migrarAplicacaoOrigem(banco).migrationsExecuted).isEqualTo(1);
         assertThat(AgendaMigrationTool.migrarAplicacaoOrigem(banco).migrationsExecuted).isZero();
+        assertThat(AgendaMigrationTool.migrarReversaoOrigem(banco).migrationsExecuted).isEqualTo(1);
+        assertThat(AgendaMigrationTool.migrarReversaoOrigem(banco).migrationsExecuted).isZero();
         var sql=new JdbcTemplate(banco);
         long unidade=usf(sql,"Resolução A");
         String prof=ator(sql,unidade,2,"resolucao-prof");
@@ -1175,6 +1177,19 @@ class ModeloVinculoOperacionalTests {
         assertThat(item.path("aplicacaoOrigem").asString()).isEqualTo("ORIGEM_RECONHECIDA");
         assertThat(item.path("registroAplicacaoOrigem").asString()).isEqualTo(aplicada.toString());
         assertThat(item.path("aplicacao").asString()).isEqualTo("SEM_APLICACAO");
+        assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.desfazerOrigem(
+                app,prof,paciente,vinculo,versaoAtual,aplicada,false))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.desfazerOrigem(
+                app,externoEmail,paciente,outroVinculo,versaoResolucao(sql,outroVinculo),aplicada,false))
+                .isInstanceOf(com.pet.buscaativa.services.exceptions.ResourceNotFoundException.class);
+        com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.desfazerOrigem(
+                app,admin,paciente,vinculo,versaoAtual,aplicada,true);
+        assertThat(sql.queryForObject("select count(*) from tb_reversao_origem_historica",Integer.class)).isZero();
+        var leituraAposRollback=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",tokenProf,null);
+        assertThat(leituraAposRollback.statusCode()).as(leituraAposRollback.body()).isEqualTo(200);
+        assertThat(java.util.stream.StreamSupport.stream(json(app,leituraAposRollback).path("historico").spliterator(),false)
+                .anyMatch(e->e.path("id").asLong()==h && e.path("origemCorrigida").asBoolean())).isTrue();
         // Simular divergência posterior de versão da fonte, sem alterar a aprovação.
         sql.update("update tb_agendamento set version=version+1 where id=?",falta.id());
         var inconclusivo=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",tokenAdmin,null);
@@ -1190,6 +1205,35 @@ class ModeloVinculoOperacionalTests {
                 .filter(e->e.path("ticket").asString().equals(ticket.toString())).findFirst().orElseThrow();
         assertThat(itemInconclusivo.path("aplicacaoOrigem").asString()).isEqualTo("INCONCLUSIVA");
         assertThat(sql.queryForObject("select count(*) from tb_aplicacao_origem_historica where id=?",Integer.class,aplicada)).isEqualTo(1);
+        // Reversão deve funcionar inclusive depois que a fonte se tornou incompatível.
+        var revertida=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.desfazerOrigem(
+                app,admin,paciente,vinculo,versaoAtual,aplicada,false);
+        assertThat(sql.queryForObject("select aplicacao_id from tb_reversao_origem_historica where id=?",UUID.class,revertida)).isEqualTo(aplicada);
+        assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.desfazerOrigem(
+                app,admin,paciente,vinculo,versaoAtual,aplicada,false))
+                .isInstanceOf(com.pet.buscaativa.services.exceptions.ConflictException.class);
+        assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aplicarOrigem(
+                app,admin,paciente,vinculo,versaoAtual,ticket,false))
+                .isInstanceOf(com.pet.buscaativa.services.exceptions.ConflictException.class);
+        assertThatThrownBy(()->sql.update("delete from tb_reversao_origem_historica where id=?",revertida))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        var painelRevertido=http(app,"GET","/api/relatorios/pendencias?tamanho=100",tokenAdmin,null);
+        assertThat(painelRevertido.statusCode()).as(painelRevertido.body()).isEqualTo(200);
+        var itemRevertido=java.util.stream.StreamSupport.stream(json(app,painelRevertido).path("itens").spliterator(),false)
+                .filter(e->e.path("ticket").asString().equals(ticket.toString())).findFirst().orElseThrow();
+        assertThat(itemRevertido.path("estado").asString()).isEqualTo("APROVADA");
+        assertThat(itemRevertido.path("aplicacaoOrigem").asString()).isEqualTo("REVERTIDA");
+        assertThat(itemRevertido.path("registroAplicacaoOrigem").asString()).isEqualTo(aplicada.toString());
+        assertThat(itemRevertido.path("registroReversaoOrigem").asString()).isEqualTo(revertida.toString());
+        var prontuarioRevertido=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",tokenProf,null);
+        assertThat(prontuarioRevertido.statusCode()).as(prontuarioRevertido.body()).isEqualTo(200);
+        assertThat(java.util.stream.StreamSupport.stream(json(app,prontuarioRevertido).path("historico").spliterator(),false)
+                .noneMatch(e->e.path("id").asLong()==h)).isTrue();
+        assertThat(json(app,prontuarioRevertido).path("faltasComprovadas").asLong()).isEqualTo(3);
+        assertThat(sql.queryForObject("select unidade_origem_chave from tb_historico_paciente where id=?",String.class,h)).isNull();
+        assertThat(sql.queryForObject("select count(*) from tb_aplicacao_origem_historica where id=?",Integer.class,aplicada)).isEqualTo(1);
+        assertThat(sql.queryForObject("select count(*) from tb_prova_aprovacao_origem where decisao_id=?",Integer.class,decisao)).isEqualTo(1);
+        assertThat(faltasResolucao(sql,outroVinculo)).isZero();
     }
 
     private static int faltasResolucao(JdbcTemplate sql,UUID vinculo) {

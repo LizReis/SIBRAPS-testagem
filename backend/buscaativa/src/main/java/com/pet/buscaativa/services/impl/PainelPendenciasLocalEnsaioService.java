@@ -24,11 +24,11 @@ public class PainelPendenciasLocalEnsaioService {
     public enum Estado { PENDENTE, APROVADA, REJEITADA }
     public enum Aplicacao { SEM_APLICACAO, RESOLUCAO_REGISTRADA, REVERTIDA, INCONCLUSIVA }
     private record SituacaoAplicacao(Aplicacao estado,UUID resolucao) {}
-    public enum AplicacaoOrigem { SEM_APLICACAO, ORIGEM_RECONHECIDA, INCONCLUSIVA }
+    public enum AplicacaoOrigem { SEM_APLICACAO, ORIGEM_RECONHECIDA, INCONCLUSIVA, REVERTIDA }
     public record Item(UUID ticket,UUID paciente,UUID vinculo,String nome,PendenciaRevisaoProveniencia.TipoRegistro tipoRegistro,
             Instant solicitadoEm,Estado estado,UUID decisao,Instant decididaEm,
             Integer versaoVinculo, Long registro, String justificativaSolicitacao, String justificativaDecisao, Aplicacao aplicacao, UUID resolucaoAtiva,
-            boolean revisaoOrigem, AplicacaoOrigem aplicacaoOrigem, UUID registroAplicacaoOrigem) {}
+            boolean revisaoOrigem, AplicacaoOrigem aplicacaoOrigem, UUID registroAplicacaoOrigem, UUID registroReversaoOrigem) {}
     public record Pagina(long pendentes,long aprovadas,long rejeitadas,java.util.List<Item> itens,long total,int pagina,int tamanho) {}
 
     public Pagina listar(Estado filtro,int pagina,int tamanho) {
@@ -66,8 +66,9 @@ public class PainelPendenciasLocalEnsaioService {
                             d.getDecisao()==DecisaoRevisaoProveniencia.Decisao.APROVAR?Estado.APROVADA:Estado.REJEITADA,
                             d==null?null:d.getId(),d==null?null:d.getDecididaEm(), v.getVersion(),
                             p.getRegistroId(), p.getJustificativa(), d==null?null:d.getJustificativa(), aplicacao.estado(),aplicacao.resolucao(),revisaoOrigem,
-                            origem==null?AplicacaoOrigem.SEM_APLICACAO:origem.comprovada()?AplicacaoOrigem.ORIGEM_RECONHECIDA:AplicacaoOrigem.INCONCLUSIVA,
-                            origem==null?null:origem.id());
+                            origem==null?AplicacaoOrigem.SEM_APLICACAO:origem.reversao()!=null?AplicacaoOrigem.REVERTIDA:
+                            origem.comprovada()?AplicacaoOrigem.ORIGEM_RECONHECIDA:AplicacaoOrigem.INCONCLUSIVA,
+                            origem==null?null:origem.id(),origem==null?null:origem.reversao());
                 }).toList();
         return new Pagina(pendentes,aprovadas,rejeitadas,itens,total,pagina,tamanho);
     }
