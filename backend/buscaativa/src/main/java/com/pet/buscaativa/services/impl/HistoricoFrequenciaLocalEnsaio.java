@@ -80,17 +80,19 @@ class HistoricoFrequenciaLocalEnsaio {
         var eventos = historicos.findByAgendamento(a).stream().filter(h -> h.getTipo() == TipoEventoHistoricoPaciente.FALTA
                 || h.getTipo() == TipoEventoHistoricoPaciente.PRESENCA
                 || h.getTipo() == TipoEventoHistoricoPaciente.PARTICIPACAO_GRUPO_TERAPEUTICO).toList();
-        return conferir(eventos, local, a.getUsuario(), antes, null);
+        return conferir(eventos, local, a.getUsuario(), antes, null,
+                LocalDateTime.of(a.getDataAgendamento(), a.getHoraAtendimento()));
     }
 
     HistoricoPaciente coletivo(SessaoGrupoParticipante p, VinculoAssistencial local, FrequenciaAssistencial antes) {
         var sessao = p.getSessaoGrupo();
         return conferir(historicos.findAllByPacienteAndSessaoGrupo(p.getPaciente(), sessao),
-                local, sessao.getResponsavelAtendimento(), antes, sessao.getId());
+                local, sessao.getResponsavelAtendimento(), antes, sessao.getId(),
+                LocalDateTime.of(sessao.getDataSessao(), sessao.getHorario()));
     }
 
     private HistoricoPaciente conferir(List<HistoricoPaciente> eventos, VinculoAssistencial local,
-            Usuario responsavel, FrequenciaAssistencial antes, Long sessao) {
+            Usuario responsavel, FrequenciaAssistencial antes, Long sessao, LocalDateTime horarioFonte) {
         if (antes == FrequenciaAssistencial.NAO_REGISTRADA && eventos.isEmpty()) return null;
         if (antes != FrequenciaAssistencial.NAO_REGISTRADA && eventos.size() == 1) {
             var h = eventos.getFirst();
@@ -104,7 +106,9 @@ class HistoricoFrequenciaLocalEnsaio {
                             && origemEfetiva.reconhecida(local,h.getId())))
                     && Objects.equals(sessao, h.getSessaoGrupo() == null ? null : h.getSessaoGrupo().getId())
                     && (sessao == null || h.getAgendamento() == null)
-                    && h.getProfissional() != null && responsavel.getId().equals(h.getProfissional().getId())
+                    && Objects.equals(horarioFonte, h.getOcorridoEm())
+                    && h.getProfissional() != null && responsavel != null
+                    && responsavel.getId() != null && responsavel.getId().equals(h.getProfissional().getId())
                     && h.getSituacaoAtendimento() == SituacaoAtendimento.valueOf(antes.name())) return h;
         }
         throw new ConflictException("Histórico da frequência pendente de conferência.");
