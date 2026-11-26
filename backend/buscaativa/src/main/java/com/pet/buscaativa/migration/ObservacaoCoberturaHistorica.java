@@ -53,7 +53,10 @@ public final class ObservacaoCoberturaHistorica {
         for(var e:provas.entrySet()) {
             var ids=jdbc.queryForList("select id from tb_vinculo_assistencial where unidade_chave=? order by id",
                     Long.class,e.getKey());
-            resultado.put(e.getKey(),new Local(e.getValue().consistente(),e.getValue().assinatura(),List.copyOf(ids)));
+            var resolucoes=EvidenciaResolucaoHistorica.conferir(jdbc,e.getKey(),
+                    mes.plusMonths(1).atDay(1).atStartOfDay(zona).toInstant().minusMillis(1),e.getValue().assinatura());
+            resultado.put(e.getKey(),new Local(e.getValue().consistente() && resolucoes.consistente(),
+                    resolucoes.assinatura(),List.copyOf(ids)));
         }
         return resultado;
     }

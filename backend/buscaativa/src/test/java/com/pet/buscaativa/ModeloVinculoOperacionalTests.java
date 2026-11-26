@@ -419,6 +419,9 @@ class ModeloVinculoOperacionalTests {
         AgendaMigrationTool.migrarMarcoHistorico(banco);
         AgendaMigrationTool.migrarEvidenciaClinica(banco);
         AgendaMigrationTool.migrarFechamentoAutomatico(banco);
+        AgendaMigrationTool.migrarResolucaoFrequencia(banco);
+        AgendaMigrationTool.migrarReversaoResolucao(banco);
+        AgendaMigrationTool.migrarAplicacaoPendencia(banco);
         var sql = new JdbcTemplate(banco);
         long usfA = usf(sql,"Automático A");
         long usfB = usf(sql,"Automático B");
@@ -450,6 +453,8 @@ class ModeloVinculoOperacionalTests {
             var novo = http(app,"POST","/api/pacientes?ignorarSimilaridade=true",r,dados);
             assertThat(novo.statusCode()).as(novo.body()).isEqualTo(201);
             String pessoa = json(app,novo).path("paciente").asString();
+            UUID paciente=UUID.fromString(pessoa);
+            UUID vinculo=UUID.fromString(json(app,novo).path("vinculo").asString());
             var confirmacao = Map.of("cpf",dados.get("cpf"),"cns",dados.get("cns"),"nome",dados.get("nome"),
                     "nomeMae",dados.get("nomeMae"),"dataNascimento",dados.get("dataNascimento"),
                     "tipoAcompanhamento","GRUPO_TERAPEUTICO");
@@ -469,6 +474,7 @@ class ModeloVinculoOperacionalTests {
             UUID responsavel = sql.queryForObject("select id_publico from tb_usuario where email=?",UUID.class,profA);
             String atendimento = null;
             int versao = -1;
+            com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.Reserva primeiraFalta=null;
             for (int dia=0; dia<2; dia++) {
                 var data = primeiroDia.plusDays(dia);
                 clock.avancar(data.atTime(12,0).atZone(zona).toInstant());
@@ -484,7 +490,15 @@ class ModeloVinculoOperacionalTests {
                 var falta = http(app,"PATCH",atendimento+"/status?novoStatus=FALTOU&version="+registro.path("version").asInt(),p,null);
                 assertThat(falta.statusCode()).as(falta.body()).isEqualTo(200);
                 versao = json(app,falta).path("version").asInt();
+                if(dia==0) primeiraFalta=new com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.Reserva(registro.path("id").asLong(),versao);
             }
+            long pessoaId=sql.queryForObject("select id from tb_paciente where id_publico=?",Long.class,paciente);
+            long profissionalId=sql.queryForObject("select id from tb_usuario where email=?",Long.class,profA);
+            var duplicada=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.falta(app,profA,pessoaId,profissionalId,primeiroDia,9);
+            assertThat(faltasResolucao(sql,vinculo)).isEqualTo(3);
+            var resolucao=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.resolver(app,profA,paciente,vinculo,
+                    versaoResolucao(sql,vinculo),primeiraFalta,duplicada,false);
+            assertThat(faltasResolucao(sql,vinculo)).isEqualTo(2);
             var detalheGrupo = http(app,"GET","/api/grupos/sessoes?dataInicio="+primeiroDia.plusDays(1)
                     +"&dataFim="+primeiroDia.plusDays(1),i,null);
             assertThat(detalheGrupo.statusCode()).as(detalheGrupo.body()).isEqualTo(200);
@@ -568,6 +582,10 @@ class ModeloVinculoOperacionalTests {
                     select indicadores from tb_observacao_historico_mensal where unidade=? and mes=? and fase='FECHADO'
                     """,String.class,unidadeA,mes.atDay(1));
             clock.avancar(corte.plusSeconds(3600));
+            com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.desfazer(app,profA,paciente,vinculo,
+                    versaoResolucao(sql,vinculo),resolucao);
+            assertThat(faltasResolucao(sql,vinculo)).isEqualTo(3);
+            assertThat(evolucao(app,painel,a,mes)).isEqualTo(historicoA);
             var correcao = http(app,"PATCH",atendimento+"/frequencia/correcao",p,
                     Map.of("novaFrequencia","PRESENTE","version",versao,"justificativa","Correção sintética após fechamento."));
             assertThat(correcao.statusCode()).as(correcao.body()).isEqualTo(200);

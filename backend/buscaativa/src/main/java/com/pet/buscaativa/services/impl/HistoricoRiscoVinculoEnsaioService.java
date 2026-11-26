@@ -123,7 +123,7 @@ class HistoricoRiscoVinculoEnsaioService {
                     return indisponivel(mes);
                 if (!valor.equals(rua)) continue;
             }
-            var risco = fatos(leitor, revisao, v, fim.toLocalDate())
+            var risco = fatos(leitor, revisao, v, fim.toLocalDate(), corte)
                     .flatMap(f -> ComparadorPoliticaRiscoVinculo.comparar(f, StatusPaciente.ATIVO,
                             modalidade, v.getIndicadoresPendentes(), fim.toLocalDate()));
             if (risco.isEmpty()) return indisponivel(mes);
@@ -168,7 +168,7 @@ class HistoricoRiscoVinculoEnsaioService {
     }
 
     private Optional<DiagnosticoFaltasConsecutivasVinculoService.Resultado> fatos(AuditReader leitor, Number revisao,
-            VinculoAssistencial vinculo, LocalDate data) {
+            VinculoAssistencial vinculo, LocalDate data, Instant corte) {
         Long paciente = vinculo.getPaciente().getId();
         String unidade = vinculo.getUnidadeChave();
         List<?> agenda = leitor.createQuery().forEntitiesAtRevision(Agendamento.class, revisao)
@@ -179,6 +179,7 @@ class HistoricoRiscoVinculoEnsaioService {
             if (a.getAgendamentoOriginal() != null) sucessores.merge(a.getAgendamentoOriginal().getId(), 1L, Long::sum);
         }
         var eventos = new ArrayList<Evento>();
+        var responsaveis = new HashMap<ProjecaoResolucaoFrequencia.Chave,Long>();
         for (Object item : agenda) {
             var a = (Agendamento) item;
             if (a.getDataAgendamento() != null && a.getDataAgendamento().isAfter(data)) continue;
@@ -192,6 +193,7 @@ class HistoricoRiscoVinculoEnsaioService {
             if (!AvaliacaoProvenienciaClinica.frequenciaIndividualRegistrada(a)) return Optional.empty();
             eventos.add(new Evento(LocalDateTime.of(a.getDataAgendamento(), a.getHoraAtendimento()),
                     a.getFrequenciaAssistencial() == FrequenciaAssistencial.PRESENTE, Fonte.ATENDIMENTO_INDIVIDUAL, a.getId()));
+            if(a.getUsuario()!=null) responsaveis.put(new ProjecaoResolucaoFrequencia.Chave(Fonte.ATENDIMENTO_INDIVIDUAL,a.getId()),a.getUsuario().getId());
         }
 
         List<?> participacoes = leitor.createQuery().forEntitiesAtRevision(SessaoGrupoParticipante.class, revisao)
@@ -211,10 +213,45 @@ class HistoricoRiscoVinculoEnsaioService {
                     || !AvaliacaoProvenienciaClinica.frequenciaRegistrada(p.getStatusPresenca())) return Optional.empty();
             eventos.add(new Evento(LocalDateTime.of(s.getDataSessao(), s.getHorario()),
                     p.getStatusPresenca() == StatusPresencaGrupo.PRESENTE, Fonte.SESSAO_GRUPO, p.getId()));
+            if(s.getResponsavelAtendimento()!=null) responsaveis.put(new ProjecaoResolucaoFrequencia.Chave(Fonte.SESSAO_GRUPO,p.getId()),s.getResponsavelAtendimento().getId());
         }
+        var resolucoes=resolucoesAte(vinculo,corte);
+        var fatos=eventos.stream().map(e->new ProjecaoResolucaoFrequencia.Fato(e,
+                responsaveis.get(new ProjecaoResolucaoFrequencia.Chave(e.fonte(),e.registroId())))).toList();
+        var projecao=ProjecaoResolucaoFrequencia.aplicar(fatos,resolucoes);
+        if(projecao.inconclusivo()) return Optional.empty();
+        eventos.removeIf(e->projecao.desconsiderados().contains(new ProjecaoResolucaoFrequencia.Chave(e.fonte(),e.registroId())));
         eventos.sort(Comparator.comparing(Evento::ocorridoEm).thenComparing(Evento::fonte).thenComparing(Evento::registroId));
         return Optional.of(DiagnosticoFaltasConsecutivasVinculoService.calcular(
                 new LinhaDoTempoFrequenciasVinculoService.Diagnostico(List.copyOf(eventos), 0, 0, 0, 0)));
+    }
+
+    private List<ProjecaoResolucaoFrequencia.Resolucao> resolucoesAte(VinculoAssistencial v,Instant corte) {
+        boolean instalada=((Number)em.createNativeQuery("""
+                select count(*) from information_schema.tables
+                where table_schema=current_schema() and table_name='VW_RESOLUCAO_FREQUENCIA_ATIVA'
+                """).getSingleResult()).longValue()==1;
+        if(!instalada) return List.of();
+        // Não usar a visão ativa ATUAL: reversões posteriores ao corte
+        // não modificam a validade do fato no mês reconstruído.
+        @SuppressWarnings("unchecked")
+        List<Object[]> linhas=em.createNativeQuery("""
+                select r.fonte_valida,r.fato_valido,r.fonte_desconsiderada,r.fato_desconsiderado,
+                       r.horario,r.frequencia_valida,r.frequencia_desconsiderada,r.responsavel_valido,r.responsavel_desconsiderado
+                from tb_resolucao_frequencia_local r
+                where r.vinculo_id=:vinculo and r.paciente_id=:paciente and r.unidade_chave=:unidade
+                  and r.registrado_em<=:corte
+                  and not exists(select 1 from tb_reversao_resolucao_frequencia d
+                       where d.resolucao_id=r.id and d.registrado_em<=:corte)
+                """).setParameter("vinculo",v.getId()).setParameter("paciente",v.getPaciente().getId())
+                .setParameter("unidade",v.getUnidadeChave()).setParameter("corte",java.time.OffsetDateTime.ofInstant(corte,java.time.ZoneOffset.UTC))
+                .getResultList();
+        return linhas.stream().map(r->new ProjecaoResolucaoFrequencia.Resolucao(
+                new ProjecaoResolucaoFrequencia.Chave(Fonte.valueOf(r[0].toString()),((Number)r[1]).longValue()),
+                new ProjecaoResolucaoFrequencia.Chave(Fonte.valueOf(r[2].toString()),((Number)r[3]).longValue()),
+                r[4] instanceof LocalDateTime t?t:((java.sql.Timestamp)r[4]).toLocalDateTime(),
+                "PRESENTE".equals(r[5]),"PRESENTE".equals(r[6]),
+                ((Number)r[7]).longValue(),((Number)r[8]).longValue())).toList();
     }
 
     private boolean origemAuditada(AuditReader leitor, Class<?> tipo, Long id, Number corte, String origem) {
