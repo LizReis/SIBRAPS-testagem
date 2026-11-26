@@ -22,6 +22,7 @@ import com.pet.buscaativa.migration.InventarioHistoricoSchemaGuard;
 import com.pet.buscaativa.migration.MarcoHistoricoSchemaGuard;
 import com.pet.buscaativa.migration.EvidenciaClinicaSchemaGuard;
 import com.pet.buscaativa.migration.FechamentoAutomaticoSchemaGuard;
+import com.pet.buscaativa.migration.ResolucaoFrequenciaSchemaGuard;
 
 @Configuration(proxyBeanMethods = false)
 public class ModeloVinculoConfig {
@@ -73,6 +74,7 @@ public class ModeloVinculoConfig {
                         MarcoHistoricoSchemaGuard.verificar(fonte);
                         EvidenciaClinicaSchemaGuard.verificar(fonte);
                         FechamentoAutomaticoSchemaGuard.verificar(fonte);
+                        ResolucaoFrequenciaSchemaGuard.verificar(fonte);
                     }
                     return bean;
                 }

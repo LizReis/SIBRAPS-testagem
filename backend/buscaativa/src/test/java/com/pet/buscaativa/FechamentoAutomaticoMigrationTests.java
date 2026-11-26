@@ -33,6 +33,15 @@ class FechamentoAutomaticoMigrationTests {
                 ""","a".repeat(64));
         assertThrows(DataAccessException.class,()->jdbc.update("delete from tb_observacao_historico_mensal"));
         assertEquals(0,AgendaMigrationTool.migrarFechamentoAutomatico(banco).migrationsExecuted);
+        var colunasV22=LegacyMigrationFixture.columns(banco);
+        colunasV22.remove("sibraps_agenda_schema_history");
+        var antesV23=LegacyMigrationFixture.snapshot(banco,colunasV22);
+        assertEquals(1,AgendaMigrationTool.migrarResolucaoFrequencia(banco).migrationsExecuted);
+        assertEquals(antesV23,LegacyMigrationFixture.snapshot(banco,colunasV22));
+        assertEquals(0,jdbc.queryForObject("select count(*) from tb_resolucao_frequencia_local",Integer.class));
+        assertEquals(0,AgendaMigrationTool.migrarResolucaoFrequencia(banco).migrationsExecuted);
+        jdbc.execute("drop trigger tr_resolucao_frequencia_append_only");
+        assertThrows(IllegalStateException.class,()->com.pet.buscaativa.migration.ResolucaoFrequenciaSchemaGuard.verificar(banco));
         jdbc.execute("drop trigger tr_observacao_historico_append_only");
         assertThrows(IllegalStateException.class,()->FechamentoAutomaticoSchemaGuard.verificar(banco));
     }
