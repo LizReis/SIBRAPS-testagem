@@ -1072,6 +1072,59 @@ class ModeloVinculoOperacionalTests {
         long hGrupo=sql.queryForObject("select id from tb_historico_paciente where sessao_grupo_id=? and paciente_id=? and tipo='FALTA'",Long.class,sessao,pessoa);
         long participante=sql.queryForObject("select id from tb_sessao_grupo_participante where sessao_grupo_id=? and paciente_id=?",
                 Long.class,sessao,pessoa);
+        // 6.5C: verificar os dados gravados pelos escritores reais antes de simular o legado.
+        String chaveLocal=sql.queryForObject("select unidade_origem_chave from tb_agendamento where id=?",String.class,falta.id());
+        assertThat(chaveLocal).isNotBlank();
+        assertThat(sql.queryForObject("select unidade_origem_chave from tb_sessao_grupo where id=?",String.class,sessao))
+                .isEqualTo(chaveLocal);
+        var horarioIndividual=dia.atTime(9,0);
+        var horarioColetivo=dataGrupo.atTime(9,0);
+        String consultaCoerencia="""
+                select count(*) from tb_historico_paciente
+                where id=? and paciente_id=? and profissional_id=? and unidade_origem_chave=?
+                    and ocorrido_em=? and tipo='FALTA'
+                """;
+        assertThat(sql.queryForObject(consultaCoerencia,Integer.class,h,pessoa,responsavel,chaveLocal,horarioIndividual))
+                .isEqualTo(1);
+        assertThat(sql.queryForObject(consultaCoerencia,Integer.class,hGrupo,pessoa,responsavel,chaveLocal,horarioColetivo))
+                .isEqualTo(1);
+        // Divergência exclusivamente sintética, mantendo unidade comprovada, para
+        // testar a barreira temporal no comando HTTP sem confundi-la com origem nula.
+        int versaoIndividualAntes=sql.queryForObject("select version from tb_agendamento where id=?",Integer.class,falta.id());
+        int versaoGrupoAntes=sql.queryForObject("select version from tb_sessao_grupo where id=?",Integer.class,sessao);
+        int versaoVinculoAntes=versaoResolucao(sql,vinculo);
+        var faltasAntes=faltasResolucao(sql,vinculo);
+        var faltasExternasAntes=faltasResolucao(sql,outroVinculo);
+        var frequenciaGrupoAntes=sql.queryForObject("select status_presenca from tb_sessao_grupo_participante where id=?",String.class,participante);
+        var auditoriasAntes=sql.queryForObject("select count(*) from tb_auditoria_correcao_frequencia where paciente_id=?",Integer.class,pessoa);
+        sql.update("update tb_historico_paciente set ocorrido_em=? where id=?",horarioIndividual.plusMinutes(15),h);
+        sql.update("update tb_historico_paciente set ocorrido_em=? where id=?",horarioColetivo.plusMinutes(15),hGrupo);
+        var recusaIndividual=http(app,"PATCH","/api/agendamentos/"+falta.id()+"/frequencia/correcao",tokenProf,
+                Map.of("novaFrequencia","PRESENTE","version",versaoIndividualAntes,
+                        "justificativa","Conferência sintética de horário individual divergente."));
+        assertThat(recusaIndividual.statusCode()).as(recusaIndividual.body()).isEqualTo(409);
+        var recusaColetiva=http(app,"PATCH","/api/grupos/sessoes/"+sessao+"/frequencias",tokenProf,
+                Map.of("version",versaoGrupoAntes,"frequencias",List.of(Map.of("pacienteId",paciente,"statusPresenca","PRESENTE")),
+                        "justificativa","Conferência sintética de horário coletivo divergente."));
+        assertThat(recusaColetiva.statusCode()).as(recusaColetiva.body()).isEqualTo(409);
+        assertThat(sql.queryForObject("select version from tb_agendamento where id=?",Integer.class,falta.id()))
+                .isEqualTo(versaoIndividualAntes);
+        assertThat(sql.queryForObject("select version from tb_sessao_grupo where id=?",Integer.class,sessao))
+                .isEqualTo(versaoGrupoAntes);
+        assertThat(sql.queryForObject("select status_presenca from tb_sessao_grupo_participante where id=?",String.class,participante))
+                .isEqualTo(frequenciaGrupoAntes);
+        assertThat(sql.queryForObject(consultaCoerencia,Integer.class,h,pessoa,responsavel,chaveLocal,horarioIndividual.plusMinutes(15)))
+                .isEqualTo(1);
+        assertThat(sql.queryForObject(consultaCoerencia,Integer.class,hGrupo,pessoa,responsavel,chaveLocal,horarioColetivo.plusMinutes(15)))
+                .isEqualTo(1);
+        assertThat(versaoResolucao(sql,vinculo)).isEqualTo(versaoVinculoAntes);
+        assertThat(faltasResolucao(sql,vinculo)).isEqualTo(faltasAntes);
+        assertThat(faltasResolucao(sql,outroVinculo)).isEqualTo(faltasExternasAntes);
+        assertThat(sql.queryForObject("select count(*) from tb_auditoria_correcao_frequencia where paciente_id=?",Integer.class,pessoa))
+                .isEqualTo(auditoriasAntes);
+        // Restaurar somente a fixture para preservar integralmente o cenário 6.5B a seguir.
+        sql.update("update tb_historico_paciente set ocorrido_em=? where id=?",horarioIndividual,h);
+        sql.update("update tb_historico_paciente set ocorrido_em=? where id=?",horarioColetivo,hGrupo);
         // Apenas fixture sintética: reproduzir campo legado vazio e fonte temporal divergente.
         sql.update("update tb_historico_paciente set unidade_origem_chave=null where id=?",hGrupo);
         sql.update("update tb_historico_paciente set unidade_origem_chave=null where id=?",h);
