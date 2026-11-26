@@ -16,6 +16,20 @@ import com.pet.buscaativa.entities.SessaoGrupo;
 @Repository
 public interface HistoricoPacienteRepository extends JpaRepository<HistoricoPaciente, Long> {
 
+    /** Candidatos internos: a origem gravada da fonte é só o filtro inicial.
+     * O serviço administrativo confere identidade, cadeia e frequência antes de retornar. */
+    @Query("""
+            select h from HistoricoPaciente h
+            left join h.agendamento a
+            left join h.sessaoGrupo s
+            where h.paciente.idPublico=:paciente
+              and (h.unidadeOrigemChave is null or trim(h.unidadeOrigemChave)='')
+              and ((a.unidadeOrigemChave=:unidade and s is null)
+                   or (s.unidadeOrigemChave=:unidade and a is null))
+            order by h.ocorridoEm desc,h.id desc
+            """)
+    List<HistoricoPaciente> findCandidatosOrigemLocal(@Param("paciente") UUID paciente,@Param("unidade") String unidade);
+
     boolean existsByPacienteAndSessaoGrupo(com.pet.buscaativa.entities.Paciente paciente,
                                             com.pet.buscaativa.entities.SessaoGrupo sessaoGrupo);
     java.util.Optional<HistoricoPaciente> findByPacienteAndSessaoGrupo(Paciente paciente, SessaoGrupo sessaoGrupo);

@@ -1,6 +1,11 @@
 package com.pet.buscaativa.services.impl;
 
 import java.util.Objects;
+import java.util.List;
+import java.time.LocalDateTime;
+import com.pet.buscaativa.entities.enums.FrequenciaAssistencial;
+import com.pet.buscaativa.entities.enums.SituacaoAtendimento;
+import com.pet.buscaativa.entities.enums.TipoEventoHistoricoPaciente;
 import java.util.UUID;
 
 import org.springframework.security.access.AccessDeniedException;
@@ -45,7 +50,30 @@ public class VerificacaoFatoRevisaoProvenienciaService {
 
     /** Apenas o minimo necessario para uma futura etapa INTERNA de solicitacao. */
     public record FatoLocalVerificado(
-            TipoRegistro tipoRegistro, Long registroId, Long pacienteId, String unidadeChave) {}
+            TipoRegistro tipoRegistro, Long registroId, Long pacienteId, String unidadeChave,
+            boolean historicoSemOrigemComFonteLocal) {
+        public FatoLocalVerificado(TipoRegistro tipoRegistro,Long registroId,Long pacienteId,String unidadeChave) {
+            this(tipoRegistro,registroId,pacienteId,unidadeChave,false);
+        }
+    }
+
+    public record CandidatoOrigem(Long historico,TipoRegistro fonte,Long registroFonte,LocalDateTime ocorridoEm,
+            FrequenciaAssistencial frequencia) {}
+    public record CandidatosOrigem(Integer versaoVinculo,List<CandidatoOrigem> candidatos) {}
+
+    /** Somente análise administrativa: não libera o prontuário nem grava origem. */
+    public CandidatosOrigem candidatosOrigem(UUID pacienteId,UUID vinculoId) {
+        var ator=escopo.usuarioLogado();
+        if(ator==null || ator.getTipoUsuario()!=TipoUsuario.ADMINISTRADOR)
+            throw new AccessDeniedException("Perfil sem permissão para revisar origem histórica.");
+        var vinculo=autorizacao.exigirVinculoIdentificado(pacienteId,vinculoId);
+        var candidatos=historicos.findCandidatosOrigemLocal(pacienteId,vinculo.getUnidadeChave()).stream()
+                .flatMap(h->{
+                    try {return java.util.stream.Stream.of(conferirHistoricoSemOrigem(h,vinculo));}
+                    catch(ResourceNotFoundException e) {return java.util.stream.Stream.empty();}
+                }).toList();
+        return new CandidatosOrigem(vinculo.getVersion(),candidatos);
+    }
 
     public FatoLocalVerificado verificar(UUID pacienteIdPublico,
             TipoRegistro tipoRegistro, Long registroId) {
@@ -79,10 +107,14 @@ public class VerificacaoFatoRevisaoProvenienciaService {
             case HISTORICO -> {
                 HistoricoPaciente fato = historicos.findById(registroId).orElseThrow(
                         VerificacaoFatoRevisaoProvenienciaService::naoEncontrado);
-                if (fato.getPaciente() == null
-                        || !Objects.equals(paciente.getId(), fato.getPaciente().getId())
-                        || !Objects.equals(unidade, fato.getUnidadeOrigemChave()))
+                if(fato.getPaciente()==null || !Objects.equals(paciente.getId(),fato.getPaciente().getId()))
                     throw naoEncontrado();
+                if(AvaliacaoProvenienciaClinica.origemAusente(fato.getUnidadeOrigemChave())) {
+                    if(perfil!=TipoUsuario.ADMINISTRADOR) throw naoEncontrado();
+                    conferirHistoricoSemOrigem(fato,vinculo);
+                    return new FatoLocalVerificado(tipoRegistro,registroId,paciente.getId(),unidade,true);
+                }
+                if(!Objects.equals(unidade,fato.getUnidadeOrigemChave())) throw naoEncontrado();
                 autorizacao.validarHistoricoLocal(fato);
                 var sessao = fato.getSessaoGrupo();
                 if (sessao != null && (sessao.getStatus() != StatusSessaoGrupo.REALIZADA
@@ -112,6 +144,60 @@ public class VerificacaoFatoRevisaoProvenienciaService {
             }
         }
         return new FatoLocalVerificado(tipoRegistro, registroId, paciente.getId(), unidade);
+    }
+
+    private CandidatoOrigem conferirHistoricoSemOrigem(HistoricoPaciente h,VinculoAssistencial local) {
+        if(!AvaliacaoProvenienciaClinica.origemAusente(h.getUnidadeOrigemChave())
+                || h.getPaciente()==null || !Objects.equals(h.getPaciente().getId(),local.getPaciente().getId())
+                || h.getProfissional()==null || h.getProfissional().getId()==null || h.getOcorridoEm()==null
+                || !eventoFrequencia(h) || (h.getAgendamento()==null)==(h.getSessaoGrupo()==null))
+            throw naoEncontrado();
+        String unidade=local.getUnidadeChave();
+        FrequenciaAssistencial frequencia;
+        LocalDateTime horario;
+        Long responsavel,fonteId;
+        TipoRegistro fonte;
+        List<HistoricoPaciente> associados;
+        if(h.getAgendamento()!=null) {
+            var a=h.getAgendamento();
+            if(a.getId()==null || a.getPaciente()==null || !Objects.equals(a.getPaciente().getId(),local.getPaciente().getId())
+                    || !unidade.equals(a.getUnidadeOrigemChave()) || a.getUsuario()==null
+                    || !AvaliacaoProvenienciaClinica.frequenciaIndividualRegistrada(a)) throw naoEncontrado();
+            autorizacao.validarAgendamentoLocal(a);
+            frequencia=a.getFrequenciaAssistencial();
+            horario=LocalDateTime.of(a.getDataAgendamento(),a.getHoraAtendimento());
+            responsavel=a.getUsuario().getId();fonteId=a.getId();fonte=TipoRegistro.AGENDAMENTO;
+            associados=historicos.findByAgendamento(a).stream().filter(VerificacaoFatoRevisaoProvenienciaService::eventoFrequencia).toList();
+        } else {
+            var s=h.getSessaoGrupo();
+            if(s.getId()==null || !unidade.equals(s.getUnidadeOrigemChave())
+                    || s.getStatus()!=StatusSessaoGrupo.REALIZADA
+                    || AvaliacaoProvenienciaClinica.origemSessao(s)!=AvaliacaoProvenienciaClinica.Situacao.COMPROVADA)
+                throw naoEncontrado();
+            autorizacao.validarSessaoLocal(s,local.getPaciente());
+            var ps=s.getParticipantes().stream().filter(p->p.getPaciente()!=null
+                    && Objects.equals(p.getPaciente().getId(),local.getPaciente().getId())).toList();
+            if(ps.size()!=1 || !AvaliacaoProvenienciaClinica.frequenciaRegistrada(ps.getFirst().getStatusPresenca()))
+                throw naoEncontrado();
+            frequencia=FrequenciaAssistencial.valueOf(ps.getFirst().getStatusPresenca().name());
+            horario=LocalDateTime.of(s.getDataSessao(),s.getHorario());
+            responsavel=s.getResponsavelAtendimento().getId();fonteId=s.getId();fonte=TipoRegistro.SESSAO_GRUPO;
+            associados=historicos.findAllByPacienteAndSessaoGrupo(local.getPaciente(),s);
+        }
+        boolean tipoCorreto=frequencia==FrequenciaAssistencial.FALTOU?h.getTipo()==TipoEventoHistoricoPaciente.FALTA
+                :h.getTipo()==TipoEventoHistoricoPaciente.PRESENCA || h.getTipo()==TipoEventoHistoricoPaciente.PARTICIPACAO_GRUPO_TERAPEUTICO;
+        // Exigir a mesma coerência que o escritor de frequência local exige.
+        // Divergência de autoria/responsabilidade fica para análise específica.
+        if(!tipoCorreto || !horario.equals(h.getOcorridoEm()) || !Objects.equals(responsavel,h.getProfissional().getId())
+                || h.getSituacaoAtendimento()!=SituacaoAtendimento.valueOf(frequencia.name())
+                || associados.size()!=1 || h.getId()==null || !Objects.equals(h.getId(),associados.getFirst().getId()))
+            throw naoEncontrado();
+        return new CandidatoOrigem(h.getId(),fonte,fonteId,horario,frequencia);
+    }
+
+    private static boolean eventoFrequencia(HistoricoPaciente h) {
+        return h.getTipo()==TipoEventoHistoricoPaciente.FALTA || h.getTipo()==TipoEventoHistoricoPaciente.PRESENCA
+                || h.getTipo()==TipoEventoHistoricoPaciente.PARTICIPACAO_GRUPO_TERAPEUTICO;
     }
 
     private static ResourceNotFoundException naoEncontrado() {

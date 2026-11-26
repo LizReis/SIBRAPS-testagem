@@ -90,7 +90,10 @@ public class RegistroDecisaoRevisaoProvenienciaService {
         // dados originais ANTES de registrar a decisao administrativa.
         var fato = verificador.verificar(
                 pacienteIdPublico, pendencia.getTipoRegistro(), pendencia.getRegistroId());
-        if (!Objects.equals(fato.pacienteId(), pendencia.getPacienteId())
+        boolean revisaoOrigem=pendencia.getSituacaoEvidencia()==
+                com.pet.buscaativa.migration.ClassificadorEvidenciaClinicaLocal.Situacao.REVISAR_ORIGEM_DESCONHECIDA;
+        if (revisaoOrigem!=fato.historicoSemOrigemComFonteLocal()
+                || !Objects.equals(fato.pacienteId(), pendencia.getPacienteId())
                 || !Objects.equals(fato.unidadeChave(), unidade)
                 || fato.tipoRegistro() != pendencia.getTipoRegistro()
                 || !Objects.equals(fato.registroId(), pendencia.getRegistroId()))

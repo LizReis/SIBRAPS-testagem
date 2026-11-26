@@ -145,6 +145,15 @@ public final class EscritoresVinculoController {
             return ResponseEntity.noContent().build();
         }
 
+        @org.springframework.web.bind.annotation.GetMapping("/{paciente}/vinculos/{vinculo}/revisoes/candidatos-origem")
+        @PreAuthorize(ADMIN)
+        @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.SERIALIZABLE)
+        public ResponseEntity<com.pet.buscaativa.services.impl.VerificacaoFatoRevisaoProvenienciaService.CandidatosOrigem> candidatosOrigem(
+                @PathVariable UUID paciente,@PathVariable UUID vinculo) {
+            return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                    .body(revisao.candidatosOrigem(paciente,vinculo));
+        }
+
         @PostMapping("/{paciente}/vinculos/{vinculo}/revisoes")
         @PreAuthorize(CLINICO)
         public UUID solicitar(@PathVariable UUID paciente, @PathVariable UUID vinculo,

@@ -151,6 +151,16 @@ public class PendenciaRevisaoProveniencia {
         return p;
     }
 
+    /** Exclusivo para H1: fonte local verificada, origem do histórico ainda ausente. */
+    public static PendenciaRevisaoProveniencia paraHistoricoSemOrigemComFonteLocal(
+            VinculoAssistencial vinculo,Long registroId,String justificativa,Usuario solicitante,Instant instante) {
+        if(solicitante==null || solicitante.getTipoUsuario()!=TipoUsuario.ADMINISTRADOR)
+            throw new IllegalArgumentException("Revisão de origem exige administrador local.");
+        var p=paraFatoLocalComprovado(vinculo,TipoRegistro.HISTORICO,registroId,justificativa,solicitante,instante);
+        p.situacaoEvidencia=Situacao.REVISAR_ORIGEM_DESCONHECIDA;
+        return p;
+    }
+
     // Sem construtor publico ou setters: criar uma pendencia clinica futura
     // exigira operacao autorizada, evidencia conferida e justificativa.
 }

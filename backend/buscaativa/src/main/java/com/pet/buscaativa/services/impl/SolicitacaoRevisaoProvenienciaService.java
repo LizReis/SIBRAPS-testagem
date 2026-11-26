@@ -42,6 +42,11 @@ public class SolicitacaoRevisaoProvenienciaService {
     private final PendenciaRevisaoProvenienciaComandoRepository pendencias;
     private final Clock clock;
 
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.SERIALIZABLE)
+    public VerificacaoFatoRevisaoProvenienciaService.CandidatosOrigem candidatosOrigem(UUID paciente,UUID vinculo) {
+        return verificador.candidatosOrigem(paciente,vinculo);
+    }
+
     @Transactional
     public UUID solicitar(UUID pacienteIdPublico, TipoRegistro tipoRegistro,
             Long registroId, String justificativa) {
@@ -77,8 +82,11 @@ public class SolicitacaoRevisaoProvenienciaService {
             throw new ValidationException("Ja existe solicitacao para este registro nesta unidade.");
 
         PendenciaRevisaoProveniencia pendencia =
-                PendenciaRevisaoProveniencia.paraFatoLocalComprovado(
-                        bloqueado, tipoRegistro, registroId, explicacao, ator, Instant.now(clock));
+                fato.historicoSemOrigemComFonteLocal()
+                        ?PendenciaRevisaoProveniencia.paraHistoricoSemOrigemComFonteLocal(
+                            bloqueado,registroId,explicacao,ator,Instant.now(clock))
+                        :PendenciaRevisaoProveniencia.paraFatoLocalComprovado(
+                            bloqueado,tipoRegistro,registroId,explicacao,ator,Instant.now(clock));
         pendencias.save(pendencia);
         // O registro append-only e uma SOLICITACAO, nunca autorizacao clinica.
         return pendencia.getId();

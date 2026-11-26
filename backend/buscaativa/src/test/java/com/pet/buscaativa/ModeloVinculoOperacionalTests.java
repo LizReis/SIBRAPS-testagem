@@ -884,6 +884,7 @@ class ModeloVinculoOperacionalTests {
             assertThat(semProva.path("presencasComprovadas").isNull()).isTrue();
             assertThat(semProva.path("historicoLocalRequerConferencia").asBoolean()).isTrue();
             validarResolucaoColetivaConcorrente(app,sql,unidade,prof,colega,token,tokenColega,tokenAdmin,tokenExterno);
+            validarRevisaoOrigemHistorico(app,sql,unidade,token,tokenAdmin,tokenExterno,tokenRecepcao,prof);
         }
     }
 
@@ -1013,6 +1014,68 @@ class ModeloVinculoOperacionalTests {
         var requisicao=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+host.getWebServer().getPort()+rota))
                 .timeout(java.time.Duration.ofSeconds(20)).header("Authorization","Bearer "+token).GET().build();
         return cliente.send(requisicao,HttpResponse.BodyHandlers.ofByteArray());
+    }
+
+    private void validarRevisaoOrigemHistorico(ConfigurableApplicationContext app,JdbcTemplate sql,long unidade,
+            String tokenProf,String tokenAdmin,String tokenExterno,String tokenRecepcao,String prof) throws Exception {
+        var dados=cadastro(cpfSintetico(92),cnsSintetico(92),"Origem histórica",unidade);
+        var novo=http(app,"POST","/api/pacientes?ignorarSimilaridade=true",tokenProf,dados);
+        assertThat(novo.statusCode()).as(novo.body()).isEqualTo(201);
+        UUID paciente=UUID.fromString(json(app,novo).path("paciente").asString());
+        UUID vinculo=UUID.fromString(json(app,novo).path("vinculo").asString());
+        long pessoa=sql.queryForObject("select id from tb_paciente where id_publico=?",Long.class,paciente);
+        long responsavel=sql.queryForObject("select id from tb_usuario where email=?",Long.class,prof);
+        var dia=LocalDate.now(app.getBean(Clock.class)).minusDays(2);
+        var falta=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.falta(app,prof,pessoa,responsavel,dia,9);
+        var outra=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.falta(app,prof,pessoa,responsavel,dia,10);
+        long h=sql.queryForObject("select id from tb_historico_paciente where agendamento_id=? and tipo='FALTA'",Long.class,falta.id());
+        long divergente=sql.queryForObject("select id from tb_historico_paciente where agendamento_id=? and tipo='FALTA'",Long.class,outra.id());
+        // Apenas fixture sintética: reproduzir campo legado vazio e fonte temporal divergente.
+        sql.update("update tb_historico_paciente set unidade_origem_chave=null where id=?",h);
+        sql.update("update tb_historico_paciente set unidade_origem_chave=null,ocorrido_em=? where id=?",
+                dia.atTime(11,0),divergente);
+        var confirmacao=Map.of("cpf",dados.get("cpf"),"cns",dados.get("cns"),"nome",dados.get("nome"),
+                "nomeMae",dados.get("nomeMae"),"dataNascimento",dados.get("dataNascimento"),"tipoAcompanhamento","AMBOS");
+        assertThat(http(app,"POST","/api/pacientes/cadastro-unico/confirmar-vinculo",tokenExterno,confirmacao).statusCode()).isEqualTo(204);
+        var externo=http(app,"GET","/api/pacientes/"+paciente+"/detalhe",tokenExterno,null);
+        assertThat(externo.statusCode()).as(externo.body()).isEqualTo(200);
+        UUID outroVinculo=UUID.fromString(json(app,externo).path("paciente").path("vinculo").asString());
+        String rota="/api/pacientes/"+paciente+"/vinculos/"+vinculo+"/revisoes";
+        String outraRota="/api/pacientes/"+paciente+"/vinculos/"+outroVinculo+"/revisoes";
+        var candidatos=http(app,"GET",rota+"/candidatos-origem",tokenAdmin,null);
+        assertThat(candidatos.statusCode()).as(candidatos.body()).isEqualTo(200);
+        var lista=json(app,candidatos).path("candidatos");
+        assertThat(lista.size()).isEqualTo(1);
+        assertThat(lista.get(0).path("historico").asLong()).isEqualTo(h);
+        assertThat(lista.get(0).path("registroFonte").asLong()).isEqualTo(falta.id());
+        assertThat(http(app,"GET",rota+"/candidatos-origem",tokenProf,null).statusCode()).isEqualTo(403);
+        assertThat(http(app,"GET",rota+"/candidatos-origem",tokenRecepcao,null).statusCode()).isEqualTo(403);
+        assertThat(http(app,"GET",rota+"/candidatos-origem",tokenExterno,null).statusCode()).isEqualTo(404);
+        var listaExterna=http(app,"GET",outraRota+"/candidatos-origem",tokenExterno,null);
+        assertThat(listaExterna.statusCode()).as(listaExterna.body()).isEqualTo(200);
+        assertThat(json(app,listaExterna).path("candidatos").size()).isZero();
+        var justificativa="Conferência sintética da origem registrada no atendimento.";
+        var solicitacao=Map.of("tipo","HISTORICO","registro",h,"justificativa",justificativa);
+        int versao=versaoResolucao(sql,vinculo);
+        assertThat(http(app,"POST",rota+"?version="+versao,tokenProf,solicitacao).statusCode()).isEqualTo(404);
+        assertThat(http(app,"POST",outraRota+"?version="+versaoResolucao(sql,outroVinculo),tokenExterno,solicitacao).statusCode()).isEqualTo(404);
+        assertThat(http(app,"POST",rota+"?version="+versao,tokenAdmin,
+                Map.of("tipo","HISTORICO","registro",divergente,"justificativa",justificativa)).statusCode()).isEqualTo(404);
+        var criada=http(app,"POST",rota+"?version="+versao,tokenAdmin,solicitacao);
+        assertThat(criada.statusCode()).as(criada.body()).isEqualTo(200);
+        UUID ticket=UUID.fromString(json(app,criada).asString());
+        assertThat(sql.queryForObject("select situacao_evidencia from tb_pendencia_revisao_proveniencia where id=?",String.class,ticket))
+                .isEqualTo("REVISAR_ORIGEM_DESCONHECIDA");
+        var aprovada=http(app,"POST",rota+"/"+ticket+"/decisao?version="+versaoResolucao(sql,vinculo),tokenAdmin,
+                Map.of("decisao","APROVAR","justificativa","Origem comprovada pela fonte individual da unidade."));
+        assertThat(aprovada.statusCode()).as(aprovada.body()).isEqualTo(200);
+        assertThat(sql.queryForObject("select unidade_origem_chave from tb_historico_paciente where id=?",String.class,h)).isNull();
+        assertThat(faltasResolucao(sql,vinculo)).isEqualTo(2);
+        assertThat(faltasResolucao(sql,outroVinculo)).isZero();
+        var prontuario=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",tokenAdmin,null);
+        assertThat(prontuario.statusCode()).as(prontuario.body()).isEqualTo(200);
+        assertThat(java.util.stream.StreamSupport.stream(json(app,prontuario).path("historico").spliterator(),false)
+                .noneMatch(e->e.path("id").asLong()==h)).isTrue();
     }
 
     private static int faltasResolucao(JdbcTemplate sql,UUID vinculo) {

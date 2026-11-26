@@ -18,6 +18,12 @@ public class RevisaoProvenienciaLocalEnsaioService {
     private final SolicitacaoRevisaoProvenienciaService solicitacoes;
     private final RegistroDecisaoRevisaoProvenienciaService decisoes;
 
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.SERIALIZABLE)
+    public VerificacaoFatoRevisaoProvenienciaService.CandidatosOrigem candidatosOrigem(UUID paciente,UUID vinculo) {
+        atores.autorizar(true);
+        return solicitacoes.candidatosOrigem(paciente,vinculo);
+    }
+
     @Transactional
     public UUID solicitar(UUID paciente, UUID vinculo, Integer versao, TipoRegistro tipo, Long registro,
             String justificativa) {
