@@ -93,12 +93,23 @@ class ClinicalAuditMigrationTests {
             var r=mvc.perform(patch("/api/agendamentos/4/status").param("novoStatus","FALTOU").param("version","7").param("justificativa",reason).header("Authorization","Bearer "+token)).andReturn().getResponse();assertEquals(200,r.getStatus());
             var json=context.getBean(ObjectMapper.class);r=mvc.perform(get("/api/agendamentos/4/correcoes").header("Authorization","Bearer "+token)).andReturn().getResponse();assertEquals(200,r.getStatus());var row=json.readTree(r.getContentAsString()).get("content").get(0);id.set(row.get("id").asText());assertEquals(actor.getIdPublico().toString(),row.get("usuarioId").asText());assertEquals(8,row.get("versaoResultante").asInt());
             var manager=context.getBean(org.springframework.transaction.PlatformTransactionManager.class);
+            // A fixture deve usar a mesma data institucional da política clínica,
+            // inclusive quando o runner UTC já está no dia seguinte.
+            var clock=context.getBean(java.time.Clock.class);
+            var fuso=context.getBean(com.pet.buscaativa.config.AgendaTempoProperties.class).getFuso();
+            var hojeInstitucional=java.time.LocalDate.ofInstant(clock.instant(),fuso);
             var ids=new org.springframework.transaction.support.TransactionTemplate(manager).execute(status->{
                 var p=new com.pet.buscaativa.entities.Paciente();p.setNome("Paciente sintético RNF17 persistido");p.setNomeMae("Mãe sintética");p.setDataNascimento(java.time.LocalDate.of(1990,1,1));p.setCapsReferencia(CapsEnum.CAPS_AD);p.setStatusPaciente(StatusPaciente.ATIVO);p.setTipoAcompanhamento(TipoAcompanhamento.INDIVIDUAL);context.getBean(PacienteRepository.class).saveAndFlush(p);alertPatient.set(p.getIdPublico());
                 var responsible=context.getBean(UsuarioRepository.class).findAll().stream().filter(u->u.getTipoUsuario()==TipoUsuario.PROFISSIONAL).findFirst().orElseThrow();var appointments=context.getBean(AgendamentoRepository.class);var result=new ArrayList<Long>();
-                for(int i=1;i<=3;i++){var a=new com.pet.buscaativa.entities.Agendamento();a.setPaciente(p);a.setUsuario(responsible);a.setDataAgendamento(java.time.LocalDate.now().minusDays(i));a.setHoraAtendimento(java.time.LocalTime.of(9,0));a.setTurnoAgendamento(TurnoEnum.MANHA);a.setSituacaoAtendimento(SituacaoAtendimento.AGENDADO);result.add(appointments.saveAndFlush(a).getId());}return result;
+                for(int i=1;i<=3;i++){var a=new com.pet.buscaativa.entities.Agendamento();a.setPaciente(p);a.setUsuario(responsible);a.setDataAgendamento(hojeInstitucional.minusDays(i));a.setHoraAtendimento(java.time.LocalTime.of(9,0));a.setTurnoAgendamento(TurnoEnum.MANHA);a.setSituacaoAtendimento(SituacaoAtendimento.AGENDADO);result.add(appointments.saveAndFlush(a).getId());}return result;
             });
-            for(var appointmentId:ids)assertEquals(200,mvc.perform(patch("/api/agendamentos/"+appointmentId+"/status").param("novoStatus","FALTOU").header("Authorization","Bearer "+token)).andReturn().getResponse().getStatus());
+            for(var appointmentId:ids) {
+                var resposta=mvc.perform(patch("/api/agendamentos/"+appointmentId+"/status")
+                        .param("novoStatus","FALTOU").header("Authorization","Bearer "+token))
+                        .andReturn().getResponse();
+                assertEquals(200,resposta.getStatus(),()->"Atendimento sintético "+appointmentId+
+                        "; data institucional="+hojeInstitucional+"; resposta="+conteudo(resposta));
+            }
             assertEquals(200,mvc.perform(get("/api/pacientes/busca-ativa").header("Authorization","Bearer "+token)).andReturn().getResponse().getStatus());
             var visual=mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/pacientes/"+alertPatient.get()+"/alertas/visualizacoes").header("Authorization","Bearer "+token).contentType("application/json").content(json.writeValueAsString(new com.pet.buscaativa.entities.dto.VisualizacaoAlertaDTO(UUID.randomUUID())))).andReturn().getResponse();assertEquals(201,visual.getStatus());
             var forward=mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/pacientes/"+alertPatient.get()+"/alertas/encaminhamentos").header("Authorization","Bearer "+token).contentType("application/json").content(json.writeValueAsString(new com.pet.buscaativa.entities.dto.EncaminhamentoAlertaDTO(UUID.randomUUID(),"Equipe sintética","Registrada solicitação formal de avaliação pela equipe.")))).andReturn().getResponse();assertEquals(201,forward.getStatus());alertEvent.set(json.readTree(forward.getContentAsString()).get("id").asText());
@@ -120,6 +131,11 @@ class ClinicalAuditMigrationTests {
         }
         System.out.println("AUDIT_RESTORE applicationBoots=3 auditRows=1 alertEvents=3 actualClinicalCorrection=true restartMigrations=0 latestBackupPreserved=true");
     }
+    private static String conteudo(org.springframework.mock.web.MockHttpServletResponse resposta) {
+        try { return resposta.getContentAsString(); }
+        catch (java.io.UnsupportedEncodingException e) { return "Resposta não decodificável."; }
+    }
+
     @Test void disposableDevMemoryCreatesProtectedAuditStructureWithoutHistoricalCorrections() {
         var config=new com.zaxxer.hikari.HikariConfig();config.setJdbcUrl("jdbc:h2:mem:dev-audit-"+UUID.randomUUID());config.setUsername("sa");config.setPassword(UUID.randomUUID().toString());config.setMaximumPoolSize(1);config.setConnectionTimeout(1000);
         try(var source=new com.zaxxer.hikari.HikariDataSource(config)) {
