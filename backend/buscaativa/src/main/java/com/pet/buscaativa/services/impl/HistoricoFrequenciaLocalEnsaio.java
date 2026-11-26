@@ -27,6 +27,7 @@ class HistoricoFrequenciaLocalEnsaio {
     private final HistoricoPacienteRepository historicos;
     private final LinhaDoTempoFrequenciasVinculoService linha;
     private final jakarta.persistence.EntityManager em;
+    private final OrigemHistoricaEfetivaLocal origemEfetiva;
 
     /**
      * Recalcula somente a numeração derivada, sem criar fatos ou corrigir a
@@ -98,7 +99,9 @@ class HistoricoFrequenciaLocalEnsaio {
                     : h.getTipo() == TipoEventoHistoricoPaciente.PRESENCA
                         || h.getTipo() == TipoEventoHistoricoPaciente.PARTICIPACAO_GRUPO_TERAPEUTICO;
             if (tipoCorreto && Objects.equals(h.getPaciente().getId(), local.getPaciente().getId())
-                    && local.getUnidadeChave().equals(h.getUnidadeOrigemChave())
+                    && (local.getUnidadeChave().equals(h.getUnidadeOrigemChave())
+                        || (AvaliacaoProvenienciaClinica.origemAusente(h.getUnidadeOrigemChave())
+                            && origemEfetiva.reconhecida(local,h.getId())))
                     && Objects.equals(sessao, h.getSessaoGrupo() == null ? null : h.getSessaoGrupo().getId())
                     && (sessao == null || h.getAgendamento() == null)
                     && h.getProfissional() != null && responsavel.getId().equals(h.getProfissional().getId())

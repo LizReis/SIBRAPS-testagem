@@ -34,6 +34,7 @@ class AplicacaoOrigemHistoricaLocal {
     private final PoliticaJustificativaCorrecao justificativas;
     private final JdbcTemplate jdbc;
     private final Clock clock;
+    private final HistoricoFrequenciaLocalEnsaio historicoFrequencia;
     private final jakarta.persistence.EntityManager em;
     private final com.pet.buscaativa.repositories.PendenciaRevisaoProvenienciaComandoRepository pendencias;
 
@@ -72,6 +73,9 @@ class AplicacaoOrigemHistoricaLocal {
                 values (?,?,?,?,?,?,?,?,'ADMINISTRADOR',?,?)
                 """,id,aprovacao.decisao(),ticket,local.getId(),local.getPaciente().getId(),
                 local.getUnidadeChave(),historico,ator.getId(),motivo,instante);
+        // O reconhecimento não cria frequência. Reaproveita apenas a
+        // numeração derivada dos fatos comprovados, dentro da transação.
+        historicoFrequencia.renumerar(local);
         return id;
     }
 

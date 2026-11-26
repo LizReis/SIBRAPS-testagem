@@ -34,6 +34,59 @@ class OrigemHistoricaEfetivaLocal {
     private record Reversao(UUID id,OffsetDateTime registradaEm) {}
     private record Aplicacao(UUID id,UUID ticket,ProvaOrigem prova,OffsetDateTime aplicadaEm,OffsetDateTime decididaEm) {}
 
+    private record Correcao(int anterior,int resultante,FrequenciaAssistencial antes,
+            FrequenciaAssistencial depois,OffsetDateTime ocorridoEm) {}
+
+    /** A aprovação prova a origem; a auditoria existente pode provar uma
+     * mudança posterior de frequência do MESMO fato. Nunca aceitar mudança
+     * sem trilha, nem alterar a prova original ou a regra da aplicação V28. */
+    private boolean continuidadeComprovada(VinculoAssistencial local,Aplicacao aplicacao,ProvaOrigem atual) {
+        var inicial=aplicacao.prova();
+        if(inicial.equals(atual)) return true;
+        var a=inicial.candidato();var b=atual.candidato();
+        if(!java.util.Objects.equals(a.historico(),b.historico()) || a.fonte()!=b.fonte()
+                || !java.util.Objects.equals(a.registroFonte(),b.registroFonte())
+                || !java.util.Objects.equals(a.ocorridoEm(),b.ocorridoEm())
+                || !java.util.Objects.equals(inicial.participanteId(),atual.participanteId())
+                || !java.util.Objects.equals(inicial.responsavelId(),atual.responsavelId())
+                || inicial.versaoFonte()==null || atual.versaoFonte()==null
+                || atual.versaoFonte()<=inicial.versaoFonte()) return false;
+        boolean grupo=a.fonte()==TipoRegistro.SESSAO_GRUPO;
+        String filtro=grupo?"tipo_correcao='GRUPO' and sessao_id=? and participante_id=? and agendamento_id is null"
+                :"tipo_correcao='INDIVIDUAL' and agendamento_id=? and sessao_id is null and participante_id is null";
+        var argumentos=new java.util.ArrayList<Object>();
+        argumentos.add(local.getPaciente().getId());argumentos.add(local.getUnidadeChave());
+        argumentos.add(inicial.responsavelId());argumentos.add(a.registroFonte());
+        if(grupo) argumentos.add(inicial.participanteId());
+        argumentos.add(inicial.versaoFonte());argumentos.add(atual.versaoFonte());
+        var correcoes=jdbc.query("""
+                select versao_anterior,versao_resultante,frequencia_anterior,frequencia_nova,ocorrido_em
+                from tb_auditoria_correcao_frequencia
+                where paciente_id=? and unidade=? and responsavel_id=?
+                  and (perfil='ADMINISTRADOR' or (perfil='PROFISSIONAL' and ator_id=responsavel_id))
+                  and
+                """+filtro+" and versao_anterior>=? and versao_anterior<? order by versao_anterior,id",
+                (rs,n)->new Correcao(rs.getInt(1),rs.getInt(2),FrequenciaAssistencial.valueOf(rs.getString(3)),
+                        FrequenciaAssistencial.valueOf(rs.getString(4)),rs.getObject(5,OffsetDateTime.class)),
+                argumentos.toArray());
+        int versao=inicial.versaoFonte();
+        var frequencia=a.frequencia();
+        var instante=aplicacao.aplicadaEm();
+        for(var c:correcoes) {
+            if(c.anterior()!=versao || c.resultante()!=versao+1 || c.antes()!=frequencia
+                    || c.depois()==c.antes() || c.ocorridoEm().isBefore(instante)) return false;
+            versao=c.resultante();frequencia=c.depois();instante=c.ocorridoEm();
+        }
+        return versao==atual.versaoFonte() && frequencia==b.frequencia();
+    }
+
+    boolean reconhecida(VinculoAssistencial local,Long historico) {
+        if(historico==null || org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication()==null)
+            return false;
+        var r=consultar(local).get(historico);
+        return r!=null && r.comprovada();
+    }
+
     Map<Long,Reconhecimento> consultar(VinculoAssistencial local) {
         var resultado=new LinkedHashMap<Long,Reconhecimento>();
         for(var a:consultarPorTicket(local).values()) {
@@ -92,7 +145,7 @@ class OrigemHistoricaEfetivaLocal {
             try {
                 var h=historicos.findById(id).orElseThrow(()->new ResourceNotFoundException("Histórico não encontrado."));
                 comprovada=!a.aplicadaEm().isBefore(a.decididaEm())
-                        && a.prova().equals(verificador.conferirHistoricoSemOrigem(h,local));
+                        && continuidadeComprovada(local,a,verificador.conferirHistoricoSemOrigem(h,local));
             } catch(ResourceNotFoundException e) {
                 // Divergência posterior não autoriza leitura nem apaga a aplicação.
             }

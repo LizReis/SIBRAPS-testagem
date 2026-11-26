@@ -1294,6 +1294,46 @@ class ModeloVinculoOperacionalTests {
         assertThat(sql.queryForObject("select count(*) from tb_aplicacao_origem_historica where historico_id=?",Integer.class,h)).isEqualTo(2);
         assertThatThrownBy(()->sql.update("delete from tb_reabertura_origem_historica where novo_id=?",nova))
                 .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        // A correção autorizada de frequência não exige uma nova aprovação de origem.
+        // A mesma trilha já usada pelos escritores comprova a evolução do fato.
+        assertThat(sql.queryForObject("select numero_falta_consecutiva from tb_historico_paciente where id=?",Integer.class,h)).isEqualTo(1);
+        assertThat(sql.queryForObject("select numero_falta_consecutiva from tb_historico_paciente where id=?",Integer.class,hGrupo)).isEqualTo(3);
+        int versaoIndividualAtual=sql.queryForObject("select version from tb_agendamento where id=?",Integer.class,falta.id());
+        com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.corrigir(app,prof,
+                new com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.Reserva(falta.id(),versaoIndividualAtual));
+        var corrigido=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",tokenProf,null);
+        assertThat(corrigido.statusCode()).as(corrigido.body()).isEqualTo(200);
+        var leituraCorrigida=json(app,corrigido);
+        assertThat(java.util.stream.StreamSupport.stream(leituraCorrigida.path("historico").spliterator(),false)
+                .anyMatch(e->e.path("id").asLong()==h && e.path("origemCorrigida").asBoolean()
+                        && e.path("situacao").asString().equals("PRESENTE"))).isTrue();
+        assertThat(leituraCorrigida.path("faltasComprovadas").asLong()).isEqualTo(2);
+        assertThat(sql.queryForObject("select numero_falta_consecutiva from tb_historico_paciente where id=?",Integer.class,h)).isNull();
+        assertThat(sql.queryForObject("select numero_falta_consecutiva from tb_historico_paciente where id=?",Integer.class,hGrupo)).isEqualTo(2);
+        int versaoColetivaAtual=sql.queryForObject("select version from tb_sessao_grupo where id=?",Integer.class,sessao);
+        var corrigidaGrupo=http(app,"PATCH","/api/grupos/sessoes/"+sessao+"/frequencias",tokenProf,
+                Map.of("version",versaoColetivaAtual,"frequencias",List.of(Map.of("pacienteId",paciente,"statusPresenca","PRESENTE")),
+                        "justificativa","Conferência sintética da frequência coletiva reconhecida."));
+        assertThat(corrigidaGrupo.statusCode()).as(corrigidaGrupo.body()).isEqualTo(200);
+        var leituraFinal=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",tokenProf,null);
+        assertThat(leituraFinal.statusCode()).as(leituraFinal.body()).isEqualTo(200);
+        var finalJson=json(app,leituraFinal);
+        assertThat(java.util.stream.StreamSupport.stream(finalJson.path("historico").spliterator(),false)
+                .filter(e->e.path("origemCorrigida").asBoolean() && e.path("situacao").asString().equals("PRESENTE"))
+                .map(e->e.path("id").asLong()).toList()).containsExactlyInAnyOrder(h,hGrupo);
+        assertThat(finalJson.path("faltasComprovadas").asLong()).isEqualTo(1);
+        assertThat(finalJson.path("presencasComprovadas").asLong()).isEqualTo(2);
+        assertThat(sql.queryForObject("select count(*) from tb_historico_paciente where id in (?,?) and unidade_origem_chave is null",Integer.class,h,hGrupo)).isEqualTo(2);
+        assertThat(sql.queryForObject("select count(*) from tb_prova_aprovacao_origem where decisao_id in (?,?) and frequencia='FALTOU'",Integer.class,novaDecisao,novaDecisaoGrupo)).isEqualTo(2);
+        assertThat(sql.queryForObject("select count(*) from tb_auditoria_correcao_frequencia where paciente_id=?",Integer.class,pessoa)).isEqualTo(2);
+        assertThat(sql.queryForObject("select count(*) from tb_aplicacao_origem_historica where historico_id in (?,?)",Integer.class,h,hGrupo)).isEqualTo(3);
+        assertThat(faltasResolucao(sql,outroVinculo)).isZero();
+        // Nova versão sem correção auditada continua inconclusiva; não ampliar a prova.
+        sql.update("update tb_agendamento set version=version+1 where id=?",falta.id());
+        var semProvaPosterior=http(app,"GET","/api/pacientes/"+paciente+"/prontuario",tokenProf,null);
+        assertThat(semProvaPosterior.statusCode()).as(semProvaPosterior.body()).isEqualTo(200);
+        assertThat(java.util.stream.StreamSupport.stream(json(app,semProvaPosterior).path("historico").spliterator(),false)
+                .noneMatch(e->e.path("id").asLong()==h)).isTrue();
     }
 
     private static int faltasResolucao(JdbcTemplate sql,UUID vinculo) {
