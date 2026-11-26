@@ -74,7 +74,16 @@ public class PersistenciaIndicadoresVinculoEnsaioService {
         return avaliar(local, evidencia(local), empateAnterior);
     }
 
+    Avaliado avaliarAposResolucaoVinculada(VinculoAssistencial local,boolean empateAnterior) {
+        return avaliar(local,evidencia(local),empateAnterior,true);
+    }
+
     private Avaliado avaliar(VinculoAssistencial local, EvidenciaStatusVinculo.Situacao prova, boolean empateAnterior) {
+        return avaliar(local,prova,empateAnterior,false);
+    }
+
+    private Avaliado avaliar(VinculoAssistencial local, EvidenciaStatusVinculo.Situacao prova, boolean empateAnterior,
+            boolean resolucaoVinculada) {
         var data = LocalDate.now(clock);
         var valores = calculo.calcular(local, data, prova, local.getIndicadoresPendentes());
         boolean inconclusivo = !valores.faltas().conclusiva() || valores.evidencias().agendaLocalInconclusiva();
@@ -83,7 +92,8 @@ public class PersistenciaIndicadoresVinculoEnsaioService {
                 && f.agendamentosSemOrigemComFrequencia() == 0 && f.presencasGrupoSemOrigem() == 0
                 && f.frequenciasInconsistentes() == 0 && !valores.evidencias().agendaLocalInconclusiva();
         boolean podeResolver = empateAnterior && !inconclusivo && prova.comprovada()
-                && Boolean.TRUE.equals(local.getPendenciaEmpateLocal()) && !possuiSolicitacaoRevisao(local);
+                && Boolean.TRUE.equals(local.getPendenciaEmpateLocal())
+                && !(resolucaoVinculada?possuiSolicitacaoSemAplicacao(local):possuiSolicitacaoRevisao(local));
         if (podeResolver) valores = calculo.calcular(local, data, prova, false);
         var plano = PlanoIndicadoresVinculo.preparar(local.getIdPublico(), local.getUnidadeChave(), data,
                 valores.status(), valores.tipo(), valores.pendencia(), valores.faltas(),
@@ -102,6 +112,19 @@ public class PersistenciaIndicadoresVinculoEnsaioService {
                 """, Long.class).setParameter("vinculo", local.getId())
                 .setParameter("paciente", local.getPaciente().getId())
                 .setParameter("unidade", local.getUnidadeChave()).getSingleResult() > 0;
+    }
+
+    private boolean possuiSolicitacaoSemAplicacao(VinculoAssistencial local) {
+        // Só chamado após aplicação V25 explícita. Não ignorar ticket alheio,
+        // rejeitado, sem aplicação ou cuja resolução foi desfeita.
+        return ((Number)em.createNativeQuery("""
+                select count(*) from tb_pendencia_revisao_proveniencia p
+                where p.vinculo_id=:vinculo and p.paciente_id=:paciente and p.unidade_chave=:unidade
+                and not exists(select 1 from vw_aplicacao_pendencia_ativa a
+                    where a.pendencia_id=p.id and a.vinculo_id=p.vinculo_id
+                    and a.paciente_id=p.paciente_id and a.unidade_chave=p.unidade_chave)
+                """).setParameter("vinculo",local.getId()).setParameter("paciente",local.getPaciente().getId())
+                .setParameter("unidade",local.getUnidadeChave()).getSingleResult()).longValue()>0;
     }
 
     @Transactional(propagation = Propagation.MANDATORY)

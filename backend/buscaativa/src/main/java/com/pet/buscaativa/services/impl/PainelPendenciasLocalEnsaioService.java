@@ -19,10 +19,13 @@ import lombok.RequiredArgsConstructor;
 public class PainelPendenciasLocalEnsaioService {
     private final AtoresEstadoClinicoLocalEnsaio atores;
     private final EntityManager em;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
     public enum Estado { PENDENTE, APROVADA, REJEITADA }
+    public enum Aplicacao { SEM_APLICACAO, RESOLUCAO_REGISTRADA, REVERTIDA, INCONCLUSIVA }
+    private record SituacaoAplicacao(Aplicacao estado,UUID resolucao) {}
     public record Item(UUID ticket,UUID paciente,UUID vinculo,String nome,PendenciaRevisaoProveniencia.TipoRegistro tipoRegistro,
             Instant solicitadoEm,Estado estado,UUID decisao,Instant decididaEm,
-            Integer versaoVinculo, Long registro, String justificativaSolicitacao, String justificativaDecisao) {}
+            Integer versaoVinculo, Long registro, String justificativaSolicitacao, String justificativaDecisao, Aplicacao aplicacao, UUID resolucaoAtiva) {}
     public record Pagina(long pendentes,long aprovadas,long rejeitadas,java.util.List<Item> itens,long total,int pagina,int tamanho) {}
 
     public Pagina listar(Estado filtro,int pagina,int tamanho) {
@@ -44,18 +47,34 @@ public class PainelPendenciasLocalEnsaioService {
         if(filtro==Estado.APROVADA||filtro==Estado.REJEITADA) q.setParameter("decisao",
                 filtro==Estado.APROVADA?DecisaoRevisaoProveniencia.Decisao.APROVAR:DecisaoRevisaoProveniencia.Decisao.REJEITAR);
         long total=filtro==null?pendentes+aprovadas+rejeitadas:filtro==Estado.PENDENTE?pendentes:filtro==Estado.APROVADA?aprovadas:rejeitadas;
+        boolean instalada=com.pet.buscaativa.migration.AplicacaoPendenciaSchemaGuard.instalada(jdbc);
         long offset=(long)pagina*tamanho;
         var itens=offset>=total?java.util.List.<Item>of():q.setFirstResult(Math.toIntExact(offset)).setMaxResults(tamanho)
                 .getResultList().stream().map(row->{
                     var p=(PendenciaRevisaoProveniencia)row[0];var d=(DecisaoRevisaoProveniencia)row[1];
                     var v=p.getVinculo();
+                    var aplicacao=instalada?situacaoAplicacao(p):new SituacaoAplicacao(Aplicacao.SEM_APLICACAO,null);
                     return new Item(p.getId(),v.getPaciente().getIdPublico(),v.getIdPublico(),v.getPaciente().getNome(),
                             p.getTipoRegistro(),p.getSolicitadoEm(),d==null?Estado.PENDENTE:
                             d.getDecisao()==DecisaoRevisaoProveniencia.Decisao.APROVAR?Estado.APROVADA:Estado.REJEITADA,
                             d==null?null:d.getId(),d==null?null:d.getDecididaEm(), v.getVersion(),
-                            p.getRegistroId(), p.getJustificativa(), d==null?null:d.getJustificativa());
+                            p.getRegistroId(), p.getJustificativa(), d==null?null:d.getJustificativa(), aplicacao.estado(),aplicacao.resolucao());
                 }).toList();
         return new Pagina(pendentes,aprovadas,rejeitadas,itens,total,pagina,tamanho);
+    }
+
+    private SituacaoAplicacao situacaoAplicacao(PendenciaRevisaoProveniencia p) {
+        var ativas=jdbc.queryForList("""
+                select resolucao_id from vw_aplicacao_pendencia_ativa
+                where pendencia_id=? and vinculo_id=? and paciente_id=? and unidade_chave=?
+                """,UUID.class,p.getId(),p.getVinculo().getId(),p.getPacienteId(),p.getUnidadeChave());
+        if(ativas.size()>1) return new SituacaoAplicacao(Aplicacao.INCONCLUSIVA,null);
+        if(ativas.size()==1) return new SituacaoAplicacao(Aplicacao.RESOLUCAO_REGISTRADA,ativas.getFirst());
+        boolean anterior=Boolean.TRUE.equals(jdbc.queryForObject("""
+                select exists(select 1 from tb_aplicacao_pendencia_resolucao
+                    where pendencia_id=? and vinculo_id=? and paciente_id=? and unidade_chave=?)
+                """,Boolean.class,p.getId(),p.getVinculo().getId(),p.getPacienteId(),p.getUnidadeChave()));
+        return new SituacaoAplicacao(anterior?Aplicacao.REVERTIDA:Aplicacao.SEM_APLICACAO,null);
     }
 
     private long contar(String from,String unidade,DecisaoRevisaoProveniencia.Decisao decisao) {

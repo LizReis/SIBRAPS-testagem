@@ -55,11 +55,15 @@ public final class OperacoesResolucaoFrequenciaTeste {
     }
     public static UUID resolver(ApplicationContext app,String email,UUID paciente,UUID vinculo,Integer versao,
             Reserva a,Reserva b,boolean rollback) {
+        return resolver(app,email,paciente,vinculo,versao,a,b,rollback,null);
+    }
+    public static UUID resolver(ApplicationContext app,String email,UUID paciente,UUID vinculo,Integer versao,
+            Reserva a,Reserva b,boolean rollback,UUID ticket) {
         return como(email,()->tx(app).execute(t->{
             var id=app.getBean(PreparacaoResolucaoFrequenciaLocal.class).registrar(paciente,vinculo,versao,
                     new PlanoResolucaoFrequencia.Referencia(ATENDIMENTO_INDIVIDUAL,a.id(),a.versao()),
                     new PlanoResolucaoFrequencia.Referencia(ATENDIMENTO_INDIVIDUAL,b.id(),b.versao()),
-                    "Atendimento sintético registrado em duplicidade.");
+                    "Atendimento sintético registrado em duplicidade.",ticket);
             if(rollback)t.setRollbackOnly();
             return id;
         }));
@@ -67,6 +71,16 @@ public final class OperacoesResolucaoFrequenciaTeste {
     public static UUID desfazer(ApplicationContext app,String email,UUID paciente,UUID vinculo,Integer versao,UUID resolucao) {
         return como(email,()->tx(app).execute(t->app.getBean(PreparacaoResolucaoFrequenciaLocal.class)
                 .desfazer(paciente,vinculo,versao,resolucao,"Conferência sintética: os atendimentos eram distintos.")));
+    }
+    public static UUID solicitar(ApplicationContext app,String email,UUID paciente,UUID vinculo,Integer versao,Reserva r) {
+        return como(email,()->app.getBean(RevisaoProvenienciaLocalEnsaioService.class).solicitar(paciente,vinculo,versao,
+                com.pet.buscaativa.entities.PendenciaRevisaoProveniencia.TipoRegistro.AGENDAMENTO,r.id(),
+                "Solicitação sintética de revisão de duplicidade."));
+    }
+    public static UUID aprovar(ApplicationContext app,String email,UUID paciente,UUID vinculo,Integer versao,UUID ticket) {
+        return como(email,()->app.getBean(RevisaoProvenienciaLocalEnsaioService.class).decidir(paciente,vinculo,versao,ticket,
+                com.pet.buscaativa.entities.DecisaoRevisaoProveniencia.Decisao.APROVAR,
+                "Aprovação sintética para conferência do atendimento."));
     }
     public static void corrigir(ApplicationContext app,String email,Reserva r) {
         como(email,()->app.getBean(FrequenciaIndividualLocalEnsaioService.class)

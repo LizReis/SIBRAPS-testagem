@@ -703,9 +703,12 @@ class ModeloVinculoOperacionalTests {
         AgendaMigrationTool.migrarFechamentoAutomatico(banco);
         AgendaMigrationTool.migrarResolucaoFrequencia(banco);
         AgendaMigrationTool.migrarReversaoResolucao(banco);
+        assertThat(AgendaMigrationTool.migrarAplicacaoPendencia(banco).migrationsExecuted).isEqualTo(1);
+        assertThat(AgendaMigrationTool.migrarAplicacaoPendencia(banco).migrationsExecuted).isZero();
         var sql=new JdbcTemplate(banco);
         long unidade=usf(sql,"Resolução A");
         String prof=ator(sql,unidade,2,"resolucao-prof");
+        String admin=ator(sql,unidade,1,"resolucao-admin");
         String externo=ator(sql,usf(sql,"Resolução B"),1,"resolucao-externo");
         try(var app=iniciar(banco)) {
             var token=login(app,prof);
@@ -761,6 +764,33 @@ class ModeloVinculoOperacionalTests {
             assertThat(sql.queryForObject("select count(*) from tb_resolucao_frequencia_local",Integer.class)).isEqualTo(1);
             assertThat(sql.queryForObject("select count(*) from tb_reversao_resolucao_frequencia",Integer.class)).isEqualTo(1);
             assertThat(sql.queryForObject("select count(*) from tb_agendamento where id in (?,?,?) and frequencia_assistencial='FALTOU'",Integer.class,a.id(),b.id(),c.id())).isEqualTo(3);
+            // Reaproveita a fixture após reversão da resolução direta.
+            var ticket=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.solicitar(app,prof,paciente,vinculo,versaoResolucao(sql,vinculo),b);
+            assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.resolver(app,prof,paciente,vinculo,versaoResolucao(sql,vinculo),a,b,false,ticket))
+                    .isInstanceOf(com.pet.buscaativa.services.exceptions.ConflictException.class);
+            var decisao=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.aprovar(app,admin,paciente,vinculo,versaoResolucao(sql,vinculo),ticket);
+            assertThat(faltasResolucao(sql,vinculo)).isEqualTo(3);
+            assertThat(sql.queryForObject("select count(*) from tb_aplicacao_pendencia_resolucao",Integer.class)).isZero();
+            assertThatThrownBy(()->com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.resolver(app,prof,paciente,vinculo,versaoResolucao(sql,vinculo),b,a,false,ticket))
+                    .isInstanceOf(com.pet.buscaativa.services.exceptions.ConflictException.class);
+            var vinculada=com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.resolver(app,prof,paciente,vinculo,versaoResolucao(sql,vinculo),a,b,false,ticket);
+            assertThat(faltasResolucao(sql,vinculo)).isEqualTo(2);
+            assertThat(sql.queryForObject("select decisao_id from vw_aplicacao_pendencia_ativa where resolucao_id=?",UUID.class,vinculada)).isEqualTo(decisao);
+            var tokenAdmin=login(app,admin);
+            var painel=http(app,"GET","/api/relatorios/pendencias",tokenAdmin,null);
+            assertThat(painel.statusCode()).as(painel.body()).isEqualTo(200);
+            var item=json(app,painel).path("itens").get(0);
+            assertThat(item.path("estado").asString()).isEqualTo("APROVADA");
+            assertThat(item.path("aplicacao").asString()).isEqualTo("RESOLUCAO_REGISTRADA");
+            com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.desfazer(app,prof,paciente,vinculo,versaoResolucao(sql,vinculo),vinculada);
+            assertThat(faltasResolucao(sql,vinculo)).isEqualTo(3);
+            assertThat(sql.queryForObject("select count(*) from vw_aplicacao_pendencia_ativa",Integer.class)).isZero();
+            assertThat(sql.queryForObject("select count(*) from tb_aplicacao_pendencia_resolucao",Integer.class)).isEqualTo(1);
+            var painelRevertido=http(app,"GET","/api/relatorios/pendencias",tokenAdmin,null);
+            assertThat(painelRevertido.statusCode()).as(painelRevertido.body()).isEqualTo(200);
+            assertThat(json(app,painelRevertido).path("itens").get(0).path("aplicacao").asString()).isEqualTo("REVERTIDA");
+            assertThatThrownBy(()->sql.update("delete from tb_aplicacao_pendencia_resolucao where resolucao_id=?",vinculada))
+                    .isInstanceOf(org.springframework.dao.DataAccessException.class);
         }
     }
     private static int faltasResolucao(JdbcTemplate sql,UUID vinculo) {

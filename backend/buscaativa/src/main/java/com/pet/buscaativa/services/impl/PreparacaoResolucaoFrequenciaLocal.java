@@ -37,9 +37,15 @@ class PreparacaoResolucaoFrequenciaLocal {
     private final PersistenciaIndicadoresVinculoEnsaioService indicadores;
     private final HistoricoFrequenciaLocalEnsaio historico;
     private final jakarta.persistence.EntityManager em;
+    private final AplicacaoPendenciaResolucaoLocal aplicacoes;
 
     UUID registrar(UUID paciente, UUID vinculo, Integer versaoVinculo, Referencia valido,
             Referencia desconsiderado, String justificativa) {
+        return registrar(paciente,vinculo,versaoVinculo,valido,desconsiderado,justificativa,null);
+    }
+
+    UUID registrar(UUID paciente, UUID vinculo, Integer versaoVinculo, Referencia valido,
+            Referencia desconsiderado, String justificativa, UUID ticket) {
         var contexto=atores.autorizar(false);
         if(!ReversaoResolucaoSchemaGuard.instalada(jdbc))
             throw new ConflictException("Estrutura de resolução não instalada.");
@@ -54,6 +60,7 @@ class PreparacaoResolucaoFrequenciaLocal {
         PlanoResolucaoFrequencia.validar(valido,desconsiderado,a,b,ator.getId(),ator.getTipoUsuario());
         if(jaDesconsiderado(valido) || jaDesconsiderado(desconsiderado) || possuiDependentes(desconsiderado))
             throw new ConflictException("Os fatos já participam de resolução incompatível.");
+        var decisao=ticket==null?null:aplicacoes.conferir(local,evidencias,desconsiderado,ticket);
         boolean empateAnterior=indicadores.empateConhecidoAntesDaCorrecao(local);
         var id=UUID.randomUUID();
         jdbc.update("""
@@ -67,7 +74,8 @@ class PreparacaoResolucaoFrequenciaLocal {
                 desconsiderado.fonte().name(),desconsiderado.id(),desconsiderado.versao(),frequencia(b),b.responsavel(),
                 a.horario(),ator.getId(),ator.getTipoUsuario().name(),motivo,
                 OffsetDateTime.ofInstant(clock.instant().truncatedTo(ChronoUnit.MICROS),ZoneOffset.UTC));
-        atualizar(local,ator,empateAnterior,versaoVinculo);
+        if(decisao!=null) aplicacoes.registrar(local,id,ticket,decisao);
+        atualizar(local,ator,empateAnterior,versaoVinculo,decisao!=null);
         return id;
     }
 
@@ -105,15 +113,16 @@ class PreparacaoResolucaoFrequenciaLocal {
                 original.responsavelValido(),original.responsavelDesconsiderado(),ator.getId(),
                 ator.getTipoUsuario().name(),motivo,
                 OffsetDateTime.ofInstant(clock.instant().truncatedTo(ChronoUnit.MICROS),ZoneOffset.UTC));
-        atualizar(local,ator,false,versaoVinculo);
+        atualizar(local,ator,false,versaoVinculo,false);
         return id;
     }
 
     private void atualizar(com.pet.buscaativa.entities.VinculoAssistencial local,
-            com.pet.buscaativa.entities.Usuario ator,boolean empateAnterior,Integer versaoAnterior) {
+            com.pet.buscaativa.entities.Usuario ator,boolean empateAnterior,Integer versaoAnterior,boolean vinculada) {
         // JDBC participa da mesma transação JPA. Incerteza clínica mantém
         // a pendência, falha técnica propaga e desfaz a operação inteira.
-        indicadores.aplicar(indicadores.avaliarAposCorrecao(local,empateAnterior),ator);
+        indicadores.aplicar(vinculada?indicadores.avaliarAposResolucaoVinculada(local,empateAnterior)
+                :indicadores.avaliarAposCorrecao(local,empateAnterior),ator);
         historico.renumerar(local);
         em.flush();
         if(java.util.Objects.equals(versaoAnterior,local.getVersion()))
