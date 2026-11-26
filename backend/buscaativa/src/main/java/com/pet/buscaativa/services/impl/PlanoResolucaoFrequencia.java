@@ -27,10 +27,14 @@ final class PlanoResolucaoFrequencia {
             throw new ConflictException("Os fatos foram alterados. Consulte novamente.");
         if (a.horario()==null || !a.horario().equals(b.horario()))
             throw new ConflictException("Este fluxo inicial exige fatos no mesmo instante. Divergências temporais exigem revisão própria.");
-        if (a.responsavel()==null || b.responsavel()==null)
+        validarResponsabilidade(a.responsavel(),b.responsavel(),ator,perfil);
+    }
+
+    static void validarResponsabilidade(Long responsavelValido,Long responsavelDesconsiderado,Long ator,TipoUsuario perfil) {
+        if (responsavelValido==null || responsavelDesconsiderado==null)
             throw new ConflictException("Responsabilidade histórica inconclusiva.");
         if (ator==null || perfil!=TipoUsuario.ADMINISTRADOR && (perfil!=TipoUsuario.PROFISSIONAL
-                || !Objects.equals(ator,a.responsavel()) || !Objects.equals(ator,b.responsavel())))
+                || !Objects.equals(ator,responsavelValido) || !Objects.equals(ator,responsavelDesconsiderado)))
             throw new AccessDeniedException("Perfil sem autorização para resolver ambos os fatos.");
     }
 }

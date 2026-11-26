@@ -35,4 +35,11 @@ class PlanoResolucaoFrequenciaTests {
     @Test void mesmoRegistroNaoPodeSerValidoEDesconsiderado() {
         assertThrows(ValidationException.class,()->PlanoResolucaoFrequencia.validar(individual,individual,a,a,10L,TipoUsuario.PROFISSIONAL));
     }
+
+    @Test void reversaoUsaResponsabilidadeHistoricaEPermissoesDaResolucao() {
+        assertDoesNotThrow(()->PlanoResolucaoFrequencia.validarResponsabilidade(10L,10L,10L,TipoUsuario.PROFISSIONAL));
+        assertDoesNotThrow(()->PlanoResolucaoFrequencia.validarResponsabilidade(10L,11L,12L,TipoUsuario.ADMINISTRADOR));
+        assertThrows(AccessDeniedException.class,()->PlanoResolucaoFrequencia.validarResponsabilidade(10L,11L,10L,TipoUsuario.PROFISSIONAL));
+        assertThrows(AccessDeniedException.class,()->PlanoResolucaoFrequencia.validarResponsabilidade(10L,10L,10L,TipoUsuario.RECEPCAO));
+    }
 }
