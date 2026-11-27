@@ -5,7 +5,7 @@ import { ChangeDetectorRef, Component, DestroyRef, inject, OnInit } from '@angul
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { finalize } from 'rxjs';
+import { finalize, Subscription } from 'rxjs';
 import { raizClinica } from '../../services/configuracao-contrato';
 import { AlertaLocal, BuscaLocal, rotuloFaltasLocal, rotuloRiscoLocal } from '../../services/contrato-clinico-local';
 import { UsuarioLogadoService } from '../../services/usuario-logado-service';
@@ -21,6 +21,12 @@ interface EventoAuditoria {
   usuarioId?: string;
   situacao?: string;
   quantidade?: number;
+  unidade?: string;
+  idRequisicao?: string;
+  risco?: string | null;
+  gatilhoConfirmado?: boolean;
+  indicadoresPendentes?: boolean;
+  situacaoRua?: boolean;
 }
 
 @Component({
@@ -57,6 +63,7 @@ export class BuscaAtivaLocal implements OnInit {
   auditoria?: {content: EventoAuditoria[]; totalPages: number};
   pagina = 0;
   private requisicaoLista?: string;
+  private consultaAuditoria?: Subscription;
   exigeConsulta = false;
   consultandoAuditoria = false;
   erroAuditoria = '';
@@ -77,7 +84,7 @@ export class BuscaAtivaLocal implements OnInit {
       },
       error: () => {
         this.podeEncaminhar = this.podeAuditar = false;
-        this.auditoria = undefined;
+        this.invalidarAuditoria();
         this.cdr.markForCheck();
       },
     });
@@ -96,13 +103,16 @@ export class BuscaAtivaLocal implements OnInit {
     this.http.get<BuscaLocal>(`${raizClinica}/pacientes/busca-ativa`, {params: {requisicao: this.requisicaoLista}})
       .pipe(takeUntilDestroyed(this.destroy), finalize(() => { this.consultando = false; this.cdr.markForCheck(); })).subscribe({
         next: busca => { this.busca = busca; this.requisicaoLista = undefined; this.exigeConsulta = false; },
-        error: e => this.erro = interpretarErroHttp(e,{padrao:'Não foi possível consultar a busca ativa.'}).mensagem,
+        error: e => {
+          if (this.recusaDefinitiva(e)) this.requisicaoLista = undefined;
+          this.erro = interpretarErroHttp(e,{padrao:'Não foi possível consultar a busca ativa.'}).mensagem;
+        },
       });
   }
 
   visualizar(alerta: AlertaLocal) {
     this.registrar(alerta, 'visualizacao', {}, () => {
-      this.router.navigate(['/pacientes/detalhes', alerta.idPublico]);
+      void this.router.navigate(['/pacientes/detalhes', alerta.idPublico], {queryParams: {vinculo: alerta.vinculo}});
     });
   }
 
@@ -124,11 +134,11 @@ export class BuscaAtivaLocal implements OnInit {
   }
 
   carregarAuditoria(pagina: number) {
-    if (!this.podeAuditar || pagina < 0 || this.consultandoAuditoria) return;
+    if (!this.podeAuditar || pagina < 0 || this.consultandoAuditoria || this.registrando || this.pendente) return;
     this.consultandoAuditoria = true;
     this.auditoria = undefined;
     this.erroAuditoria = '';
-    this.http.get<{content: EventoAuditoria[]; totalPages: number}>(`${raizClinica}/auditoria/busca-ativa`,
+    this.consultaAuditoria = this.http.get<{content: EventoAuditoria[]; totalPages: number}>(`${raizClinica}/auditoria/busca-ativa`,
       {params: {pagina}}).pipe(takeUntilDestroyed(this.destroy),finalize(()=>{
         this.consultandoAuditoria=false;this.cdr.markForCheck();
       })).subscribe({
@@ -150,22 +160,34 @@ export class BuscaAtivaLocal implements OnInit {
       (this.pendente.acao==='visualizacao' || this.podeEncaminhar)) this.enviarPendente();
   }
 
+  private invalidarAuditoria(): void {
+    this.consultaAuditoria?.unsubscribe();
+    this.auditoria = undefined;
+    this.erroAuditoria = '';
+    this.consultandoAuditoria = false;
+  }
+
+  private recusaDefinitiva(erro: {status?: number} | null | undefined): boolean {
+    const status = erro?.status;
+    return typeof status === 'number' && status >= 400 && status < 500 && status !== 408 && status !== 429;
+  }
+
   private enviarPendente():void {
     const p=this.pendente;
     if(!p||this.registrando)return;
     this.registrando=true;this.erro='';
+    this.invalidarAuditoria();
     this.http.post(
       `${raizClinica}/pacientes/${p.alerta.idPublico}/vinculos/${p.alerta.vinculo}/busca-ativa/${p.acao}`,
       {...p.dados,version:p.alerta.versao,requisicao:p.requisicao})
       .pipe(takeUntilDestroyed(this.destroy),finalize(()=>{this.registrando=false;this.cdr.markForCheck();})).subscribe({
         next:()=>{
-          this.pendente=undefined;this.exigeConsulta=true;this.auditoria=undefined;
+          this.pendente=undefined;this.exigeConsulta=true;
           p.sucesso();
         },
         error:e=>{
           this.exigeConsulta=true;
-          const status=e?.status;
-          if(typeof status==='number'&&status>=400&&status<500&&status!==408&&status!==429)this.pendente=undefined;
+          if(this.recusaDefinitiva(e))this.pendente=undefined;
           this.erro=interpretarErroHttp(e,{escrita:true,padrao:'Não foi possível registrar esta ação.'}).mensagem;
         },
       });

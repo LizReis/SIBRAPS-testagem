@@ -1,5 +1,6 @@
 <section aria-labelledby="busca-local">
   <h2 id="busca-local">Busca ativa da unidade</h2>
+  <p>O encaminhamento registra uma ação na auditoria; não confirma visita realizada nem envia dados a serviços externos.</p>
   <button type="button" (click)="carregar()" [disabled]="consultando || registrando || !!pendente">Atualizar alertas</button>
   @if (consultando) { <p role="status">Consultando alertas…</p> }
   @if (erro) { <p role="alert">{{ erro }}</p> }
@@ -40,7 +41,7 @@
     </form>
   }
   @if (podeAuditar) {
-    <button type="button" (click)="carregarAuditoria(0)" [disabled]="consultandoAuditoria">Consultar auditoria</button>
+    <button type="button" (click)="carregarAuditoria(0)" [disabled]="consultandoAuditoria || registrando || !!pendente">Consultar auditoria</button>
     @if (consultandoAuditoria) { <p role="status">Consultando auditoria…</p> }
     @if (erroAuditoria) { <p role="alert">{{ erroAuditoria }}</p> }
     @if (auditoria; as dados) {
@@ -51,6 +52,15 @@
             @if (evento.usuarioId) { <p>Autor (identificador): {{ evento.usuarioId }}</p> }
             @if (evento.situacao) { <p>Situação registrada: {{ evento.situacao }}</p> }
             @if (evento.descricao) { <p>{{ evento.descricao }}</p> }
+            @if (evento.unidade) { <p>Unidade de origem: {{ evento.unidade }}</p> }
+            @if (evento.quantidade !== undefined) { <p>Quantidade registrada: {{ evento.quantidade }}</p> }
+            @if (evento.idRequisicao) { <p>Identificador da solicitação: {{ evento.idRequisicao }}</p> }
+            @if (evento.pacienteId) {
+              <p>Risco registrado: {{ evento.risco ?? 'Não confirmado' }}
+                @if (evento.gatilhoConfirmado !== undefined) { · Gatilho confirmado: {{ evento.gatilhoConfirmado ? 'Sim' : 'Não' }} }
+                @if (evento.indicadoresPendentes !== undefined) { · Indicadores pendentes: {{ evento.indicadoresPendentes ? 'Sim' : 'Não' }} }
+              </p>
+            }
           </li>
         } @empty {
           <li>Nenhum evento nesta página.</li>
