@@ -18,11 +18,8 @@ import javax.sql.DataSource;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Primary;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -60,14 +57,10 @@ import jakarta.persistence.EntityManager;
 class DevDemonstracaoIntegrationTests {
     private static final LocalDate DATA = LocalDate.of(2026, 11, 24);
 
-    @TestConfiguration(proxyBeanMethods = false)
-    static class RelogioFixo {
-        @Bean
-        @Primary
-        Clock relogioDemonstracao() {
-            var zona = ZoneId.of("America/Bahia");
-            return Clock.fixed(DATA.atTime(16, 0).atZone(zona).toInstant(), zona);
-        }
+    // Registrado apenas no runner abaixo: não é configuração descobrível por component scan.
+    private static Clock relogioDemonstracao() {
+        var zona = ZoneId.of("America/Bahia");
+        return Clock.fixed(DATA.atTime(16, 0).atZone(zona).toInstant(), zona);
     }
 
     private record FatosEmDuasUnidades(UUID pessoa, Long agenda, Long sessao,
@@ -80,8 +73,9 @@ class DevDemonstracaoIntegrationTests {
                     TestEnvironmentIsolation.apply(context.getEnvironment());
                     new ConfigDataApplicationContextInitializer().initialize(context);
                 })
-                .withUserConfiguration(BuscaativaApplication.class, H2ProfileSecurityTests.ExternalServices.class,
-                        RelogioFixo.class)
+                .withUserConfiguration(BuscaativaApplication.class, H2ProfileSecurityTests.ExternalServices.class)
+                .withBean("relogioDemonstracao", Clock.class,
+                        DevDemonstracaoIntegrationTests::relogioDemonstracao, bd -> bd.setPrimary(true))
                 .withPropertyValues("spring.config.location=file:src/main/resources/",
                         "spring.profiles.active=test,dev,diagnostico-migracao",
                         "spring.datasource.url=jdbc:h2:mem:demo-" + UUID.randomUUID(),
@@ -89,6 +83,7 @@ class DevDemonstracaoIntegrationTests {
                         "DEV_DB_PASSWORD=" + UUID.randomUUID(), "logging.level.root=ERROR")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(Clock.class).instant()).isEqualTo(relogioDemonstracao().instant());
                     // O runner de contexto não executa CommandLineRunner automaticamente.
                     context.getBean(DevConfig.class).run();
                     conferirInventario(context);
