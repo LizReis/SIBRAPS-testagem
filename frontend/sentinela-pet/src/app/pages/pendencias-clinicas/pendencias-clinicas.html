@@ -70,6 +70,7 @@
       <p>{{ p.decididaEm | date:'dd/MM/yyyy HH:mm' }}</p>
       <p>{{ p.justificativaDecisao ?? 'Justificativa indisponível' }}</p>
     </ng-template>
-    <p><a [routerLink]="['/pacientes/detalhes', p.paciente]">Consultar paciente na unidade</a></p>
+    <p><a [routerLink]="['/pacientes/detalhes', p.paciente]" [queryParams]="{vinculo: p.vinculo}">Consultar paciente na unidade</a></p>
+    <p><a [routerLink]="['/pacientes/detalhes', p.paciente, 'revisoes', p.vinculo]">Consultar registros para revisão</a></p>
   </section>
 </main>

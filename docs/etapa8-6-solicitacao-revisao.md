@@ -1,0 +1,9 @@
+# Etapa 8.6 — solicitação de revisão pelo vínculo e evidências de origem
+
+Base 5b6549e33a04c7215f97e80cf73c2a266a37a2a5; CI #45934639305 aprovada: 1448 Java, 12 concorrência, 185 Angular, 5 contrato experimental, builds padrão e experimental. Isolamento do relógio de demonstração aprovado. Fila administrativa anterior validada.
+
+Entrega: rota protegida /pacientes/detalhes/:id/revisoes/:vinculo para ADMINISTRADOR/PROFISSIONAL, entrada no detalhe e na fila; consulta do prontuário operacional e seleção de registros reais, com comparação de paciente e vínculo retornados. A lista é para conferência, não prova de elegibilidade: o servidor decide. Solicitação POST /pacientes/{p}/vinculos/{v}/revisoes?version=... com tipo AGENDAMENTO/HISTORICO/SESSAO_GRUPO, registro e justificativa de 10–2000 caracteres. Sem origem informada pelo cliente, sem correção ou aplicação automática, sem retentativa. Após erro ou sucesso exige consulta explícita; preserva rascunho até consulta. A API não oferece ao profissional fila geral de tickets, portanto não simulamos listagem. Recepção não acessa a jornada.
+
+Administrador pode consultar GET /pacientes/{p}/vinculos/{v}/revisoes/candidatos-origem e visualizar fonte, registro, horário e frequência comprovada; exige versão consistente com prontuário antes de solicitar. Sem prova, sem candidato artificial. Não é regularização de autoria de sessão. UI reaproveita estilos de relatórios.
+
+Specs dirigidas de transporte, justificativa, ausência de reenvio, perfil, vínculo e versão; não executadas localmente. CI existente será primeira validação. Sem mudanças Java, migrations ou regra clínica. A próxima entrega deverá integrar seleção de candidatos de duplicidade, aplicação administrativa da origem e trilhas/reversão/reabertura; opção B de consulta de auditoria por atendimento/sessão continua aprovada e pendente de contrato protegido. Não declarar etapa 8.7 concluída. Sem merge/PR. 

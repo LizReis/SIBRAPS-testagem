@@ -33,7 +33,8 @@
   </section>
   <nav class="tabs"><a aria-current="page">Visão geral</a><a
       [routerLink]="['/pacientes/detalhes',id,'historico']">Histórico</a><a
-      [routerLink]="['/pacientes/detalhes',id,'agendamentos']">Agendamentos</a></nav>
+      [routerLink]="['/pacientes/detalhes',id,'agendamentos']">Agendamentos</a><a *ngIf="podeGerenciar && p?.local as local"
+      [routerLink]="['/pacientes/detalhes',id,'revisoes',local.vinculo]">Revisões clínicas</a></nav>
   <div class="columns">
     <div>
       <section class="card">

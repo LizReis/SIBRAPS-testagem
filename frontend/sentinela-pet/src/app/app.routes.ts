@@ -20,6 +20,7 @@ import { HistoricoPaciente } from './pages/historico-paciente/historico-paciente
 import { AgendamentosPaciente } from './pages/agendamentos-paciente/agendamentos-paciente';
 import { Relatorios } from './pages/relatorios/relatorios';
 import { PendenciasClinicas } from './pages/pendencias-clinicas/pendencias-clinicas';
+import { RevisoesPaciente } from './pages/revisoes-paciente/revisoes-paciente';
 import { roleGuard } from './auth/role-guard';
 import { GruposTerapeuticos } from './pages/grupos-terapeuticos/grupos-terapeuticos';
 import { AgendarGrupoTerapeutico } from './pages/agendar-grupo-terapeutico/agendar-grupo-terapeutico';
@@ -51,6 +52,7 @@ export const routes: Routes = [
       { path: 'agenda/novo', component: NovoAgendamento, canActivate: [roleGuard], data: { roles: ADMIN_RECEPCAO } },
       { path: 'pacientes', component: Pacientes, canActivate: [roleGuard], data: { roles: TODOS } },
       { path: 'pacientes/detalhes/:id', component: DetalhePaciente, canActivate: [roleGuard], data: { roles: TODOS } },
+      { path: 'pacientes/detalhes/:id/revisoes/:vinculo', component: RevisoesPaciente, canActivate: [roleGuard], data: { roles: ['ADMINISTRADOR', 'PROFISSIONAL'] } },
       { path: 'pacientes/detalhes/:id/historico', component: HistoricoPaciente, canActivate: [roleGuard], data: { roles: TODOS } },
       { path: 'pacientes/detalhes/:id/agendamentos', component: AgendamentosPaciente, canActivate: [roleGuard], data: { roles: TODOS } },
       { path: 'pacientes/novo', component: CadastroPaciente, canActivate: [roleGuard], data: { roles: CADASTRO_PACIENTE } },

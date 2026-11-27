@@ -1,0 +1,47 @@
+<main class="relatorios-page" aria-labelledby="revisoes-title">
+  <header class="page-header">
+    <h1 id="revisoes-title">Revisões clínicas</h1>
+    <p>Solicite a conferência de um registro do acompanhamento local. Solicitar não modifica frequência, origem ou indicadores.</p>
+    <p><a [routerLink]="['/pacientes/detalhes', paciente]" [queryParams]="{vinculo: vinculo}">Voltar ao paciente</a></p>
+    <p *ngIf="admin"><a routerLink="/pendencias-clinicas">Consultar fila administrativa</a></p>
+  </header>
+  <button *ngIf="autorizado" type="button" class="export-button" [disabled]="salvando || carregando" (click)="carregar()">Atualizar consulta</button>
+  <p *ngIf="carregando" role="status">Consultando registros do vínculo…</p>
+  <p *ngIf="aviso" role="status">{{ aviso }}</p>
+  <p *ngIf="erro" class="export-error" role="alert">{{ erro }}</p>
+  <ng-container *ngIf="prontuario as p">
+    <section class="card table-card">
+      <header class="card-header"><h2>{{ p.paciente.nome }} — {{ p.paciente.unidade }}</h2>
+        <p>Registros disponíveis para conferência. O servidor verifica a elegibilidade de cada solicitação.</p></header>
+      <div class="table-wrapper"><table>
+        <thead><tr><th>Tipo</th><th>Registro</th><th>Data e horário</th><th>Ação</th></tr></thead>
+        <tbody>
+          <tr *ngFor="let r of registros"><td>{{ r.tipo.replaceAll('_', ' ') }}</td><td>{{ r.descricao }} · {{ r.registro }}</td>
+            <td>{{ r.data || 'Não informado' }}</td><td><button type="button" class="export-button" [disabled]="exigeConsulta || salvando || carregandoOrigem" (click)="selecionar(r)">Selecionar</button></td></tr>
+          <tr *ngIf="!registros.length"><td colspan="4">Nenhum registro disponível nesta consulta.</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+    <section *ngIf="admin" class="card filter-card">
+      <h2>Origem histórica</h2>
+      <p>Somente históricos com fonte local comprovada pela API podem ser apresentados aqui. A consulta não corrige o histórico.</p>
+      <button type="button" class="export-button" [disabled]="exigeConsulta || salvando || carregandoOrigem" (click)="consultarOrigem()">Consultar evidências</button>
+      <p *ngIf="carregandoOrigem" role="status">Consultando evidências…</p>
+      <p *ngIf="origemConsultada && !candidatos.length">Nenhum candidato de origem foi encontrado.</p>
+      <div *ngFor="let r of candidatos" class="card filter-card">
+        <p>Histórico {{ r.registro }} · {{ r.data }}</p>
+        <p>Fonte: {{ r.origem?.fonte }} {{ r.origem?.registroFonte }} · Frequência: {{ r.origem?.frequencia }}</p>
+        <button type="button" class="export-button" [disabled]="exigeConsulta || salvando || carregandoOrigem" (click)="selecionar(r)">Selecionar histórico</button>
+      </div>
+    </section>
+    <section *ngIf="selecionado as r" class="card filter-card">
+      <h2>Registrar solicitação de revisão</h2>
+      <p>{{ r.tipo.replaceAll('_', ' ') }} · {{ r.registro }} — {{ r.descricao }}</p>
+      <label class="field"><span>Justificativa (10 a 2.000 caracteres)</span>
+        <textarea rows="4" maxlength="2000" [(ngModel)]="justificativa" [disabled]="salvando"></textarea>
+      </label>
+      <p *ngIf="exigeConsulta" role="status">Confira o estado antes de tentar novamente. Atualizar a consulta limpa o rascunho.</p>
+      <button type="button" class="export-button" [disabled]="!podeSolicitar" (click)="solicitar()">Registrar solicitação</button>
+    </section>
+  </ng-container>
+</main>
