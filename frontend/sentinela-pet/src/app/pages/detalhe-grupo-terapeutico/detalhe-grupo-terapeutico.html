@@ -118,10 +118,10 @@
           } @empty { <p>Nenhum participante nesta sessão.</p> }
 
           @if (podeCorrigirSessao && !editandoFrequencia) {
-            <button type="button" class="edit-frequency" [disabled]="sessaoDesatualizada" (click)="iniciarCorrecao()">Corrigir frequência</button>
+            <button type="button" class="edit-frequency" [disabled]="salvando || sessaoDesatualizada" (click)="iniciarCorrecao()">Corrigir frequência</button>
           }
           @if (editandoFrequencia && podeCorrigirSessao) {
-            <footer class="correction-actions"><button type="button" (click)="cancelarCorrecao()">Cancelar</button>
+            <footer class="correction-actions"><button type="button" [disabled]="salvando" (click)="cancelarCorrecao()">Cancelar</button>
               <button type="button" class="primary" [disabled]="salvando || sessaoDesatualizada" (click)="solicitarCorrecao()">Revisar correções</button></footer>
           }
           @if (podeCancelarSessao) {

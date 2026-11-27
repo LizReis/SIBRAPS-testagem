@@ -1,8 +1,8 @@
 import { CommonModule } from "@angular/common";
-import { Component, OnInit } from "@angular/core";
+import { ChangeDetectorRef, Component, OnDestroy, OnInit } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { ActivatedRoute, Router, RouterLink } from "@angular/router";
-import { forkJoin } from "rxjs";
+import { forkJoin, Subscription } from "rxjs";
 import {
   GrupoTerapeuticoService,
   SessaoGrupoPayload,
@@ -16,7 +16,7 @@ import {
   templateUrl: "./grupos-terapeuticos.html",
   styleUrl: "./grupos-terapeuticos.css",
 })
-export class GruposTerapeuticos implements OnInit {
+export class GruposTerapeuticos implements OnInit, OnDestroy {
   dataSelecionada = this.hoje();
   sessoes: SessaoGrupoPayload[] = [];
   proximasSessoes: SessaoGrupoPayload[] = [];
@@ -25,11 +25,13 @@ export class GruposTerapeuticos implements OnInit {
   buscaTema = "";
   carregando = false;
   erro = "";
+  private consulta?: Subscription;
 
   constructor(
     private readonly service: GrupoTerapeuticoService,
     private readonly route: ActivatedRoute,
-    private readonly router: Router
+    private readonly router: Router,
+    private readonly cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
@@ -38,12 +40,17 @@ export class GruposTerapeuticos implements OnInit {
     this.carregar();
   }
 
+  ngOnDestroy(): void { this.consulta?.unsubscribe(); }
+
   carregar(): void {
+    this.consulta?.unsubscribe();
+    this.sessoes = [];
+    this.proximasSessoes = [];
     this.carregando = true;
     this.erro = "";
     const inicioFuturo = this.somarDias(this.hoje(), 1);
     const fimFuturo = this.somarDias(this.hoje(), 60);
-    forkJoin({
+    this.consulta = forkJoin({
       dia: this.service.listarSessoes(
         this.dataSelecionada,
         this.dataSelecionada
@@ -61,10 +68,12 @@ export class GruposTerapeuticos implements OnInit {
           )
           .slice(0, 3);
         this.carregando = false;
+        this.cdr.markForCheck();
       },
       error: () => {
         this.erro = "Não foi possível carregar as sessões. Tente novamente.";
         this.carregando = false;
+        this.cdr.markForCheck();
       },
     });
   }

@@ -7,11 +7,11 @@
                 aria-hidden="true"></i> Agendar grupo</a>
     </header>
     <section class="metrics" aria-label="Resumo das sessões">
-        <article><span>{{ dataEhHoje ? 'GRUPOS HOJE' : 'GRUPOS NA DATA' }}</span><strong>{{ sessoes.length }}</strong>
+        <article><span>{{ dataEhHoje ? 'GRUPOS HOJE' : 'GRUPOS NA DATA' }}</span><strong>{{ carregando || erro ? '—' : sessoes.length }}</strong>
         </article>
-        <article><span>AGENDADOS</span><strong>{{ totalAgendadas }}</strong></article>
-        <article class="warning"><span>EM ANDAMENTO</span><strong>{{ totalAndamento }}</strong></article>
-        <article class="success"><span>REALIZADOS</span><strong>{{ totalRealizadas }}</strong></article>
+        <article><span>AGENDADOS</span><strong>{{ carregando || erro ? '—' : totalAgendadas }}</strong></article>
+        <article class="warning"><span>EM ANDAMENTO</span><strong>{{ carregando || erro ? '—' : totalAndamento }}</strong></article>
+        <article class="success"><span>REALIZADOS</span><strong>{{ carregando || erro ? '—' : totalRealizadas }}</strong></article>
     </section>
     <section class="toolbar card">
         <div class="date-control"><label for="dataReferencia">Data de referência</label>
@@ -40,7 +40,7 @@
     <section class="sessions-section">
         <h2>{{ dataEhHoje ? 'Sessões de hoje' : 'Sessões do dia' }}</h2>
         <p class="date-label">{{ formatarData(dataSelecionada, true) }}</p>
-        @if (carregando) { <div class="feedback">Carregando sessões...</div> } @else if (!erro) {
+        @if (carregando) { <div class="feedback" role="status">Carregando sessões...</div> } @else if (!erro) {
         <div class="table-card">
             <table>
                 <thead>
@@ -83,7 +83,7 @@
                 <div><strong>{{ sessao.horario.slice(0,5) }} • {{ sessao.temaGrupo }}</strong><span>Coordenador: {{
                         sessao.nomeCoordenador }}</span><b>{{ sessao.quantidadeParticipantes }} {{
                         sessao.quantidadeParticipantes === 1 ? 'inscrito' : 'inscritos' }}</b></div>
-            </article> } @empty { @if (!carregando) { <p class="empty-upcoming">Nenhuma sessão futura encontrada nos
+            </article> } @empty { @if (!carregando && !erro) { <p class="empty-upcoming">Nenhuma sessão futura encontrada nos
                 próximos 60 dias.</p> } }</div>
     </section>
 </main>

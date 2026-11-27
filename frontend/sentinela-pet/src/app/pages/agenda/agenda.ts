@@ -1,3 +1,4 @@
+import { Subscription } from 'rxjs';
 import { podeCriarAgendamento } from '../../auth/permissoes';
 import { interpretarErroHttp } from '../../services/erro-http';
 import { contratoExperimental } from '../../services/configuracao-contrato';
@@ -67,6 +68,7 @@ export class Agenda implements OnInit, OnDestroy {
     private readonly horaFinalPadrao = 18;
     private relogioId: ReturnType < typeof setInterval > | null = null;
     private ultimaConsulta = '';
+    private consultaAgenda?: Subscription;
 
     dataSelecionada: string = this.formatarDataISO(new Date());
     mesCalendario = this.inicioDoMes(this.criarDataLocal(this.dataSelecionada));
@@ -175,6 +177,7 @@ export class Agenda implements OnInit, OnDestroy {
 
     ngOnDestroy(): void {
         if (this.relogioId) clearInterval(this.relogioId);
+        this.consultaAgenda?.unsubscribe();
     }
 
     @HostListener('document:click') fecharMenuAoClicarFora(): void {
@@ -205,11 +208,15 @@ export class Agenda implements OnInit, OnDestroy {
         const profissionalId = this.podeFiltrarProfissional ? (this.profissionalSelecionadoId ?? undefined) : undefined;
         const chave = `${this.visualizacao}|${inicio}|${fim}|${profissionalId ?? 'todos'}`;
         if (!forcar && chave === this.ultimaConsulta) return;
+        this.consultaAgenda?.unsubscribe();
         this.ultimaConsulta = chave;
+        this.agendaRecarregada = false;
+        if (this.correcao) this.revisaoDesatualizada = true;
+        this.agendamentos = [];
         this.carregando = true;
         this.erroGeral = null;
         this.menuAbertoId = null;
-        this.agendamentoService.buscarAgendaPorPeriodo(inicio, fim, profissionalId).subscribe({
+        this.consultaAgenda = this.agendamentoService.buscarAgendaPorPeriodo(inicio, fim, profissionalId).subscribe({
             next: (agendamentos) => {
                 this.agendamentos = this.ordenar(agendamentos);
                 this.agendaRecarregada = true;
@@ -217,6 +224,8 @@ export class Agenda implements OnInit, OnDestroy {
                 this.cdr.markForCheck();
             },
             error: (erro) => {
+                this.agendamentos = [];
+                this.ultimaConsulta = '';
                 this.erroGeral = interpretarErroHttp(erro, { padrao: this.mensagemErroAgenda() }).mensagem;
                 this.cdr.markForCheck();
                 this.carregando = false;
@@ -449,7 +458,7 @@ export class Agenda implements OnInit, OnDestroy {
     tipoRegularizacao: 'RECUPERAR' | 'PRESENTE' | 'FALTOU' = 'RECUPERAR';
 
     corrigirFrequencia(a: AgendamentoDTO): void {
-        if (!this.podeCorrigirFrequencia(a) && !this.podeRegularizar(a)) return;
+        if (this.acoesBloqueadas || (!this.podeCorrigirFrequencia(a) && !this.podeRegularizar(a))) return;
         if (contratoExperimental) {
             if (this.revisaoDesatualizada && !this.agendaRecarregada) return;
             if (!this.revisaoDesatualizada || this.correcao?.id !== a.id) this.justificativa = '';
@@ -461,10 +470,13 @@ export class Agenda implements OnInit, OnDestroy {
         }
         this.marcarStatus(a, a.situacaoAtendimento === 'PRESENTE' ? 'FALTOU' : 'PRESENTE');
     }
+    get acoesBloqueadas(): boolean {
+        return this.atualizandoId !== null || this.carregando || !this.agendaRecarregada;
+    }
     confirmarCorrecao(): void {
         const a = this.correcao;
         const justificativa = this.justificativa.trim();
-        if (!a || (!this.podeCorrigirFrequencia(a) && !this.podeRegularizar(a)) || this.revisaoDesatualizada || this.atualizandoId === a.id || justificativa.length < 10) return;
+        if (!a || (!this.podeCorrigirFrequencia(a) && !this.podeRegularizar(a)) || this.revisaoDesatualizada || this.acoesBloqueadas || justificativa.length < 10 || justificativa.length > 2000) return;
         this.erroGeral = null;
         const destino = a.frequenciaAssistencial === 'PRESENTE' ? 'FALTOU' : 'PRESENTE';
         const comando = a.situacaoReserva === 'CANCELADA' && a.frequenciaAssistencial === 'NAO_REGISTRADA'
@@ -484,7 +496,7 @@ export class Agenda implements OnInit, OnDestroy {
                 const resultado = interpretarErroHttp(erro, { escrita: true, padrao: 'Não foi possível atualizar a frequência.' });
                 this.erroGeral = resultado.mensagem;
                 this.cdr.markForCheck();
-                if (resultado.tipo === 'STALE_VERSION') {
+                if (resultado.tipo === 'STALE_VERSION' || erro.status === 0 || erro.status >= 500) {
                     this.revisaoDesatualizada = true;
                     this.agendaRecarregada = false;
                 }
@@ -492,7 +504,7 @@ export class Agenda implements OnInit, OnDestroy {
         });
     }
     remarcar(a: AgendamentoDTO): void {
-        if (!this.podeRemarcar(a)) return;
+        if (this.acoesBloqueadas || !this.podeRemarcar(a)) return;
         this.router.navigate(['/agenda/novo'], {
             queryParams: {
                 agendamentoOriginalId: a.id
@@ -501,6 +513,7 @@ export class Agenda implements OnInit, OnDestroy {
     }
 
     private marcarStatus(a: AgendamentoDTO, novoStatus: string): void {
+        if (this.acoesBloqueadas) return;
         this.atualizandoId = a.id;
         this.erroGeral = null;
         this.menuAbertoId = null;
@@ -512,7 +525,12 @@ export class Agenda implements OnInit, OnDestroy {
             },
             error: (erro: HttpErrorResponse) => {
                 this.atualizandoId = null;
-                this.erroGeral = interpretarErroHttp(erro, { escrita: true, padrao: 'Não foi possível atualizar o status do agendamento.' }).mensagem;
+                const resultado = interpretarErroHttp(erro, { escrita: true, padrao: 'Não foi possível atualizar o status do agendamento.' });
+                this.erroGeral = resultado.mensagem;
+                if (resultado.tipo === 'STALE_VERSION' || erro.status === 0 || erro.status >= 500) {
+                    this.agendaRecarregada = false;
+                    if (this.correcao) this.revisaoDesatualizada = true;
+                }
                 this.cdr.markForCheck();
             }
         });

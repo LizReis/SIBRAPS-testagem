@@ -445,6 +445,7 @@ export class NovoAgendamento implements OnInit, OnDestroy {
   }
 
   cancelar(): void {
+    if (this.salvando) return;
     this.router.navigate(['/agenda']);
   }
 

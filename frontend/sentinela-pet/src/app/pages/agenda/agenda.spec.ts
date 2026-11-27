@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { of, throwError } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { Agenda } from './agenda';
 import { AgendamentoDTO } from '../../services/agendamento-service';
 
@@ -134,6 +134,27 @@ describe('Agenda', () => {
     expect(atualizarStatus).toHaveBeenCalledOnce();
   });
 
+  it('bloqueia outro envio enquanto um atendimento está sendo atualizado', () => {
+    const resposta = new Subject<AgendamentoDTO>();
+    const atualizarStatus = vi.fn(() => resposta.asObservable());
+    const c = criarComponente({ atualizarStatus });
+    c.registrarPresenca(base); c.registrarFalta({ ...base, id: 2 });
+    expect(atualizarStatus).toHaveBeenCalledOnce();
+    expect(c.atualizandoId).toBe(base.id);
+    resposta.error(new HttpErrorResponse({ status: 0 }));
+    c.registrarPresenca(base); expect(atualizarStatus).toHaveBeenCalledOnce();
+    expect(c.acoesBloqueadas).toBe(true);
+  });
+  it('descarta consulta anterior e não conserva atendimentos após falha', () => {
+    const anterior = new Subject<AgendamentoDTO[]>();
+    const atual = new Subject<AgendamentoDTO[]>();
+    const buscarAgendaPorPeriodo = vi.fn().mockReturnValueOnce(anterior.asObservable()).mockReturnValueOnce(atual.asObservable());
+    const c = criarComponente({ buscarAgendaPorPeriodo });
+    c.carregarAgenda(true); c.carregarAgenda(true);
+    anterior.next([base]); expect(c.agendamentos).toEqual([]);
+    atual.error(new HttpErrorResponse({ status: 503 }));
+    expect(c.agendamentos).toEqual([]); expect(c.acoesBloqueadas).toBe(true);
+  });
   it('controla exibição das ações principais no card', () => {
     const component = criarComponente();
     component.podeCriarAgendamento = true;

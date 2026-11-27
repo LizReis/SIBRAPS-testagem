@@ -411,7 +411,7 @@ export class CadastroPaciente implements OnInit {
       if (this.pacienteForm.get(campo.fieldName)) this.errosPorCampo[campo.fieldName] = campo.message;
     }
     this.erroGeral = resultado.mensagem;
-    this.cadastroDesatualizado = this.modoEdicao && resultado.tipo === 'STALE_VERSION';
+    this.cadastroDesatualizado = this.modoEdicao && (resultado.tipo === 'STALE_VERSION' || erro.status === 0 || erro.status >= 500);
     this.marcarCamposComoTocados();
     this.cdr.markForCheck();
   }
@@ -424,6 +424,7 @@ export class CadastroPaciente implements OnInit {
   }
 
   cancelar(): void {
+    if (this.salvando) return;
     if (this.modoEdicao && this.idPublico) {
       this.router.navigate(['/pacientes/detalhes', this.idPublico]);
     } else {

@@ -316,6 +316,7 @@ export class DetalheGrupoTerapeutico implements OnInit {
   }
 
   cancelarCorrecao(): void {
+    if (this.salvando) return;
     this.editandoFrequencia = false;
     this.confirmandoCorrecao = false;
     if (this.sessao) this.iniciarRascunho(this.sessao);
@@ -325,6 +326,7 @@ export class DetalheGrupoTerapeutico implements OnInit {
   justificativaCorrecao = '';
 
   solicitarCorrecao(): void {
+    if (this.salvando || this.sessaoDesatualizada || !this.podeCorrigirSessao) return;
     this.erro = '';
     this.confirmandoCorrecao = true;
   }
