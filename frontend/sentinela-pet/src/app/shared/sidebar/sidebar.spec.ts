@@ -22,6 +22,8 @@ describe('Sidebar', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance).toBeTruthy();
     expect(fixture.nativeElement.querySelector('a[href="/profissionais"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('a[href="/pendencias-clinicas"]')).not.toBeNull();
+    expect(fixture.componentInstance.menuItems.at(-1)?.route).toBe('/pendencias-clinicas');
   });
 
   it('não mostra profissionais para o perfil profissional', () => {
@@ -30,5 +32,12 @@ describe('Sidebar', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('a[href="/profissionais"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('a[href="/pacientes"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('a[href="/pendencias-clinicas"]')).toBeNull();
+  });
+  it('não apresenta fila administrativa à recepção', () => {
+    tipoUsuario = 'RECEPCAO';
+    const fixture = TestBed.createComponent(Sidebar);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('a[href="/pendencias-clinicas"]')).toBeNull();
   });
 });

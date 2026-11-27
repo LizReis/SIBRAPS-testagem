@@ -11,9 +11,7 @@
     <button id="tab-frequencia" type="button" role="tab" [attr.aria-selected]="abaAtiva === 'frequenciaGrupo'" aria-controls="painel-frequencia" [class.active]="abaAtiva === 'frequenciaGrupo'" (click)="selecionarAba('frequenciaGrupo')">
       <span class="material-symbols-outlined" aria-hidden="true">calendar_month</span>Frequência de grupo
     </button>
-    <button *ngIf="podeRevisar" id="tab-pendencias" type="button" role="tab"
-      [attr.aria-selected]="abaAtiva === 'pendencias'" aria-controls="painel-pendencias"
-      [class.active]="abaAtiva === 'pendencias'" (click)="selecionarAba('pendencias')">Pendências</button>
+
   </div>
 
   <p *ngIf="buscandoRelatorio" role="status">Consultando dados da unidade…</p>
@@ -74,56 +72,6 @@
           </tbody>
         </table>
       </div>
-    </section>
-  </section>
-
-  <section *ngIf="abaAtiva === 'pendencias' && podeRevisar" id="painel-pendencias" class="tab-panel"
-    role="tabpanel" aria-labelledby="tab-pendencias">
-    <section class="card filter-card">
-      <label class="field"><span>Situação</span>
-        <select [(ngModel)]="estadoPendencia" (change)="carregarPendencias(0)">
-          <option value="">Todas</option><option value="PENDENTE">Pendente</option>
-          <option value="APROVADA">Aprovada</option><option value="REJEITADA">Rejeitada</option>
-        </select>
-      </label>
-    </section>
-    <section *ngIf="pendencias as lista" class="card table-card">
-      <header class="card-header"><p>{{ lista.pendentes }} pendentes · {{ lista.aprovadas }} aprovadas · {{ lista.rejeitadas }} rejeitadas</p></header>
-      <div class="table-wrapper"><table>
-        <thead><tr><th>Paciente</th><th>Registro</th><th>Situação</th><th>Solicitada em</th><th></th></tr></thead>
-        <tbody>
-          <tr *ngFor="let p of lista.itens">
-            <td>{{ p.nome }}</td><td>{{ p.tipoRegistro.replaceAll('_', ' ') }} · {{ p.registro }}</td>
-            <td>{{ rotuloRevisao(p.estado) }}</td><td>{{ p.solicitadoEm | date:'dd/MM/yyyy HH:mm' }}</td>
-            <td><button type="button" class="export-button" (click)="detalhar(p)">Detalhes</button></td>
-          </tr>
-          <tr *ngIf="!lista.itens.length"><td colspan="5">Nenhuma solicitação nesta página.</td></tr>
-        </tbody>
-      </table></div>
-      <div class="export-row">
-        <button type="button" class="export-button" [disabled]="lista.pagina === 0" (click)="carregarPendencias(lista.pagina - 1)">Anterior</button>
-        <span>Página {{ lista.pagina + 1 }}</span>
-        <button type="button" class="export-button" [disabled]="(lista.pagina + 1) * lista.tamanho >= lista.total" (click)="carregarPendencias(lista.pagina + 1)">Próxima</button>
-      </div>
-    </section>
-    <section *ngIf="selecionada as p" class="card filter-card" aria-label="Detalhes da solicitação">
-      <h2>{{ p.nome }}</h2>
-      <p>{{ rotuloRevisao(p.estado) }}</p>
-      <p>Justificativa da solicitação</p><p>{{ p.justificativaSolicitacao ?? 'Não informada' }}</p>
-      <ng-container *ngIf="p.estado === 'PENDENTE'; else decisaoRegistrada">
-        <label class="field"><span>Justificativa da decisão</span>
-          <textarea [(ngModel)]="justificativaDecisao" maxlength="2000" rows="3"></textarea>
-        </label>
-        <p>A decisão administrativa é registrada separadamente da correção clínica.</p>
-        <div class="export-row">
-          <button type="button" class="export-button" [disabled]="salvandoDecisao || justificativaDecisao.trim().length < 10" (click)="decidir('APROVAR')">Aprovar</button>
-          <button type="button" class="export-button" [disabled]="salvandoDecisao || justificativaDecisao.trim().length < 10" (click)="decidir('REJEITAR')">Rejeitar</button>
-        </div>
-      </ng-container>
-      <ng-template #decisaoRegistrada>
-        <p>Decisão de {{ p.decididaEm | date:'dd/MM/yyyy HH:mm' }}</p>
-        <p>{{ p.justificativaDecisao ?? 'Justificativa indisponível' }}</p>
-      </ng-template>
     </section>
   </section>
 

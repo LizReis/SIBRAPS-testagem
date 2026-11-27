@@ -110,6 +110,12 @@ export interface PendenciaLocal {
   tipoRegistro: string; solicitadoEm: string; estado: EstadoRevisaoLocal;
   decisao: string | null; decididaEm: string | null;
   versaoVinculo: number; registro: number; justificativaSolicitacao: string | null; justificativaDecisao: string | null;
+  aplicacao?: 'SEM_APLICACAO' | 'RESOLUCAO_REGISTRADA' | 'REVERTIDA' | 'INCONCLUSIVA';
+  resolucaoAtiva?: string | null;
+  revisaoOrigem?: boolean;
+  aplicacaoOrigem?: 'SEM_APLICACAO' | 'ORIGEM_RECONHECIDA' | 'INCONCLUSIVA' | 'REVERTIDA';
+  registroAplicacaoOrigem?: string | null; registroReversaoOrigem?: string | null;
+  solicitacaoAnterior?: string | null; novaSolicitacao?: string | null;
 }
 export interface PaginaPendenciasLocal {
   pendentes: number; aprovadas: number; rejeitadas: number;

@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { Router, RouterModule } from '@angular/router';
 import { UsuarioLogadoService } from '../../services/usuario-logado-service';
 
@@ -13,6 +13,7 @@ export class Sidebar implements OnInit {
   constructor(
     private router: Router,
     private usuarioLogadoService: UsuarioLogadoService,
+    private cdr: ChangeDetectorRef,
   ) {}
 
   private readonly todosMenuItems = [
@@ -23,19 +24,29 @@ export class Sidebar implements OnInit {
     { label: 'Profissionais', route: '/profissionais', icon: 'person_add' },
     { label: 'Grupo Terapêutico', route: '/grupos-terapeuticos', icon: 'diversity_3' },
     { label: 'Relatórios', route: '/relatorios', icon: 'clinical_notes' },
+    { label: 'Pendências clínicas', route: '/pendencias-clinicas', icon: 'assignment_late' },
   ];
 
-  menuItems = this.todosMenuItems.filter((item) => item.route !== '/profissionais');
+  menuItems = this.menuParaPerfil();
+
+  private menuParaPerfil(perfil?: string) {
+    return this.todosMenuItems.filter(item => {
+      if (item.route === '/pendencias-clinicas') return perfil === 'ADMINISTRADOR';
+      if (item.route === '/profissionais') return perfil === 'ADMINISTRADOR' || perfil === 'RECEPCAO';
+      return true;
+    });
+  }
 
   ngOnInit(): void {
     this.usuarioLogadoService.obterUsuarioLogado().subscribe({
       next: (usuario) => {
-        this.menuItems =
-          usuario.tipoUsuario === 'PROFISSIONAL'
-            ? this.todosMenuItems.filter((item) => item.route !== '/profissionais')
-            : [...this.todosMenuItems];
+        this.menuItems = this.menuParaPerfil(usuario.tipoUsuario);
+        this.cdr.markForCheck();
       },
-      error: () => this.menuItems = this.todosMenuItems.filter(item => item.route !== '/profissionais'),
+      error: () => {
+        this.menuItems = this.menuParaPerfil();
+        this.cdr.markForCheck();
+      },
     });
   }
 

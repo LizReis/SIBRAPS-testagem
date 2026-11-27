@@ -1,0 +1,75 @@
+<main class="relatorios-page" aria-labelledby="pendencias-title">
+  <header class="page-header">
+    <h1 id="pendencias-title">Pendências clínicas</h1>
+    <p>Analise solicitações de revisão de registros assistenciais da sua unidade.</p>
+  </header>
+  <section class="card filter-card">
+    <div class="filter-grid three-columns">
+      <label class="field"><span>Situação da decisão</span>
+        <select [(ngModel)]="estado" [disabled]="salvando" (change)="carregar(0)">
+          <option value="">Todas</option><option value="PENDENTE">Pendente</option>
+          <option value="APROVADA">Aprovada</option><option value="REJEITADA">Rejeitada</option>
+        </select>
+      </label>
+      <div class="export-row">
+        <button type="button" class="export-button" [disabled]="salvando || carregando" (click)="carregar()">Atualizar consulta</button>
+      </div>
+    </div>
+  </section>
+  <p *ngIf="carregando" role="status">Consultando pendências da unidade…</p>
+  <p *ngIf="aviso" role="status">{{ aviso }}</p>
+  <p *ngIf="erro" role="alert" class="export-error">{{ erro }}</p>
+  <ng-container *ngIf="lista as dados">
+    <div class="filter-grid three-columns" aria-label="Totais da unidade">
+      <section class="card filter-card"><h2>Pendentes</h2><p>{{ dados.pendentes }}</p></section>
+      <section class="card filter-card"><h2>Aprovadas</h2><p>{{ dados.aprovadas }}</p></section>
+      <section class="card filter-card"><h2>Rejeitadas</h2><p>{{ dados.rejeitadas }}</p></section>
+    </div>
+    <section class="card table-card">
+      <div class="table-wrapper"><table>
+        <thead><tr><th>Paciente</th><th>Registro</th><th>Decisão</th><th>Aplicação</th><th>Solicitada em</th><th>Ações</th></tr></thead>
+        <tbody>
+          <tr *ngFor="let p of dados.itens">
+            <td>{{ p.nome }}</td><td>{{ p.tipoRegistro.replaceAll('_', ' ') }} · {{ p.registro }}</td>
+            <td>{{ rotuloRevisao(p.estado) }}</td><td>{{ rotuloAplicacao(p) }}</td>
+            <td>{{ p.solicitadoEm | date:'dd/MM/yyyy HH:mm' }}</td>
+            <td><button type="button" class="export-button" [disabled]="salvando || exigeConsulta" (click)="detalhar(p)">Detalhes</button></td>
+          </tr>
+          <tr *ngIf="!dados.itens.length"><td colspan="6">Nenhuma solicitação nesta página.</td></tr>
+        </tbody>
+      </table></div>
+      <div class="export-row">
+        <button type="button" class="export-button" [disabled]="salvando || dados.pagina === 0" (click)="carregar(dados.pagina - 1)">Anterior</button>
+        <span>Página {{ dados.pagina + 1 }}</span>
+        <button type="button" class="export-button" [disabled]="salvando || (dados.pagina + 1) * dados.tamanho >= dados.total" (click)="carregar(dados.pagina + 1)">Próxima</button>
+      </div>
+    </section>
+  </ng-container>
+  <section *ngIf="selecionada as p" class="card filter-card" aria-label="Detalhes da solicitação">
+    <h2>{{ p.nome }}</h2>
+    <p>{{ p.tipoRegistro.replaceAll('_', ' ') }} · {{ p.registro }}</p>
+    <p>Decisão: {{ rotuloRevisao(p.estado) }}</p>
+    <p>Aplicação: {{ rotuloAplicacao(p) }}</p>
+    <p *ngIf="p.revisaoOrigem">Revisão de origem histórica</p>
+    <p *ngIf="p.solicitacaoAnterior">Solicitação reaberta a partir de revisão anterior.</p>
+    <p *ngIf="p.novaSolicitacao">Existe uma solicitação sucessora.</p>
+    <h3>Justificativa da solicitação</h3><p>{{ p.justificativaSolicitacao ?? 'Não informada' }}</p>
+    <ng-container *ngIf="p.estado === 'PENDENTE'; else decidida">
+      <label class="field"><span>Justificativa da decisão (10 a 2.000 caracteres)</span>
+        <textarea [(ngModel)]="justificativa" [disabled]="salvando" maxlength="2000" rows="3"></textarea>
+      </label>
+      <p>A decisão administrativa é registrada separadamente da correção clínica.</p>
+      <p *ngIf="exigeConsulta" role="status">Confira a situação atual pela consulta antes de registrar outra decisão. A atualização limpa o rascunho.</p>
+      <div class="export-row">
+        <button type="button" class="export-button" [disabled]="!podeDecidir" (click)="decidir('APROVAR')">Aprovar</button>
+        <button type="button" class="export-button" [disabled]="!podeDecidir" (click)="decidir('REJEITAR')">Rejeitar</button>
+      </div>
+    </ng-container>
+    <ng-template #decidida>
+      <h3>Justificativa da decisão</h3>
+      <p>{{ p.decididaEm | date:'dd/MM/yyyy HH:mm' }}</p>
+      <p>{{ p.justificativaDecisao ?? 'Justificativa indisponível' }}</p>
+    </ng-template>
+    <p><a [routerLink]="['/pacientes/detalhes', p.paciente]">Consultar paciente na unidade</a></p>
+  </section>
+</main>

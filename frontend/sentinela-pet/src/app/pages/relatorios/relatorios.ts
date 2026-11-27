@@ -6,13 +6,11 @@ import { FormsModule } from '@angular/forms';
 
 import { finalize, Subscription } from 'rxjs';
 import { contratoExperimental } from '../../services/configuracao-contrato';
-import { EstadoRevisaoLocal, PaginaPendenciasLocal, PendenciaLocal, rotuloRevisaoLocal } from '../../services/contrato-clinico-local';
-import { UsuarioLogadoService } from '../../services/usuario-logado-service';
 import { GrupoTerapeuticoPayload, GrupoTerapeuticoService } from '../../services/grupo-terapeutico-service';
 import { ProfissionalService, UsuarioReferencia } from '../../services/profissional/profissional-service';
 import { FiltroPeriodo, FiltrosBuscaAtiva, FiltrosFrequenciaGrupos, RelatorioService } from '../../services/relatorio-service';
 
-type TipoRelatorio = 'buscaAtiva' | 'frequenciaGrupo' | 'pendencias';
+type TipoRelatorio = 'buscaAtiva' | 'frequenciaGrupo';
 type FormatoExportacao = 'PDF' | 'Excel' | 'CSV';
 
 interface PacienteBuscaAtivaRelatorio {
@@ -72,10 +70,7 @@ export class Relatorios implements OnInit {
   grupos: GrupoTerapeuticoPayload[] = [];
 
   readonly contratoExperimental = contratoExperimental;
-  readonly rotuloRevisao = rotuloRevisaoLocal;
   private readonly cdr = inject(ChangeDetectorRef);
-  private readonly usuario = contratoExperimental ? inject(UsuarioLogadoService) : null;
-  podeRevisar = false;
   buscandoRelatorio = false;
   erroConsulta = '';
   private consulta?: Subscription;
@@ -83,12 +78,6 @@ export class Relatorios implements OnInit {
   private frequenciaLocal: SessaoFrequenciaRelatorio[] = [];
   quantidadeEmConferencia?: number;
   mediaLocal: number | null = null;
-  pendencias?: PaginaPendenciasLocal;
-  estadoPendencia: EstadoRevisaoLocal | '' = '';
-  selecionada?: PendenciaLocal;
-  justificativaDecisao = '';
-  salvandoDecisao = false;
-
   constructor(
     private readonly relatorioService: RelatorioService,
     private readonly profissionalService: ProfissionalService,
@@ -99,10 +88,6 @@ export class Relatorios implements OnInit {
     this.profissionalService.listarElegiveisParaReferencia().subscribe({
       next: (profissionais) => this.profissionais = profissionais,
       error: () => this.profissionais = [],
-    });
-    this.usuario?.obterUsuarioLogado().subscribe({
-      next: u => this.podeRevisar = u.tipoUsuario === 'ADMINISTRADOR',
-      error: () => this.podeRevisar = false,
     });
     this.carregarPrevia();
     this.grupoService.listarGrupos().subscribe({
@@ -172,12 +157,11 @@ export class Relatorios implements OnInit {
 
   selecionarAba(aba: TipoRelatorio): void {
     this.abaAtiva = aba;
-    if (aba === 'pendencias') this.carregarPendencias(0);
-    else this.carregarPrevia();
+    this.carregarPrevia();
   }
 
   carregarPrevia(): void {
-    if (!contratoExperimental || this.abaAtiva === 'pendencias') return;
+    if (!contratoExperimental) return;
     this.consulta?.unsubscribe();
     this.buscandoRelatorio = true;
     this.erroConsulta = '';
@@ -210,40 +194,6 @@ export class Relatorios implements OnInit {
         error: () => this.erroConsulta = 'Não foi possível consultar a frequência dos grupos da unidade.',
       });
     }
-  }
-
-  carregarPendencias(pagina: number): void {
-    if (!this.podeRevisar || pagina < 0) return;
-    this.consulta?.unsubscribe();
-    this.buscandoRelatorio = true;
-    this.erroConsulta = '';
-    this.selecionada = undefined;
-    this.pendencias = undefined;
-    this.consulta = this.relatorioService.pendencias(pagina, this.estadoPendencia || undefined)
-      .pipe(finalize(() => this.buscandoRelatorio = false)).subscribe({
-        next: dados => this.pendencias = dados,
-        error: () => this.erroConsulta = 'Não foi possível consultar as pendências da unidade.',
-      });
-  }
-
-  detalhar(p: PendenciaLocal): void {
-    this.selecionada = p;
-    this.justificativaDecisao = '';
-  }
-
-  decidir(decisao: 'APROVAR' | 'REJEITAR'): void {
-    const item = this.selecionada;
-    if (this.salvandoDecisao || item?.estado !== 'PENDENTE' || this.justificativaDecisao.trim().length < 10) return;
-    this.salvandoDecisao = true;
-    this.erroConsulta = '';
-    this.relatorioService.decidir(item, decisao, this.justificativaDecisao.trim())
-      .pipe(finalize(() => this.salvandoDecisao = false)).subscribe({
-        next: () => this.carregarPendencias(this.pendencias?.pagina ?? 0),
-        error: e => {
-          this.erroConsulta = interpretarErroHttp(e, { escrita: true, padrao: 'Não foi possível registrar a decisão.' }).mensagem;
-          this.cdr.markForCheck();
-        },
-      });
   }
 
   selecionarFormato(formato: FormatoExportacao): void {

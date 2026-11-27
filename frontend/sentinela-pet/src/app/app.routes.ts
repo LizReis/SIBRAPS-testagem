@@ -19,6 +19,7 @@ import { NovoAgendamento } from './pages/novo-agendamento/novo-agendamento';
 import { HistoricoPaciente } from './pages/historico-paciente/historico-paciente';
 import { AgendamentosPaciente } from './pages/agendamentos-paciente/agendamentos-paciente';
 import { Relatorios } from './pages/relatorios/relatorios';
+import { PendenciasClinicas } from './pages/pendencias-clinicas/pendencias-clinicas';
 import { roleGuard } from './auth/role-guard';
 import { GruposTerapeuticos } from './pages/grupos-terapeuticos/grupos-terapeuticos';
 import { AgendarGrupoTerapeutico } from './pages/agendar-grupo-terapeutico/agendar-grupo-terapeutico';
@@ -63,6 +64,7 @@ export const routes: Routes = [
       { path: 'grupos-terapeuticos/novo', component: AgendarGrupoTerapeutico, canActivate: [roleGuard], data: { roles: TODOS } },
       { path: 'grupos-terapeuticos/editar/:grupoId', component: AgendarGrupoTerapeutico, canActivate: [roleGuard], data: { roles: TODOS } },
       { path: 'relatorios', component: Relatorios },
+      { path: 'pendencias-clinicas', component: PendenciasClinicas, canActivate: [roleGuard], data: { roles: ADMIN } },
     ],
   },
 ];
