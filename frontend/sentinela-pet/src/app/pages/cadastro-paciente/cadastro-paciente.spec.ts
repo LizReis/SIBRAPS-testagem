@@ -179,4 +179,13 @@ describe('CadastroPaciente', () => {
     component.salvarPaciente();
     expect(cadastrarPaciente.mock.calls[0][0].endereco).toBeNull();
   });
+
+  it('abre o detalhe autorizado com os identificadores do cadastro local retornado', () => {
+    cadastrarPaciente.mockReturnValueOnce(of({ paciente: 'identidade-sintetica', vinculo: 'vinculo-sintetico',
+      versaoCadastro: 2, versaoVinculo: 0 }));
+    preencherFormulario(false);
+    component.salvarPaciente();
+    expect(navigate).toHaveBeenCalledWith(['/pacientes/detalhes', 'identidade-sintetica'],
+      { queryParams: { vinculo: 'vinculo-sintetico' } });
+  });
 });

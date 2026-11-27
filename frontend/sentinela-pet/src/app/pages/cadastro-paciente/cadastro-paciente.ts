@@ -89,6 +89,7 @@ export class CadastroPaciente implements OnInit {
   erroReferencias = false;
   carregandoPaciente = false;
   salvando = false;
+  cadastroDesatualizado = false;
 
   erroGeral: string | null = null;
   errosPorCampo: Record<string, string> = {};
@@ -217,6 +218,7 @@ export class CadastroPaciente implements OnInit {
     this.pacienteService.buscarPorId(idPublico).subscribe({
       next: (paciente) => {
         this.versoesLocais = paciente.local;
+        this.cadastroDesatualizado = false;
         const unidadeCorrespondente =
           this.unidadesSaude.find((u) => u.id === paciente.usfReferencia?.id) ?? null;
 
@@ -251,6 +253,7 @@ export class CadastroPaciente implements OnInit {
         this.aplicarMascaraCep();
 
         this.carregandoPaciente = false;
+        this.cdr.markForCheck();
       },
 
       error: (erro) => {
@@ -264,7 +267,8 @@ export class CadastroPaciente implements OnInit {
   salvarPaciente(): void {
     // Um vinculo confirmado nao pode acionar acidentalmente o POST legado
     // de novo paciente. A tela clinica continua protegida pelo escopo antigo.
-    if (this.vinculoExistenteConfirmado && !this.modoEdicao) return;
+    if (this.salvando || this.carregandoPaciente || this.cadastroDesatualizado
+        || (this.vinculoExistenteConfirmado && !this.modoEdicao)) return;
     this.erroGeral = null;
     this.errosPorCampo = {};
 
@@ -325,10 +329,12 @@ export class CadastroPaciente implements OnInit {
       : this.pacienteService.cadastrarPaciente(paciente);
 
     request$.subscribe({
-      next: () => {
+      next: cadastro => {
         this.salvando = false;
 
-        if (this.modoEdicao) {
+        if (cadastro && 'vinculo' in cadastro) {
+          this.router.navigate(['/pacientes/detalhes', cadastro.paciente], { queryParams: { vinculo: cadastro.vinculo } });
+        } else if (this.modoEdicao) {
           this.router.navigate(['/pacientes/detalhes', this.idPublico]);
         } else {
           this.router.navigate(['/pacientes']);
@@ -405,6 +411,7 @@ export class CadastroPaciente implements OnInit {
       if (this.pacienteForm.get(campo.fieldName)) this.errosPorCampo[campo.fieldName] = campo.message;
     }
     this.erroGeral = resultado.mensagem;
+    this.cadastroDesatualizado = this.modoEdicao && resultado.tipo === 'STALE_VERSION';
     this.marcarCamposComoTocados();
     this.cdr.markForCheck();
   }

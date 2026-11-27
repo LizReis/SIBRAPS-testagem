@@ -9,20 +9,20 @@
   <header class="patient-head">
     <div class="identity"><span class="avatar">{{iniciais()}}</span>
       <div>
-        <h1>{{p?.nome}} <span class="status">{{label(p?.statusPaciente)}}</span></h1>
-        <p>{{idade()}} anos • Acompanhamento {{label(p?.tipoAcompanhamento)}} • {{p?.usfReferencia?.nomeUsf || 'Unidade
-          não informada'}}</p>
+        <h1>{{p?.nome}}</h1>
+        <p>{{idade()}} anos</p>
       </div>
     </div>
     <div class="head-actions"><a routerLink="/pacientes">Voltar</a><a *ngIf="podeEditar"
-        [routerLink]="['/pacientes/editar',id]" class="primary">Editar dados</a><button *ngIf="ativo&&podeGerenciar"
+        [routerLink]="['/pacientes/editar',id]" class="primary">Editar cadastro compartilhado</a><button *ngIf="ativo&&podeGerenciar"
         class="danger" (click)="erroModal = ''; modal = 'encerrar'">Encerrar acompanhamento</button>
       <button *ngIf="ativo && podeAdministrar" (click)="abrirAcaoAdministrativa('configurar')">Configurar acompanhamento</button>
       <button *ngIf="ativo && podeAdministrar" (click)="abrirAcaoAdministrativa('inativar')">Inativar vínculo</button>
       <button *ngIf="p?.statusPaciente && !ativo && podeAdministrar" (click)="abrirAcaoAdministrativa('reativar')">Reativar vínculo</button>
     </div>
   </header>
-  <section class="summary">
+  <h2>Acompanhamento na unidade</h2>
+  <section class="summary" aria-label="Indicadores do vínculo">
     <div><small>CLASSIFICAÇÃO ATUAL</small><b
         [class]="(d.classificacaoRisco?.toLowerCase() ?? 'unknown')">{{label(d.classificacaoRisco)}}</b></div>
     <div><small>FALTAS</small><b>{{p?.countFaltas ?? 'Não confirmado'}}</b></div>
@@ -37,7 +37,7 @@
   <div class="columns">
     <div>
       <section class="card">
-        <h2>Dados pessoais</h2>
+        <h2>Dados cadastrais compartilhados</h2>
         <dl>
           <div>
             <dt>Nome completo</dt>
@@ -66,7 +66,7 @@
         </dl>
       </section>
       <section class="card">
-        <h2>Documentos e vínculo</h2>
+        <h2>Documentos e contato</h2>
         <dl>
           <div>
             <dt>CPF</dt>
@@ -81,20 +81,12 @@
             <dd>{{p?.telefone}}</dd>
           </div>
           <div>
-            <dt>Unidade</dt>
+            <dt>USF de referência cadastral</dt>
             <dd>{{p?.usfReferencia?.nomeUsf}}</dd>
           </div>
           <div>
             <dt>CAPS de referência</dt>
             <dd>{{label(p?.capsReferencia)}}</dd>
-          </div>
-          <div>
-            <dt>Tipo de acompanhamento</dt>
-            <dd>{{label(p?.tipoAcompanhamento)}}</dd>
-          </div>
-          <div>
-            <dt>Profissional de referência</dt>
-            <dd>{{d.referenciaInconclusiva ? 'Referência não confirmada' : (p?.profissionalReferencia?.nome || 'Não informado')}}</dd>
           </div>
         </dl>
       </section>
@@ -131,7 +123,15 @@
     </div>
     <aside>
       <section class="card attention">
-        <h2>Situação do acompanhamento</h2>
+        <h2>Situação do acompanhamento local</h2>
+        <dl>
+          <div><dt>Unidade do vínculo</dt><dd>{{ p?.unidade || 'Não confirmada' }}</dd></div>
+          <div><dt>Vínculo assistencial</dt><dd>{{ p?.local ? 'Vínculo desta unidade' : 'Não confirmado' }}</dd></div>
+          <div><dt>Estado clínico</dt><dd>{{ p?.statusPaciente ? label(p?.statusPaciente) : 'Não confirmado' }}</dd></div>
+          <div><dt>Modalidade</dt><dd>{{ p?.tipoAcompanhamento ? label(p?.tipoAcompanhamento) : 'Não confirmada' }}</dd></div>
+          <div><dt>Profissional de referência</dt><dd>{{ d.referenciaInconclusiva ? 'Referência não confirmada' : (p?.profissionalReferencia?.nome || 'Não informado') }}</dd></div>
+        </dl>
+        <p *ngIf="p?.indicadoresLocais?.revisaoNecessaria">Indicadores requerem conferência.</p>
         <h3 [class.regular]="ativo && d.classificacaoRisco === 'VERDE'"
           [class.alerta]="!(ativo && d.classificacaoRisco === 'VERDE')">{{d.atencaoNecessaria}}</h3>
         <p>{{d.classificacaoRisco==='VERMELHO'?'Faltas recorrentes ou ausência conforme critérios do
@@ -142,7 +142,7 @@
       </section>
       <section class="card quick">
         <h2>Ações rápidas</h2><a [routerLink]="['/pacientes/detalhes',id,'historico']">Ver histórico completo</a><a
-          routerLink="/agenda/novo" [queryParams]="{pacienteId:id}">Novo agendamento</a><a *ngIf="podeEditar"
+          *ngIf="podeAgendar" routerLink="/agenda/novo" [queryParams]="{pacienteId:id}">Novo agendamento</a><a *ngIf="podeEditar"
           [routerLink]="['/pacientes/editar',id]">Atualizar contato</a>
       </section>
     </aside>
@@ -150,6 +150,7 @@
 </main>
 <p class="loading" aria-live="polite" *ngIf="carregando">Carregando paciente…</p>
 <p class="error" role="alert" *ngIf="erro">{{erro}}</p>
+<button type="button" *ngIf="vinculoDesatualizado && !modal && !acaoAdministrativa" (click)="carregar()">Atualizar vínculo</button>
 <div class="backdrop" *ngIf="modal" role="dialog" aria-modal="true">
   <section class="modal">
     <h2>{{modal==='encerrar'?'Encerrar acompanhamento':'Registrar busca ativa'}}</h2><ng-container
@@ -167,10 +168,11 @@
   </textarea>
     </label>
 
+    <p *ngIf="vinculoDesatualizado">Feche a confirmação e atualize o vínculo antes de decidir novamente.</p>
     <p *ngIf="erroModal" class="modal-error" role="alert">
       {{ erroModal }}
     </p>
-    <div><button (click)="modal=''">Cancelar</button><button class="danger" [disabled]="salvando"
+    <div><button (click)="modal=''">Cancelar</button><button class="danger" [disabled]="salvando || vinculoDesatualizado"
         (click)="modal==='encerrar'?encerrar():registrar()">
 
         {{
@@ -209,10 +211,11 @@
       <textarea [(ngModel)]="motivoReativacao" maxlength="2000" rows="3"></textarea>
     </label>
     <p *ngIf="acaoAdministrativa === 'inativar'">Confirme a inativação do acompanhamento nesta unidade.</p>
+    <p *ngIf="vinculoDesatualizado">Feche a confirmação e atualize o vínculo antes de decidir novamente.</p>
     <p *ngIf="erroModal" class="modal-error" role="alert">{{ erroModal }}</p>
     <div>
       <button type="button" (click)="acaoAdministrativa=''" [disabled]="salvando">Cancelar</button>
-      <button type="button" class="primary" [disabled]="salvando || (acaoAdministrativa === 'configurar' && (!referenciasDisponiveis || referencia === undefined || !modalidade))"
+      <button type="button" class="primary" [disabled]="salvando || vinculoDesatualizado || (acaoAdministrativa === 'configurar' && (!referenciasDisponiveis || referencia === undefined || !modalidade))"
         (click)="salvarAcaoAdministrativa()">Confirmar</button>
     </div>
   </section>

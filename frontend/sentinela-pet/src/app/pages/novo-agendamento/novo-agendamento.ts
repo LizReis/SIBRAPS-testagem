@@ -19,6 +19,8 @@ import {
 
 import {
   AgendamentoService,
+  rotuloReserva,
+  rotuloFrequencia,
   HorarioDisponivel,
   HorariosDisponiveisPayload,
   NovoAgendamentoPayload,
@@ -98,7 +100,7 @@ export class NovoAgendamento implements OnInit, OnDestroy {
     this.carregarProfissionais();
 
     const pacienteId = this.route.snapshot.queryParamMap.get('pacienteId');
-    if (pacienteId) {
+    if (pacienteId && !this.modoRemarcacao) {
       this.pacienteService.buscarPorId(pacienteId).subscribe({
         next: paciente => {
           this.pacienteSelecionado = paciente;
@@ -236,18 +238,43 @@ export class NovoAgendamento implements OnInit, OnDestroy {
   }
 
   private versaoOriginal?: number;
+  originalDesatualizado = false;
+  estadoOriginal = '';
+  readonly contratoExperimental = contratoExperimental;
+
+  atualizarOriginal(): void {
+    if (!this.agendamentoOriginalId || this.carregandoRemarcacao) return;
+    this.vagas = null;
+    this.turnoSelecionado = null;
+    this.limparHorario();
+    this.carregarAgendamentoOriginal(this.agendamentoOriginalId);
+  }
 
   carregarAgendamentoOriginal(id: number): void {
     this.carregandoRemarcacao = true;
+    this.versaoOriginal = undefined;
 
     this.agendamentoService.buscarPorId(id).subscribe({
       next: (agendamento) => {
+        if (contratoExperimental) {
+          this.estadoOriginal = `Reserva: ${rotuloReserva(agendamento.situacaoReserva)} · Frequência: ${rotuloFrequencia(agendamento.frequenciaAssistencial)}`;
+          const vigente = agendamento.situacaoReserva === 'AGENDADA' || agendamento.situacaoReserva === 'REMARCADA';
+          if (!vigente || !agendamento.frequenciaAssistencial || agendamento.frequenciaAssistencial === 'PRESENTE'
+              || agendamento.migracaoPendente || agendamento.tipoAcompanhamento === 'GRUPO_TERAPEUTICO') {
+            this.erroGeral = 'O atendimento original não está disponível para remarcação.';
+            this.carregandoRemarcacao = false;
+            this.cdr.markForCheck();
+            return;
+          }
+        }
+        this.originalDesatualizado = false;
         this.versaoOriginal = agendamento.version;
         this.profissionalSelecionadoId = agendamento.usuarioId;
 
         this.pacienteService.buscarPorId(agendamento.pacienteId).subscribe({
           next: (paciente) => {
             this.pacienteSelecionado = paciente;
+            this.cdr.markForCheck();
           },
           error: () => {
             this.pacienteSelecionado = {
@@ -255,10 +282,13 @@ export class NovoAgendamento implements OnInit, OnDestroy {
               nome: agendamento.nomePaciente,
               tipoAcompanhamento: agendamento.tipoAcompanhamento,
             } as PacienteSelecao;
+            this.cdr.markForCheck();
           },
         });
 
         this.carregandoRemarcacao = false;
+        if (this.dataSelecionada) this.onProfissionalOuDataAlterado();
+        this.cdr.markForCheck();
 
         this.agendamentoService.sugerirDatasRemarcacao(id).subscribe({
           next: (datas) => {
@@ -361,7 +391,9 @@ export class NovoAgendamento implements OnInit, OnDestroy {
       this.dataSelecionada &&
       this.turnoSelecionado &&
       this.horaAtendimento &&
-      !this.salvando
+      !this.salvando &&
+      (!this.modoRemarcacao || (!this.carregandoRemarcacao && !this.originalDesatualizado
+        && (!contratoExperimental || this.versaoOriginal !== undefined)))
     );
   }
 
@@ -406,6 +438,9 @@ export class NovoAgendamento implements OnInit, OnDestroy {
       this.errosPorCampo[campo.fieldName] = campo.message;
     }
     this.erroGeral = resultado.mensagem;
+    if (this.modoRemarcacao && (resultado.tipo === 'STALE_VERSION' || erro.status === 0 || erro.status >= 500)) {
+      this.originalDesatualizado = true;
+    }
     this.cdr.markForCheck();
   }
 

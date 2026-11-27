@@ -16,7 +16,7 @@ export type StatusExibicaoSessaoGrupo =
 export interface ParticipanteSessaoPayload {
   pacienteId: string;
   nomePaciente: string;
-  statusPresenca: StatusPresencaGrupo;
+  statusPresenca: StatusPresencaGrupo | null;
 }
 
 export interface GrupoTerapeuticoPayload {
@@ -47,6 +47,13 @@ export interface SessaoGrupoPayload {
   quantidadeParticipantes: number;
   quantidadePresencasConfirmadas: number;
   version: number;
+  profissionalDesignadoId?: string | null;
+  nomeProfissionalDesignado?: string | null;
+  responsavelAtendimentoId?: string | null;
+  nomeResponsavelAtendimento?: string | null;
+  responsabilidadePendente?: boolean;
+  motivoResponsabilidadePendente?: string | null;
+  origemResponsabilidade?: string | null;
 }
 
 export interface ConfirmarOcorrenciaPayload {
@@ -136,8 +143,8 @@ export class GrupoTerapeuticoService {
     return this.http.get<ParticipanteGrupoPayload[]>(`${this.apiUrl}/${grupoId}/participantes`);
   }
 
-  inscreverEmSessoesFuturas(grupoId: number, pacienteId: string): Observable<SessaoGrupoPayload> {
-    return this.http.post<SessaoGrupoPayload>(`${this.apiUrl}/${grupoId}/inscricoes-futuras`, { pacienteId });
+  inscreverEmSessoesFuturas(grupoId: number, pacienteId: string): Observable<number[] | SessaoGrupoPayload> {
+    return this.http.post<number[] | SessaoGrupoPayload>(`${this.apiUrl}/${grupoId}/inscricoes-futuras`, { pacienteId });
   }
 
   removerParticipanteDoGrupo(grupoId: number, pacienteId: string): Observable<void> {
@@ -185,8 +192,8 @@ export class GrupoTerapeuticoService {
     return this.http.get<SessaoInscricaoRetroativaPayload[]>(`${this.apiUrl}/${grupoId}/sessoes-para-inscricao-retroativa`);
   }
 
-  inscreverRetroativamente(grupoId: number, payload: InscricaoRetroativaPayload): Observable<SessaoGrupoPayload> {
-    return this.http.post<SessaoGrupoPayload>(`${this.apiUrl}/${grupoId}/inscricoes-retroativas`, payload);
+  inscreverRetroativamente(grupoId: number, payload: InscricaoRetroativaPayload): Observable<number[] | SessaoGrupoPayload> {
+    return this.http.post<number[] | SessaoGrupoPayload>(`${this.apiUrl}/${grupoId}/inscricoes-retroativas`, payload);
   }
 
   adicionarParticipante(
@@ -209,6 +216,14 @@ export class GrupoTerapeuticoService {
     return this.http.delete<SessaoGrupoPayload>(
       `${this.apiUrl}/sessoes/${sessaoId}/participantes/${pacienteId}`,
       {params: contratoExperimental && version !== undefined ? {version} : {}},
+    );
+  }
+
+  registrarProvisoria(sessaoId: number, pacienteId: string, statusPresenca: StatusPresencaGrupo,
+      version: number): Observable<SessaoGrupoPayload> {
+    return this.http.patch<SessaoGrupoPayload>(
+      `${this.apiUrl}/sessoes/${sessaoId}/participantes/${pacienteId}/presenca`,
+      { statusPresenca }, { params: { version } },
     );
   }
 

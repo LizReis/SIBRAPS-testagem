@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { podeEditarPaciente } from '../auth/permissoes';
+import { GrupoTerapeuticoService } from './grupo-terapeutico-service';
 import { AgendamentoService } from './agendamento-service';
 import { contratoExperimental, raizClinica } from './configuracao-contrato';
 import { PacientePayload, PacienteService } from './paciente/paciente-service';
@@ -53,5 +54,27 @@ describe('Contratos HTTP do pacote 6B.2', () => {
     expect(req.request.params.get('version')).toBe('7');
     expect(req.request.body).toEqual({decisao: 'APROVAR', justificativa: 'Justificativa sintética.'});
     req.flush('decisao');
+  });
+
+  it('usa os recursos operacionais de sessão adicional, composição e presença provisória', () => {
+    const grupos = TestBed.inject(GrupoTerapeuticoService);
+    grupos.criarProximaSessao({ grupoId: 4, dataSessao: '2030-06-20', horario: null }).subscribe();
+    const criar = http.expectOne(`${raizClinica}/grupos/sessoes`);
+    expect(criar.request.method).toBe('POST');
+    expect(criar.request.body).toEqual({ grupoId: 4, dataSessao: '2030-06-20', horario: null });
+    criar.flush({ id: 5, version: 0 });
+
+    grupos.adicionarParticipante(5, 'paciente-sintetico', 0).subscribe();
+    const adicionar = http.expectOne(req => req.method === 'POST');
+    expect(adicionar.request.url).toBe(`${raizClinica}/grupos/sessoes/5/participantes`);
+    expect(adicionar.request.params.get('version')).toBe('0');
+    adicionar.flush({ id: 5, version: 1 });
+
+    grupos.registrarProvisoria(5, 'paciente-sintetico', 'PRESENTE', 1).subscribe();
+    const provisoria = http.expectOne(req => req.method === 'PATCH');
+    expect(provisoria.request.url).toBe(`${raizClinica}/grupos/sessoes/5/participantes/paciente-sintetico/presenca`);
+    expect(provisoria.request.params.get('version')).toBe('1');
+    expect(provisoria.request.body).toEqual({ statusPresenca: 'PRESENTE' });
+    provisoria.flush({ id: 5, version: 2 });
   });
 });

@@ -3,6 +3,21 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
+export type SituacaoReserva = 'AGENDADA' | 'REMARCADA' | 'CANCELADA' | 'SUBSTITUIDA';
+export type FrequenciaAssistencial = 'NAO_REGISTRADA' | 'PRESENTE' | 'FALTOU';
+
+export function rotuloReserva(situacao?: SituacaoReserva | null): string {
+  return situacao ? {
+    AGENDADA: 'Agendada', REMARCADA: 'Remarcada', CANCELADA: 'Cancelada', SUBSTITUIDA: 'Substituída',
+  }[situacao] : 'Não confirmada';
+}
+
+export function rotuloFrequencia(frequencia?: FrequenciaAssistencial | null): string {
+  return frequencia ? {
+    NAO_REGISTRADA: 'Não registrada', PRESENTE: 'Presente', FALTOU: 'Faltou',
+  }[frequencia] : 'Não confirmada';
+}
+
 export interface AgendamentoDTO {
   id: number;
   usuarioId: string;
@@ -16,8 +31,9 @@ export interface AgendamentoDTO {
   situacaoAtendimento: string;
   agendamentoOriginalId?: number;
   version: number;
-  frequenciaAssistencial?: 'NAO_REGISTRADA' | 'PRESENTE' | 'FALTOU';
-  situacaoReserva?: 'AGENDADA' | 'REMARCADA' | 'CANCELADA' | 'SUBSTITUIDA';
+  frequenciaAssistencial?: FrequenciaAssistencial | null;
+  situacaoReserva?: SituacaoReserva | null;
+  migracaoPendente?: boolean;
 }
 
 export interface NovoAgendamentoPayload {

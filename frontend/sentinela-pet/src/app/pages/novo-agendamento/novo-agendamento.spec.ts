@@ -12,6 +12,9 @@ describe('NovoAgendamento', () => {
   let component: NovoAgendamento;
   let fixture: ComponentFixture<NovoAgendamento>;
   const criarAgendamento = vi.fn();
+  const buscarOriginal = vi.fn();
+  const buscarPaciente = vi.fn();
+
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -19,8 +22,11 @@ describe('NovoAgendamento', () => {
       providers: [
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
         { provide: Router, useValue: { navigate: vi.fn() } },
-        { provide: PacienteService, useValue: {} },
-        { provide: AgendamentoService, useValue: { criarAgendamento } },
+        { provide: PacienteService, useValue: { buscarPorId: buscarPaciente } },
+        { provide: AgendamentoService, useValue: {
+          criarAgendamento, buscarPorId: buscarOriginal, sugerirDatasRemarcacao: () => of([]),
+          consultarVagas: () => of({ MANHA: 2, TARDE: 1 }),
+        } },
         { provide: ProfissionalService, useValue: { listarParaSelecao: () => of([
           { idPublico: 'admin', nome: 'Admin assistencial', tipoUsuario: 'ADMINISTRADOR' },
           { idPublico: 'prof', nome: 'Profissional assistencial', tipoUsuario: 'PROFISSIONAL' },
@@ -62,5 +68,35 @@ describe('NovoAgendamento', () => {
     expect(secaoHorario.querySelector('[role="alert"]').textContent).toContain('Horário inválido.');
     expect(component.horaAtendimento).toBe('08:00');
     expect(criarAgendamento).toHaveBeenCalledOnce();
+  });
+
+  it('exige releitura do atendimento original e nova escolha depois de STALE_VERSION', () => {
+    const original = { id: 12, usuarioId: 'prof', pacienteId: 'paciente-sintetico',
+      situacaoReserva: 'AGENDADA', frequenciaAssistencial: 'NAO_REGISTRADA', tipoAcompanhamento: 'INDIVIDUAL' };
+    const escolherHorario = () => {
+      component.dataSelecionada = '2030-05-20';
+      component.turnoSelecionado = 'MANHA';
+      component.horaAtendimento = '08:00';
+    };
+    criarAgendamento.mockClear();
+    criarAgendamento.mockReturnValueOnce(throwError(() => new HttpErrorResponse({
+      status: 422, error: { code: 'STALE_VERSION' },
+    }))).mockReturnValueOnce(of({}));
+    buscarPaciente.mockReturnValue(of({ idPublico: original.pacienteId, nome: 'Paciente sintético' }));
+    buscarOriginal.mockReturnValueOnce(of({ ...original, version: 1 })).mockReturnValueOnce(of({ ...original, version: 2 }));
+    component.agendamentoOriginalId = original.id;
+    component.carregarAgendamentoOriginal(original.id);
+    escolherHorario();
+
+    component.confirmarAgendamento();
+    expect(component.originalDesatualizado).toBe(true);
+    component.confirmarAgendamento();
+    expect(criarAgendamento).toHaveBeenCalledOnce();
+
+    component.atualizarOriginal();
+    expect(component.podeConfirmar).toBe(false);
+    escolherHorario();
+    component.confirmarAgendamento();
+    expect(criarAgendamento).toHaveBeenLastCalledWith(expect.objectContaining({ agendamentoOriginalId: 12, version: 2 }));
   });
 });

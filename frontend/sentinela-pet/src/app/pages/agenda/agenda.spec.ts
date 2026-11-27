@@ -14,6 +14,8 @@ const base: AgendamentoDTO = {
   turnoAgendamento: 'TARDE',
   horaAtendimento: '15:45:00',
   situacaoAtendimento: 'AGENDADO',
+  situacaoReserva: 'AGENDADA',
+  frequenciaAssistencial: 'NAO_REGISTRADA',
   version: 1,
 };
 
@@ -22,7 +24,9 @@ function criarComponente(servicos = {}): Agenda {
   const profissionalService = { listar: () => of([]) };
   const agendamentoService = { buscarAgendaPorPeriodo: () => of([]), atualizarStatus: () => of(base), ...servicos };
   const router = { navigate: () => Promise.resolve(true) };
-  return new Agenda(usuarioService as any, profissionalService as any, agendamentoService as any, router as any, { markForCheck() {} } as any);
+  const agenda = new Agenda(usuarioService as any, profissionalService as any, agendamentoService as any, router as any, { markForCheck() {} } as any);
+  agenda.usuarioLogado = { idPublico: 'admin-sintetico', nome: 'Admin', email: '', tipoUsuario: 'ADMINISTRADOR', unidadeAtuacao: 'CAPS_I' };
+  return agenda;
 }
 
 describe('Agenda', () => {
@@ -137,7 +141,21 @@ describe('Agenda', () => {
 
     expect(component.podeRegistrarFrequencia({ ...base, dataAgendamento: '2020-01-01' })).toBe(true);
     expect(component.podeRemarcar({ ...base, tipoAcompanhamento: 'INDIVIDUAL' })).toBe(true);
-    expect(component.podeRemarcar({ ...base, situacaoAtendimento: 'CANCELADO' })).toBe(false);
+    expect(component.podeRemarcar({ ...base, situacaoAtendimento: 'CANCELADO', situacaoReserva: 'CANCELADA' })).toBe(false);
     expect(component.podeRemarcar({ ...base, tipoAcompanhamento: 'GRUPO_TERAPEUTICO' })).toBe(false);
+  });
+  it('preserva presença de reserva cancelada e distingue frequência inconclusiva', () => {
+    const component = criarComponente();
+    const cancelada: AgendamentoDTO = { ...base, situacaoReserva: 'CANCELADA', frequenciaAssistencial: 'PRESENTE' };
+    component.agendamentos = [cancelada, { ...base, frequenciaAssistencial: null }];
+    expect(component.resumoCanonico).toEqual(expect.arrayContaining([
+      { label: 'Reserva: Cancelada', total: 1 }, { label: 'Frequência: Presente', total: 1 },
+      { label: 'Frequência: Não confirmada', total: 1 },
+    ]));
+    expect(component.podeRegistrarFrequencia(cancelada)).toBe(false);
+    expect(component.podeRegularizar(cancelada)).toBe(false);
+    expect(component.podeCorrigirFrequencia(cancelada)).toBe(true);
+    component.usuarioLogado = { ...component.usuarioLogado!, tipoUsuario: 'RECEPCAO' };
+    expect(component.podeCorrigirFrequencia(cancelada)).toBe(false);
   });
 });

@@ -88,7 +88,8 @@
               <th>Horário</th>
               <th>Profissional</th>
               <th>Tipo</th>
-              <th>Situação</th>
+              <th>Reserva</th>
+              <th>Frequência</th>
             </tr>
           </thead>
 
@@ -110,8 +111,10 @@
                 {{ label(a.tipoAcompanhamento) }}
               </td>
 
-              <td data-label="Situação">
-                {{ label(a.situacaoAtendimento) }}
+              <td data-label="Reserva">{{ rotuloReserva(a.situacaoReserva) }}</td>
+              <td data-label="Frequência">
+                {{ rotuloFrequencia(a.frequenciaAssistencial) }}
+                <small *ngIf="a.migracaoPendente">Requer conferência</small>
               </td>
             </tr>
           </tbody>
@@ -124,7 +127,7 @@
         <p>Nenhum agendamento encontrado para este paciente.</p>
 
         <a
-          routerLink="/agenda/novo"
+          *ngIf="podeAgendar" routerLink="/agenda/novo"
           [queryParams]="{ pacienteId: id }"
         >
           Novo agendamento

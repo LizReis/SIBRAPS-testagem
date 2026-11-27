@@ -1,3 +1,4 @@
+import { UsuarioLogadoService } from "../../services/usuario-logado-service";
 import { interpretarErroHttp } from '../../services/erro-http';
 import { CommonModule } from "@angular/common";
 import { HttpErrorResponse } from "@angular/common/http";
@@ -10,6 +11,7 @@ import {
   debounceTime,
   distinctUntilChanged,
   finalize,
+  forkJoin,
   map,
   of,
   switchMap,
@@ -71,6 +73,13 @@ export class AgendarGrupoTerapeutico implements OnInit, OnDestroy {
   modoEdicao = false;
   grupoId: number | null = null;
   grupoVersion = 0;
+  grupoCarregado = false;
+  grupoDesatualizado = false;
+  private readonly usuario = inject(UsuarioLogadoService);
+  coordenadorAtual?: string;
+  get transferindoCoordenacao(): boolean {
+    return !!this.coordenadorAtual && this.form.controls.coordenadorId.value !== this.coordenadorAtual;
+  }
   grupoIniciado = false;
 
   private readonly pesquisa$ = new Subject<string>();
@@ -183,6 +192,7 @@ export class AgendarGrupoTerapeutico implements OnInit, OnDestroy {
   }
 
   submit(): void {
+    if (this.enviando || (this.modoEdicao && (!this.grupoCarregado || this.grupoDesatualizado))) return;
     this.erroGeral = "";
     this.validarPeriodoRecorrencia();
     this.form.markAllAsTouched();
@@ -230,13 +240,33 @@ export class AgendarGrupoTerapeutico implements OnInit, OnDestroy {
       });
   }
 
-  private carregarGrupo(): void {
-    this.grupos.buscarGrupo(this.grupoId!).subscribe({ next: g => {
-      this.grupoVersion = g.version; this.grupoIniciado = g.iniciado;
-      this.form.patchValue({ tema: g.tema, coordenadorId: g.coordenadorId, dataPrimeiraSessao: g.dataPrimeiraSessao,
-        horario: g.horarioPadrao.slice(0,5), recorrencia: g.recorrencia, dataFimRecorrencia: g.dataFimRecorrencia ?? '' });
-      if (g.iniciado) ['dataPrimeiraSessao','horario','recorrencia','dataFimRecorrencia'].forEach(c => this.form.get(c)?.disable());
-    }, error: e => this.tratarErro(e) });
+  carregarGrupo(): void {
+    if (!this.grupoId || this.enviando) return;
+    this.grupoCarregado = false;
+    forkJoin({ grupo: this.grupos.buscarGrupo(this.grupoId), usuario: this.usuario.obterUsuarioLogado() }).subscribe({
+      next: ({ grupo, usuario }) => {
+        if (usuario.tipoUsuario === 'PROFISSIONAL' && usuario.idPublico !== grupo.coordenadorId) {
+          this.erroGeral = 'Você não tem permissão para editar este grupo.';
+          this.cdr.markForCheck();
+          return;
+        }
+        this.coordenadorAtual = grupo.coordenadorId;
+        this.grupoVersion = grupo.version;
+        this.grupoIniciado = grupo.iniciado;
+        this.form.patchValue({
+          tema: grupo.tema, coordenadorId: grupo.coordenadorId, dataPrimeiraSessao: grupo.dataPrimeiraSessao,
+          horario: grupo.horarioPadrao.slice(0, 5), recorrencia: grupo.recorrencia, dataFimRecorrencia: grupo.dataFimRecorrencia ?? '',
+        });
+        if (grupo.iniciado) {
+          ['dataPrimeiraSessao', 'horario', 'recorrencia', 'dataFimRecorrencia'].forEach(c => this.form.get(c)?.disable());
+        }
+        this.grupoCarregado = true;
+        this.grupoDesatualizado = false;
+        this.erroGeral = '';
+        this.cdr.markForCheck();
+      },
+      error: e => this.tratarErro(e, false),
+    });
   }
 
   private configurarRecorrencia(): void {
@@ -336,8 +366,12 @@ export class AgendarGrupoTerapeutico implements OnInit, OnDestroy {
       .subscribe((r) => (this.resultados = r));
   }
 
-  private tratarErro(e: HttpErrorResponse): void {
-    this.erroGeral = interpretarErroHttp(e, { escrita: true, padrao: 'Não foi possível salvar o grupo.' }).mensagem;
+  private tratarErro(e: HttpErrorResponse, escrita = true): void {
+    const resultado = interpretarErroHttp(e, { escrita, padrao: 'Não foi possível concluir a operação do grupo.' });
+    this.erroGeral = resultado.mensagem;
+    if (escrita && this.modoEdicao && (resultado.tipo === 'STALE_VERSION' || e.status === 0 || e.status >= 500)) {
+      this.grupoDesatualizado = true;
+    }
     this.cdr.markForCheck();
   }
 

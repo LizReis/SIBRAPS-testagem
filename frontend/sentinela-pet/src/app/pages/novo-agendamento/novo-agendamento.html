@@ -13,6 +13,9 @@
     </div>
   </header>
   <div class="alert error" role="alert" *ngIf="erroGeral">{{erroGeral}}</div>
+  <p *ngIf="modoRemarcacao && estadoOriginal">Atendimento original — {{ estadoOriginal }}</p>
+  <button type="button" class="secondary" *ngIf="modoRemarcacao && originalDesatualizado"
+    [disabled]="carregandoRemarcacao" (click)="atualizarOriginal()">Atualizar atendimento original e rever horário</button>
   <div class="alert" aria-live="polite" *ngIf="carregandoRemarcacao">Carregando dados da remarcação...</div>
   <div class="page-grid">
     <div class="steps">

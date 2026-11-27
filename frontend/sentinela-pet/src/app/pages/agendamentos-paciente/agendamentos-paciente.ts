@@ -1,3 +1,6 @@
+import { rotuloReserva, rotuloFrequencia } from '../../services/agendamento-service';
+import { podeCriarAgendamento } from '../../auth/permissoes';
+import { UsuarioLogadoService } from '../../services/usuario-logado-service';
 import { CommonModule } from '@angular/common';
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -21,10 +24,14 @@ export class AgendamentosPaciente implements OnInit {
   agendamentos: AgendamentoPaciente[] = [];
   carregando = true;
   erro = '';
+  podeAgendar = false;
+  readonly rotuloReserva = rotuloReserva;
+  readonly rotuloFrequencia = rotuloFrequencia;
 
   constructor(
     private readonly route: ActivatedRoute,
     private readonly pacienteService: PacienteService,
+    private readonly usuario: UsuarioLogadoService,
   ) {}
 
   ngOnInit(): void {
@@ -36,6 +43,10 @@ export class AgendamentosPaciente implements OnInit {
       return;
     }
 
+    this.usuario.obterUsuarioLogado().subscribe({
+      next: u => this.podeAgendar = podeCriarAgendamento(u.tipoUsuario),
+      error: () => this.podeAgendar = false,
+    });
     this.carregar();
   }
 

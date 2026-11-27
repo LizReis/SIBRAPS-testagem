@@ -13,7 +13,7 @@
       <div>
         <h1>{{ modoEdicao ? 'Editar paciente' : 'Cadastrar paciente' }}</h1>
         <p>{{ modoEdicao
-          ? 'Atualize os dados cadastrais e assistenciais do paciente.'
+          ? 'Atualize os dados cadastrais compartilhados do paciente.'
           : 'Preencha os dados essenciais para iniciar o acompanhamento no SIBRAPS.' }}</p>
       </div>
     </div>
@@ -22,6 +22,8 @@
   </header>
 
   <div class="alert-erro" role="alert" *ngIf="erroGeral">{{ erroGeral }}</div>
+  <button type="button" *ngIf="cadastroDesatualizado && idPublico" [disabled]="carregandoPaciente"
+    (click)="carregarPaciente(idPublico)">Carregar cadastro atual e revisar as alterações</button>
   <div class="loading-message" aria-live="polite" *ngIf="carregandoPaciente">
     Carregando dados do paciente…
   </div>
@@ -29,6 +31,7 @@
 
   <app-cadastro-existente *ngIf="!modoEdicao"
     (vinculoConfirmado)="onVinculoExistenteConfirmado()"></app-cadastro-existente>
+  <button type="button" *ngIf="vinculoExistenteConfirmado && !modoEdicao" (click)="cancelar()">Voltar à lista de pacientes</button>
 
   <form *ngIf="!vinculoExistenteConfirmado || modoEdicao"
     [formGroup]="pacienteForm" (ngSubmit)="salvarPaciente()" autocomplete="on">
@@ -238,7 +241,7 @@
 
       <div class="form-actions">
         <button type="button" (click)="cancelar()" [disabled]="salvando">Cancelar</button>
-        <button class="save" type="submit" [disabled]="salvando">
+        <button class="save" type="submit" [disabled]="salvando || carregandoPaciente || cadastroDesatualizado">
           {{ salvando ? 'Salvando…' : modoEdicao ? 'Salvar alterações' : 'Salvar' }}
         </button>
       </div>

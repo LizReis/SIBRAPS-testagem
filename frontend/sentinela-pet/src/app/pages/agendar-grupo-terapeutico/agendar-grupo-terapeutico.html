@@ -287,13 +287,21 @@
             </aside>
         </div>
 
+        @if (transferindoCoordenacao) {
+            <p class="info" role="status">A troca pode transferir a designação das sessões futuras. Sessões realizadas preservam a autoria. Sessões vencidas não recebem autoria retroativa e podem ficar protegidas para revisão.</p>
+        } @else if (modoEdicao) {
+            <p class="info">Editar a série mantém a coordenação atual. Após o início, a estrutura da recorrência fica protegida.</p>
+        }
+        @if (grupoDesatualizado) {
+            <button type="button" (click)="carregarGrupo()">Atualizar grupo e rever alterações</button>
+        }
         @if(erroGeral) {
             <div class="submit-error" role="alert">{{ erroGeral }}</div>
         }
 
         <footer>
             <a routerLink="/grupos-terapeuticos" class="cancel">Cancelar</a>
-            <button type="submit" class="primary" [disabled]="enviando">
+            <button type="submit" class="primary" [disabled]="enviando || (modoEdicao && (!grupoCarregado || grupoDesatualizado))">
                 <i class="bi bi-calendar-plus"></i>
                 {{ enviando ? 'Salvando...' : modoEdicao ? 'Salvar alterações' : 'Agendar grupo' }}
             </button>

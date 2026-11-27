@@ -1,3 +1,4 @@
+import type { AgendamentoDTO } from '../agendamento-service';
 import { contratoExperimental, raizClinica } from '../configuracao-contrato';
 import { IndicadoresLocais, PainelLocal, PacienteLocal, PacienteLocalDetalhe, ProntuarioLocal, VersoesPacienteLocal } from '../contrato-clinico-local';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
@@ -24,6 +25,13 @@ export interface UsfReferencia {
   longitude: string;
 }
 
+export interface CadastroLocal {
+  paciente: string;
+  vinculo: string;
+  versaoCadastro: number;
+  versaoVinculo: number;
+}
+
 export interface PacientePayload {
   idPublico?: string;
 
@@ -44,6 +52,7 @@ export interface PacientePayload {
 
   situacaoRua: boolean;
   tipoAcompanhamento: string | null;
+  unidade?: string;
   local?: VersoesPacienteLocal;
   indicadoresLocais?: IndicadoresLocais;
 
@@ -68,7 +77,8 @@ export interface PacienteLista extends Pick<PacientePayload, 'idPublico'|'nome'|
 export interface PacientePesquisa { resumo: { pacientesAtivos:number; emAtencao:number; buscaAtiva:number; semPresencaRecente:number; estadoNaoConfirmado?:number; semPresencaIndeterminada?:number }; pacientes:PacienteLista[]; paginaAtual:number; tamanhoPagina:number; totalRegistros:number; totalPaginas:number; }
 export interface ProximoAgendamento { id:number; data:string; hora:string; situacao:string }
 export interface PacienteDetalhe { paciente:PacientePayload; referenciaInconclusiva?: boolean; classificacaoRisco:string|null; proximoAgendamento?:ProximoAgendamento; atencaoNecessaria:string }
-export interface AgendamentoPaciente { id:number; dataAgendamento:string; horaAtendimento:string; nomeProfissional:string; tipoAcompanhamento:string; situacaoAtendimento:string }
+export type AgendamentoPaciente = Pick<AgendamentoDTO, 'id' | 'dataAgendamento' | 'horaAtendimento' | 'nomeProfissional'
+  | 'tipoAcompanhamento' | 'situacaoAtendimento' | 'situacaoReserva' | 'frequenciaAssistencial' | 'migracaoPendente'>;
 
 export interface FieldMessage {
   fieldName: string;
@@ -252,22 +262,24 @@ export class PacienteService {
 
   cadastrarPaciente(
     paciente: PacientePayload,
-  ): Observable<PacientePayload> {
-    return this.http.post<PacientePayload>(
-      this.apiUrl,
-      paciente,
-    );
+  ): Observable<CadastroLocal | PacientePayload> {
+    return contratoExperimental
+      ? this.http.post<CadastroLocal>(this.apiUrl, paciente)
+      : this.http.post<PacientePayload>(this.apiUrl, paciente);
   }
 
   atualizarPaciente(
     idPublico: string,
     paciente: PacientePayload,
     local?: VersoesPacienteLocal,
-  ): Observable<PacientePayload> {
+  ): Observable<CadastroLocal | PacientePayload> {
     if (contratoExperimental) {
       if (!local) return this.semVersao();
-      const { tipoAcompanhamento, profissionalReferenciaId, profissionalReferencia, ...cadastro } = paciente;
-      return this.http.put<PacientePayload>(`${this.apiUrl}/${idPublico}/vinculos/${local.vinculo}/cadastro`,
+      const { nome, nomeMae, dataNascimento, sexo, racacor, cpf, cns, telefone,
+        endereco, situacaoRua, usfReferencia, capsReferencia } = paciente;
+      const cadastro = { nome, nomeMae, dataNascimento, sexo, racacor, cpf, cns, telefone,
+        endereco, situacaoRua, usfReferencia, capsReferencia };
+      return this.http.put<CadastroLocal>(`${this.apiUrl}/${idPublico}/vinculos/${local.vinculo}/cadastro`,
         cadastro, { params: { versaoCadastro: local.versaoCadastro } });
     }
     return this.http.put<PacientePayload>(

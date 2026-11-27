@@ -12,7 +12,8 @@
   </div>
 
   <section *ngIf="correcao as atendimento" class="card" aria-labelledby="titulo-correcao">
-    <h2 id="titulo-correcao">Revisar atendimento de {{ atendimento.nomePaciente }}</h2>
+    <h2 id="titulo-correcao">{{ atendimento.situacaoReserva === 'CANCELADA' && atendimento.frequenciaAssistencial === 'NAO_REGISTRADA'
+      ? (tipoRegularizacao === 'RECUPERAR' ? 'Recuperar reserva' : 'Regularizar frequência') : 'Corrigir frequência retroativa' }} — {{ atendimento.nomePaciente }}</h2>
     <label *ngIf="atendimento.situacaoReserva === 'CANCELADA' && atendimento.frequenciaAssistencial === 'NAO_REGISTRADA'">
       Operação
       <select [(ngModel)]="tipoRegularizacao">
@@ -21,10 +22,11 @@
         <option value="FALTOU">Regularizar falta</option>
       </select>
     </label>
+    <p *ngIf="tipoRegularizacao === 'RECUPERAR' && atendimento.situacaoReserva === 'CANCELADA' && atendimento.frequenciaAssistencial === 'NAO_REGISTRADA'">A recuperação reabre a reserva. A frequência permanece sem registro.</p>
     <label>Justificativa<textarea [(ngModel)]="justificativa" maxlength="2000" rows="3"></textarea></label>
     <p *ngIf="revisaoDesatualizada">Atualize a agenda e abra novamente a revisão deste atendimento para conferir os dados.</p>
     <button type="button" (click)="correcao = undefined" [disabled]="atualizandoId === atendimento.id">Cancelar</button>
-    <button type="button" (click)="confirmarCorrecao()" [disabled]="revisaoDesatualizada || justificativa.trim().length < 10 || atualizandoId === atendimento.id">Salvar revisão</button>
+    <button type="button" (click)="confirmarCorrecao()" [disabled]="revisaoDesatualizada || justificativa.trim().length < 10 || atualizandoId === atendimento.id">Confirmar operação</button>
   </section>
   <div class="alert-erro" *ngIf="erroGeral">
     {{ erroGeral }}
@@ -95,7 +97,10 @@
                 <div class="appointment-main">
                   <strong>{{ a.nomePaciente }}</strong>
                   <span class="appointment-meta-text">{{ labelTipoAcompanhamento(a.tipoAcompanhamento) }}<ng-container *ngIf="podeFiltrarProfissional"> — {{ a.nomeProfissional }}</ng-container></span>
-                  <span class="badge" [ngClass]="[classeSituacao(a.situacaoAtendimento), classePadraoSituacao(a.situacaoAtendimento)]" [attr.title]="descricaoSituacao(a.situacaoAtendimento) || null">{{ labelSituacao(a.situacaoAtendimento) }}</span>
+                  <span class="badge" *ngIf="contratoExperimental">Reserva: {{ rotuloReserva(a.situacaoReserva) }}</span>
+                  <span class="badge" *ngIf="contratoExperimental">Frequência: {{ rotuloFrequencia(a.frequenciaAssistencial) }}</span>
+                  <small *ngIf="a.migracaoPendente">Requer conferência</small>
+                  <span *ngIf="!contratoExperimental" class="badge" [ngClass]="[classeSituacao(a.situacaoAtendimento), classePadraoSituacao(a.situacaoAtendimento)]" [attr.title]="descricaoSituacao(a.situacaoAtendimento) || null">{{ labelSituacao(a.situacaoAtendimento) }}</span>
                 </div>
                 <div class="appointment-actions" *ngIf="possuiAcoes(a)">
                   <button type="button" class="action-btn action-presente" *ngIf="podeRegistrarFrequencia(a)" (click)="registrarPresenca(a)" [disabled]="atualizandoId === a.id" [attr.aria-label]="'Registrar presença de ' + a.nomePaciente">Presente</button>
@@ -123,7 +128,10 @@
                 <div class="appointment-main">
                   <strong>{{ a.nomePaciente }}</strong>
                   <span class="appointment-meta-text">{{ labelTipoAcompanhamento(a.tipoAcompanhamento) }}<ng-container *ngIf="podeFiltrarProfissional"> — {{ a.nomeProfissional }}</ng-container></span>
-                  <span class="badge" [ngClass]="[classeSituacao(a.situacaoAtendimento), classePadraoSituacao(a.situacaoAtendimento)]" [attr.title]="descricaoSituacao(a.situacaoAtendimento) || null">{{ labelSituacao(a.situacaoAtendimento) }}</span>
+                  <span class="badge" *ngIf="contratoExperimental">Reserva: {{ rotuloReserva(a.situacaoReserva) }}</span>
+                  <span class="badge" *ngIf="contratoExperimental">Frequência: {{ rotuloFrequencia(a.frequenciaAssistencial) }}</span>
+                  <small *ngIf="a.migracaoPendente">Requer conferência</small>
+                  <span *ngIf="!contratoExperimental" class="badge" [ngClass]="[classeSituacao(a.situacaoAtendimento), classePadraoSituacao(a.situacaoAtendimento)]" [attr.title]="descricaoSituacao(a.situacaoAtendimento) || null">{{ labelSituacao(a.situacaoAtendimento) }}</span>
                 </div>
                 <div class="appointment-actions" *ngIf="possuiAcoes(a)">
                   <button type="button" class="action-btn action-presente" *ngIf="podeRegistrarFrequencia(a)" (click)="registrarPresenca(a)" [disabled]="atualizandoId === a.id">Presente</button>
@@ -143,7 +151,8 @@
           <button type="button" class="month-cell" *ngFor="let dia of gradeMes" [class.outside]="dia.foraDoMes" [class.selected]="dia.selecionado" (click)="selecionarDiaDoMes(dia.iso)">
             <strong>{{ dia.dia }}</strong>
             <span class="count" *ngIf="dia.agendamentos.length">{{ dia.agendamentos.length }} atendimento{{ dia.agendamentos.length === 1 ? '' : 's' }}</span>
-            <span class="month-item" *ngFor="let a of dia.agendamentos.slice(0, 2)"><i [ngClass]="[classeSituacao(a.situacaoAtendimento), classePadraoSituacao(a.situacaoAtendimento)]"></i>{{ formatarHora(a.horaAtendimento) }} {{ a.nomePaciente }}</span>
+            <span class="month-item" *ngFor="let a of dia.agendamentos.slice(0, 2)"><i *ngIf="!contratoExperimental" [ngClass]="[classeSituacao(a.situacaoAtendimento), classePadraoSituacao(a.situacaoAtendimento)]"></i>{{ formatarHora(a.horaAtendimento) }} {{ a.nomePaciente }}
+              <small *ngIf="contratoExperimental">Reserva: {{ rotuloReserva(a.situacaoReserva) }} · Frequência: {{ rotuloFrequencia(a.frequenciaAssistencial) }}</small></span>
             <span class="more-count" *ngIf="dia.agendamentos.length > 2">+{{ dia.agendamentos.length - 2 }} atendimentos</span>
           </button>
         </section>
@@ -160,10 +169,10 @@
           <h2>{{ resumoTitulo }}</h2>
           <div class="summary-line total"><span>Total de atendimentos</span><strong>{{ agendamentos.length }}</strong></div>
           <div class="summary-divider" aria-hidden="true"></div>
-          <div class="summary-line" *ngFor="let item of resumoSituacoesCompleto"><span>{{ item.label }}</span><strong>{{ item.total }}</strong></div>
+          <div class="summary-line" *ngFor="let item of (contratoExperimental ? resumoCanonico : resumoSituacoesCompleto)"><span>{{ item.label }}</span><strong>{{ item.total }}</strong></div>
         </section>
 
-        <section class="card legend-card">
+        <section *ngIf="!contratoExperimental" class="card legend-card">
           <h2>Legenda</h2>
           <div class="legend-item" *ngFor="let situacao of situacoesLegenda" [attr.title]="descricaoSituacao(situacao) || null"><i [ngClass]="[classeSituacao(situacao), classePadraoSituacao(situacao)]"></i><span>{{ labelSituacao(situacao) }}</span></div>
         </section>

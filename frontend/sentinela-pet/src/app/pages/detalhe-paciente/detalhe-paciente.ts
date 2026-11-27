@@ -26,7 +26,7 @@ import {
 import { contratoExperimental } from '../../services/configuracao-contrato';
 import { ProfissionalService, UsuarioReferencia } from '../../services/profissional/profissional-service';
 import { inject } from '@angular/core';
-import { podeEditarPaciente } from '../../auth/permissoes';
+import { podeCriarAgendamento, podeEditarPaciente } from '../../auth/permissoes';
 
 @Component({
     selector: 'app-detalhe-paciente',
@@ -58,11 +58,14 @@ export class DetalhePaciente implements OnInit {
     erroModal = '';
     podeGerenciar = false;
     podeEditar = false;
+    podeAgendar = false;
+    vinculoDesatualizado = false;
     constructor(private route: ActivatedRoute, private router: Router, private service: PacienteService, usuario: UsuarioLogadoService) {
         usuario.obterUsuarioLogado().subscribe({
             next: u => {
                 this.podeGerenciar = ['ADMINISTRADOR', 'PROFISSIONAL'].includes(u.tipoUsuario);
                 this.podeEditar = podeEditarPaciente(u.tipoUsuario);
+                this.podeAgendar = podeCriarAgendamento(u.tipoUsuario);
                 this.podeAdministrar = contratoExperimental && u.tipoUsuario === 'ADMINISTRADOR';
             },
             error: () => {
@@ -81,12 +84,25 @@ export class DetalhePaciente implements OnInit {
     carregar() {
         this.service.buscarDetalhe(this.id).subscribe({
             next: d => {
+                const vinculo = this.route.snapshot.queryParamMap?.get('vinculo');
+                if (vinculo && d.paciente.local?.vinculo !== vinculo) {
+                    this.detalhe = undefined;
+                    this.erro = 'O recurso solicitado não foi encontrado.';
+                    this.carregando = false;
+                    this.cdr.markForCheck();
+                    return;
+                }
+                this.erro = '';
                 this.detalhe = d;
-                this.carregando = false
+                this.carregando = false;
+                this.vinculoDesatualizado = false;
+                this.cdr.markForCheck();
             },
-            error: () => {
-                this.erro = 'Não foi possível carregar os dados deste paciente.';
-                this.carregando = false
+            error: e => {
+                this.detalhe = undefined;
+                this.erro = interpretarErroHttp(e, { padrao: 'Não foi possível carregar os dados deste paciente.' }).mensagem;
+                this.carregando = false;
+                this.cdr.markForCheck();
             }
         })
     }
@@ -118,7 +134,8 @@ export class DetalhePaciente implements OnInit {
         return t === 'cpf' ? `•••.${d.slice(3, 6)}.${d.slice(6, 9)}-••` : `•••••••••${d.slice(-6)}`
     }
     encerrar() {
-        if (!this.motivo || this.motivo === 'OUTRO' && !this.descricao.trim()) return;
+        if (this.salvando || this.vinculoDesatualizado || !this.podeGerenciar || !this.ativo
+            || !this.motivo || this.motivo === 'OUTRO' && !this.descricao.trim()) return;
         this.erroModal = '';
         this.salvando = true;
         this.service.encerrar(this.id, this.motivo, this.descricao, this.p?.local).subscribe({
@@ -128,7 +145,9 @@ export class DetalhePaciente implements OnInit {
                 this.carregar()
             },
             error: e => {
-                this.erroModal = interpretarErroHttp(e, { escrita: true, padrao: 'Não foi possível encerrar.' }).mensagem;
+                const resultado = interpretarErroHttp(e, { escrita: true, padrao: 'Não foi possível encerrar.' });
+                this.erroModal = resultado.mensagem;
+                this.vinculoDesatualizado = resultado.tipo === 'STALE_VERSION';
                 this.cdr.markForCheck();
                 this.salvando = false
             }
@@ -153,7 +172,8 @@ export class DetalhePaciente implements OnInit {
     salvarAcaoAdministrativa(): void {
         const acao = this.acaoAdministrativa;
         const local = this.p?.local;
-        if (!acao || !local || this.salvando || !this.podeAdministrar) return;
+        if (!acao || !local || this.salvando || this.vinculoDesatualizado || !this.podeAdministrar
+            || (acao === 'reativar' ? !this.p?.statusPaciente || this.ativo : !this.ativo)) return;
         if ((acao === 'configurar' && (!this.modalidade || !this.referenciasDisponiveis || this.referencia === undefined)) || (acao === 'reativar' && !this.motivoReativacao.trim())) return;
         const comando = acao === 'configurar'
             ? this.service.configurarAcompanhamento(this.id, this.modalidade, this.referencia ?? null, local)
@@ -171,7 +191,9 @@ export class DetalhePaciente implements OnInit {
             },
             error: erro => {
                 this.salvando = false;
-                this.erroModal = interpretarErroHttp(erro, { escrita: true, padrao: 'Não foi possível atualizar o vínculo.' }).mensagem;
+                const resultado = interpretarErroHttp(erro, { escrita: true, padrao: 'Não foi possível atualizar o vínculo.' });
+                this.erroModal = resultado.mensagem;
+                this.vinculoDesatualizado = resultado.tipo === 'STALE_VERSION';
                 this.cdr.markForCheck();
             },
         });

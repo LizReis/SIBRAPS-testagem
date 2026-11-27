@@ -7,3 +7,6 @@ export const podeCadastrarPaciente = (tipo: string): boolean =>
   tipo === 'ADMINISTRADOR' || tipo === 'RECEPCAO' || tipo === 'PROFISSIONAL';
 export const podeEditarPaciente = (tipo: string): boolean =>
   tipo === 'ADMINISTRADOR' || tipo === 'RECEPCAO' || (contratoExperimental && tipo === 'PROFISSIONAL');
+
+export const podeCriarAgendamento = (tipo: string): boolean =>
+  tipo === 'ADMINISTRADOR' || tipo === 'RECEPCAO';

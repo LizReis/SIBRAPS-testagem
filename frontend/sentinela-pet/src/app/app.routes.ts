@@ -47,7 +47,7 @@ export const routes: Routes = [
       { path: 'painel', component: Painel },
       { path: 'agenda', component: Agenda },
       { path: 'agenda/configuracoes', component: ConfiguracaoAgenda, canActivate: [roleGuard], data: { roles: TODOS } },
-      { path: 'agenda/novo', component: NovoAgendamento },
+      { path: 'agenda/novo', component: NovoAgendamento, canActivate: [roleGuard], data: { roles: ADMIN_RECEPCAO } },
       { path: 'pacientes', component: Pacientes, canActivate: [roleGuard], data: { roles: TODOS } },
       { path: 'pacientes/detalhes/:id', component: DetalhePaciente, canActivate: [roleGuard], data: { roles: TODOS } },
       { path: 'pacientes/detalhes/:id/historico', component: HistoricoPaciente, canActivate: [roleGuard], data: { roles: TODOS } },

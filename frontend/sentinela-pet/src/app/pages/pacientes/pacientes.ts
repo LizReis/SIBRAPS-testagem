@@ -18,11 +18,11 @@ import {
 } from '@angular/router';
 import {
     EMPTY,
+    Observable,
     Subject,
     catchError,
-    debounceTime,
-    distinctUntilChanged,
-    filter,
+    of,
+    timer,
     switchMap,
     takeUntil
 } from 'rxjs';
@@ -58,7 +58,7 @@ export class Pacientes implements OnInit, OnDestroy {
     podeCadastrar = false;
     podeEditar = false;
     menu ? : string;
-    private busca$ = new Subject < string > ();
+    private busca$ = new Subject<boolean>();
     private destroy$ = new Subject < void > ();
     constructor(private service: PacienteService, usuario: UsuarioLogadoService, private readonly cdr: ChangeDetectorRef) {
         usuario.obterUsuarioLogado().subscribe({
@@ -70,13 +70,28 @@ export class Pacientes implements OnInit, OnDestroy {
         });
     }
     ngOnInit() {
-        this.busca$.pipe(debounceTime(350), distinctUntilChanged(), filter(v => this.buscaValida(v)), switchMap(() => {
-            this.pagina = 0;
-            return this.consultar().pipe(catchError(e => {
-                this.falharConsulta(e);
-                return EMPTY;
-            }));
-        }), takeUntil(this.destroy$)).subscribe();
+        this.busca$.pipe(
+            switchMap(digitada => {
+                if (digitada && !this.buscaValida(this.termo)) {
+                    this.carregando = false;
+                    this.cdr.markForCheck();
+                    return EMPTY;
+                }
+                const espera: Observable<number | null> = digitada ? timer(350) : of(null);
+                return espera.pipe(
+                    switchMap(() => this.consultar()),
+                    catchError(e => {
+                        this.falharConsulta(e);
+                        return EMPTY;
+                    }),
+                );
+            }),
+            takeUntil(this.destroy$),
+        ).subscribe(dados => {
+            this.dados = dados;
+            this.carregando = false;
+            this.cdr.markForCheck();
+        });
         this.carregar();
     }
     ngOnDestroy() {
@@ -88,7 +103,8 @@ export class Pacientes implements OnInit, OnDestroy {
         return !v.trim() || (!!d && [11, 15].includes(d.length)) || (!d && v.trim().length >= 3);
     }
     pesquisar() {
-        this.busca$.next(this.termo);
+        this.pagina = 0;
+        this.busca$.next(true);
     }
     filtrar() {
         this.pagina = 0;
@@ -107,13 +123,7 @@ export class Pacientes implements OnInit, OnDestroy {
         });
     }
     carregar() {
-        this.consultar().subscribe({
-            next: d => {
-                this.dados = d;
-                this.carregando = false
-            },
-            error: e => this.falharConsulta(e),
-        });
+        this.busca$.next(false);
     }
     private falharConsulta(erro: unknown): void {
         this.carregando = false;
