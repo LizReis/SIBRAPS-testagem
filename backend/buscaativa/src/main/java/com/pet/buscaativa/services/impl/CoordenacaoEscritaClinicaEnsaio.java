@@ -27,7 +27,7 @@ import com.pet.buscaativa.entities.enums.UnidadeAtuacao;
 import com.pet.buscaativa.repositories.VinculoAssistencialRepository;
 import com.pet.buscaativa.services.exceptions.ConflictException;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
-import com.pet.buscaativa.services.exceptions.ValidationException;
+import com.pet.buscaativa.services.exceptions.StaleLocalVersionException;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
@@ -156,7 +156,7 @@ class CoordenacaoEscritaClinicaEnsaio {
 
     static void validarVersao(Integer informada, Integer atual) {
         if (informada == null || !Objects.equals(informada, atual))
-            throw new ValidationException("Versão local divergente. Consulte o vínculo novamente.");
+            throw new StaleLocalVersionException();
     }
 
     private void reler(Object entidade) {

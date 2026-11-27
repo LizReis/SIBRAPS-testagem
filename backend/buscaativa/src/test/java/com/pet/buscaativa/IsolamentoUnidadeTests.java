@@ -223,8 +223,12 @@ class IsolamentoUnidadeTests extends SecurityTestSupport {
         var ausente = getAs(ad, "/api/pacientes/" + UUID.randomUUID() + sufixo);
         assertEquals(404, fora.getStatus());
         assertEquals(404, ausente.getStatus());
-        assertTrue(json.readTree(fora.getContentAsString()).get("message").asString()
-                .startsWith("Resource not found. Id "));
+        var erroFora = json.readTree(fora.getContentAsString());
+        var erroAusente = json.readTree(ausente.getContentAsString());
+        assertEquals("RESOURCE_NOT_FOUND", erroFora.get("code").asString());
+        assertEquals("O recurso solicitado não foi encontrado.", erroFora.get("message").asString());
+        assertEquals(erroFora.get("code"), erroAusente.get("code"));
+        assertEquals(erroFora.get("message"), erroAusente.get("message"));
         assertFalse(fora.getContentAsString().contains(pI.getNome()));
     }
 
@@ -986,6 +990,49 @@ class IsolamentoUnidadeTests extends SecurityTestSupport {
                 .contentType("application/json").content(json.writeValueAsString(dados)))
                 .andReturn().getResponse();
         assertEquals(403, edicao.getStatus(), edicao.getContentAsString());
+    }
+
+    @Test
+    void similaridadeLegadaPedeConfirmacaoSemExporOutroCadastroOuGravar() {
+        var dados = json.convertValue(new PacienteDTO(pAd), java.util.Map.class);
+        dados.remove("idPublico");
+        dados.remove("cpf");
+        dados.remove("cns");
+        dados.remove("countFaltas");
+        PacienteDTO dto = json.convertValue(dados, PacienteDTO.class);
+        long antes = pacientes.count();
+
+        SecurityContextHolder.getContext().setAuthentication(
+                UsernamePasswordAuthenticationToken.authenticated(ad, null, ad.getAuthorities()));
+        try {
+            var recusa = assertThrows(com.pet.buscaativa.services.exceptions.SimilarPatientException.class,
+                    () -> pacienteService.save(dto, false));
+            var request = new org.springframework.mock.web.MockHttpServletRequest("POST", "/api/pacientes");
+            var response = new com.pet.buscaativa.services.exceptions.ResourceExceptionHandler().applicationFailure(recusa, request);
+            assertEquals(400, response.getStatusCode().value());
+            var erro = response.getBody();
+            assertEquals("PATIENT_SIMILARITY_CONFIRMATION", erro.getCode());
+            assertTrue(erro.getMessage().contains("confirme"));
+            assertFalse(erro.getMessage().contains(pAd.getCpf()));
+            assertFalse(erro.getMessage().contains(pAd.getCns()));
+            assertFalse(erro.getMessage().contains(pAd.getNome()));
+            assertEquals(antes, pacientes.count());
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    void inativacaoLegadaNaoDistinguePacienteAusenteOuDeOutraUnidade() throws Exception {
+        for (UUID id : List.of(pI.getIdPublico(), UUID.randomUUID())) {
+            var response = mvc.perform(delete("/api/pacientes/" + id)
+                    .header("Authorization", "Bearer " + tokens.gerarToken(ad))).andReturn().getResponse();
+            assertEquals(404, response.getStatus());
+            var error = json.readTree(response.getContentAsString());
+            assertEquals("RESOURCE_NOT_FOUND", error.get("code").asString());
+            assertEquals("O recurso solicitado não foi encontrado.", error.get("message").asString());
+        }
+        assertEquals(StatusPaciente.ATIVO, pacientes.findByIdPublico(pI.getIdPublico()).orElseThrow().getStatusPaciente());
     }
 
     @Test

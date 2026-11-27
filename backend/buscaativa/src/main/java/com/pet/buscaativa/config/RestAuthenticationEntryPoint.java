@@ -1,31 +1,26 @@
 package com.pet.buscaativa.config;
 
 import java.io.IOException;
-import java.time.Instant;
 
-import org.springframework.http.MediaType;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
 
+import com.pet.buscaativa.services.exceptions.ApiErrorResponses;
+
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 
 @Component
+@RequiredArgsConstructor
 public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
+    private final ApiErrorResponses errors;
+
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException exception)
             throws IOException, ServletException {
-        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        response.getWriter().printf(
-                "{\"timestamp\":\"%s\",\"status\":401,\"error\":\"Não autorizado.\","
-                        + "\"message\":\"Autenticação válida é necessária para acessar este recurso.\",\"path\":\"%s\"}",
-                Instant.now(), json(request.getRequestURI()));
-    }
-
-    private String json(String value) {
-        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+        errors.write(response, ApiErrorResponses.authenticationRequired(request));
     }
 }

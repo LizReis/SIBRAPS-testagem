@@ -150,10 +150,12 @@ class ProfissionaisEscopoTests extends SecurityTestSupport {
             var ausente = getAs(ator, "/api/usuarios/" + inexistente);
             assertEquals(404, fora.getStatus());
             assertEquals(404, ausente.getStatus());
-            assertEquals("Resource not found. Id " + alvo.getIdPublico(),
-                    json.readTree(fora.getContentAsString()).get("message").asString());
-            assertEquals("Resource not found. Id " + inexistente,
-                    json.readTree(ausente.getContentAsString()).get("message").asString());
+            var erroFora = json.readTree(fora.getContentAsString());
+            var erroAusente = json.readTree(ausente.getContentAsString());
+            assertEquals("RESOURCE_NOT_FOUND", erroFora.get("code").asString());
+            assertEquals("O recurso solicitado não foi encontrado.", erroFora.get("message").asString());
+            assertEquals(erroFora.get("code"), erroAusente.get("code"));
+            assertEquals(erroFora.get("message"), erroAusente.get("message"));
             assertFalse(fora.getContentAsString().contains(alvo.getEmail()));
             assertFalse(fora.getContentAsString().contains(alvo.getNome()));
             assertEquals(profissionais.get(escopo).getNome(),

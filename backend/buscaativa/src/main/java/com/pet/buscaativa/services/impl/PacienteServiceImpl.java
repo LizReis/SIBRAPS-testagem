@@ -32,7 +32,7 @@ import com.pet.buscaativa.repositories.UsuarioRepository;
 import com.pet.buscaativa.services.HistoricoPacienteService;
 import com.pet.buscaativa.services.PacienteService;
 import com.pet.buscaativa.services.PoliticaClassificacaoPaciente;
-import com.pet.buscaativa.services.exceptions.DatabaseException;
+import com.pet.buscaativa.services.exceptions.SimilarPatientException;
 import com.pet.buscaativa.services.exceptions.RecursoDuplicadoException;
 import com.pet.buscaativa.services.exceptions.ResourceNotFoundException;
 import com.pet.buscaativa.services.exceptions.ValidationException;
@@ -131,7 +131,7 @@ public class PacienteServiceImpl implements PacienteService{
         if(pacienteDTO.idPublico() != null){
             pacienteSalvar = pacienteRepository.findByIdPublicoForUpdate(pacienteDTO.idPublico())
                     .filter(escopoUnidadeService::pacientePertenceAoEscopo)
-                    .orElseThrow(() -> new DatabaseException("Paciente não encontrado!"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Paciente não encontrado."));
         }
 
         // Valida duplicidade antes de alterar a entidade gerenciada, como no fluxo existente.
@@ -197,7 +197,7 @@ public class PacienteServiceImpl implements PacienteService{
         modelo.exigirLegado();
         Paciente paciente = pacienteRepository.findByIdPublicoForUpdate(idPublico)
                 .filter(escopoUnidadeService::pacientePertenceAoEscopo)
-                .orElseThrow(() -> new DatabaseException("Paciente não encontrado!"));
+                .orElseThrow(() -> new ResourceNotFoundException("Paciente não encontrado."));
 
         paciente.setStatusPaciente(StatusPaciente.INATIVO);
 
@@ -343,15 +343,7 @@ public class PacienteServiceImpl implements PacienteService{
             similares.removeIf(p -> !escopoUnidadeService.pacientePertenceAoEscopo(p));
 
             if (!similares.isEmpty()) {
-                List<PacienteDTO> similaresDTO = similares.stream()
-                        .map(pacienteMapper::toPacienteDTO)
-                        .toList();
-
-                throw new DatabaseException(
-                        "Registros similares encontrados. " +
-                        "Confirme para prosseguir. " +
-                        similaresDTO
-                );
+                throw new SimilarPatientException();
             }
         }
     }

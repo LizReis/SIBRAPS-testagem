@@ -871,11 +871,11 @@ class ModeloVinculoOperacionalTests {
             assertThat(json(app,auditoria).path("registros").get(0).path("id").asString()).isEqualTo(id.toString());
             assertThat(json(app,http(app,"GET",rota,tokenColega,null)).path("total").asLong()).isZero();
             assertThat(http(app,"GET",rota,tokenExterno,null).statusCode()).isEqualTo(404);
-            // O validador compartilhado de versão local usa ValidationException (422).
-            // A padronização global de versões obsoletas pertence à etapa 7.
+            // O contrato local preserva 422 e identifica a versão obsoleta pelo código.
             var obsoleta=http(app,"POST",rota+"?version="+versao,token,dadosResolucao);
             assertThat(obsoleta.statusCode()).as(obsoleta.body()).isEqualTo(422);
             assertThat(obsoleta.body()).contains("Versão local divergente");
+            assertThat(json(app,obsoleta).path("code").asString()).isEqualTo("STALE_VERSION");
             int versaoAtual=versaoResolucao(sql,vinculo);
             var repetida=http(app,"POST",rota+"?version="+versaoAtual,token,dadosResolucao);
             assertThat(repetida.statusCode()).as(repetida.body()).isEqualTo(409);

@@ -1,9 +1,6 @@
 package com.pet.buscaativa.services.exceptions;
 
-/**
- * Exceção para erros de validação / violação de regras de negócio.
- * Será mapeada para HTTP 400 (Bad Request) pelo controller ou pelo GlobalExceptionHandler.
- */
+/** Invalid business input reported to API clients with HTTP 422. */
 public class ValidationException extends RuntimeException {
 
     public ValidationException(String message) {

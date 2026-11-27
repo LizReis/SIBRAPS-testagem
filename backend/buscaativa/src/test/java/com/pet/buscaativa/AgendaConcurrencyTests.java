@@ -17,9 +17,10 @@ class AgendaConcurrencyTests extends AgendaIntegritySupport {
     @Test void transactionContentionHasSafeConflictResponse() {
         var request = new org.springframework.mock.web.MockHttpServletRequest();
         request.setRequestURI("/api/agendamentos");
-        var response = new com.pet.buscaativa.services.exceptions.ResourceExceptionHandler().transactionConflict(
+        var response = new com.pet.buscaativa.services.exceptions.ResourceExceptionHandler().applicationFailure(
                 new org.springframework.dao.CannotAcquireLockException("internal SQL diagnostic"), request);
         assertEquals(409, response.getStatusCode().value());
+        assertEquals("CONCURRENT_UPDATE", response.getBody().getCode());
         assertFalse(response.getBody().getMessage().contains("internal SQL"));
     }
 

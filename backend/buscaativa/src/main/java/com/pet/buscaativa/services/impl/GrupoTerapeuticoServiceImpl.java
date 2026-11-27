@@ -542,7 +542,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
                 validarNovaParticipacao(paciente, s.getDataSessao(), s.getHorario(), s.getId());
             if (agendamentoRepository.existsAtivoDoPacienteNoMesmoHorario(paciente, s.getDataSessao(), s.getHorario(),
                     List.of(SituacaoAtendimento.AGENDADO, SituacaoAtendimento.REMARCADO)))
-                throw new ConflictException("Conflito para " + paciente.getNome() + " em " + s.getDataSessao() + " às " + s.getHorario() + ".");
+                throw new ConflictException("Já existe uma reserva para o paciente em " + s.getDataSessao() + " às " + s.getHorario() + ".");
         }
         for (SessaoGrupo s : futuras) if (participanteRepository.findBySessaoGrupoAndPaciente(s, paciente).isEmpty())
             adicionarParticipanteInterno(s, paciente.getIdPublico());
@@ -812,7 +812,7 @@ public class GrupoTerapeuticoServiceImpl implements GrupoTerapeuticoService {
             throw new ConflictException("Este paciente já está na lista de participantes desta sessão.");
         if (sessaoRepository.existsParticipacaoNoMesmoHorario(paciente, sessao.getDataSessao(), sessao.getHorario(),
                 StatusSessaoGrupo.CANCELADA))
-            throw new ConflictException("Conflito para o paciente " + paciente.getNome() + " em "
+            throw new ConflictException("Já existe participação do paciente em outra sessão em "
                     + sessao.getDataSessao() + " às " + sessao.getHorario() + ".");
         SessaoGrupoParticipante p = new SessaoGrupoParticipante();
         p.setSessaoGrupo(sessao);

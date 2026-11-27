@@ -68,7 +68,11 @@ class SecurityP01P02Tests extends SecurityTestSupport {
     private void assertUnauthorized(String token) throws Exception {
         var request = get("/api/usuarios/me");
         if (token != null) request.header("Authorization", "Bearer " + token);
-        assertEquals(401, mvc.perform(request).andReturn().getResponse().getStatus());
+        var response = mvc.perform(request).andReturn().getResponse();
+        assertEquals(401, response.getStatus());
+        var error = json.readTree(response.getContentAsString());
+        assertEquals("AUTHENTICATION_REQUIRED", error.get("code").asString());
+        assertEquals(response.getHeader("X-Correlation-ID"), error.get("correlationId").asString());
     }
 
     @Test
@@ -105,9 +109,48 @@ class SecurityP01P02Tests extends SecurityTestSupport {
     }
     @Test void jwt12NoToken() throws Exception { assertUnauthorized(null); }
     @Test void jwt13ProfessionalCannotManageUsers() throws Exception {
-        assertEquals(403, mvc.perform(get("/api/usuarios")
+        var response = mvc.perform(get("/api/usuarios")
                 .header("Authorization", "Bearer " + tokens.gerarToken(professional)))
-                .andReturn().getResponse().getStatus());
+                .andReturn().getResponse();
+        assertEquals(403, response.getStatus());
+        var error = json.readTree(response.getContentAsString());
+        assertEquals("ACCESS_DENIED", error.get("code").asString());
+        assertEquals(response.getHeader("X-Correlation-ID"), error.get("correlationId").asString());
+    }
+
+    @Test
+    void loginWithUnknownUserOrWrongPasswordHasSameSafeError() throws Exception {
+        String unknown = UUID.randomUUID() + "@test.local";
+        String wrong = UUID.randomUUID().toString();
+        for (String email : java.util.List.of(admin.getEmail(), unknown)) {
+            var body = json.writeValueAsString(java.util.Map.of("email", email, "senha", wrong));
+            var response = mvc.perform(post("/api/auth/login").contentType("application/json").content(body))
+                    .andReturn().getResponse();
+            assertEquals(401, response.getStatus());
+            var error = json.readTree(response.getContentAsString());
+            assertEquals("AUTHENTICATION_REQUIRED", error.get("code").asString());
+            assertEquals("Autenticação válida é necessária para acessar este recurso.", error.get("message").asString());
+            assertFalse(response.getContentAsString().contains(wrong));
+            assertFalse(response.getContentAsString().contains(email));
+        }
+    }
+
+    @Test
+    void validSignatureForRemovedUserIsUnauthorized() throws Exception {
+        String token = tokens.gerarToken(admin);
+        users.delete(admin);
+        users.flush();
+        assertUnauthorized(token);
+    }
+
+    @Test
+    void malformedJsonOnLoginDoesNotEchoRequestContent() throws Exception {
+        String invalid = "synthetic-invalid-login-payload";
+        var response = mvc.perform(post("/api/auth/login").contentType("application/json")
+                .content("{\"email\": " + invalid + "}")).andReturn().getResponse();
+        assertEquals(400, response.getStatus());
+        assertEquals("MALFORMED_REQUEST", json.readTree(response.getContentAsString()).get("code").asString());
+        assertFalse(response.getContentAsString().contains(invalid));
     }
     @Test void jwt14PreviousSigningKeyHasNoFallback() throws Exception {
         var previous = new com.pet.buscaativa.services.impl.TokenServiceImpl(
