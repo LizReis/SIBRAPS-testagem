@@ -107,7 +107,7 @@ export class ReconciliacaoPaciente implements OnInit {
     const g=this.geracao;this.salvando=true;this.erro='';this.aviso='';
     req.pipe(takeUntilDestroyed(this.destroy),finalize(()=>{if(g===this.geracao){this.salvando=false;this.cdr.markForCheck();}})).subscribe({
       next:()=>{if(g!==this.geracao)return;this.exigeConsulta=true;this.confirmou=false;this.justificativa='';this.aviso='Operação registrada. Atualize a consulta para verificar o estado e a trilha resultantes.';},
-      error:e=>{if(g!==this.geracao)return;this.exigeConsulta=true;this.erro=interpretarErroHttp(e,{escrita:true,padra:'Não foi possível registrar a operação.'}).mensagem;}
+      error:e=>{if(g!==this.geracao)return;this.exigeConsulta=true;this.erro=interpretarErroHttp(e,{escrita:true,padrao:'Não foi possível registrar a operação.'}).mensagem;}
     });
   }
 }
