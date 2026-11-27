@@ -53,7 +53,7 @@ jobs:
   frontend-build:
     name: Cadastro unico - Build Angular
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: frontend/sentinela-pet
@@ -70,8 +70,26 @@ jobs:
       - run: npm ci
       - name: Compilacao de producao
         run: npm run build
+      - name: Preservar build de producao para navegador
+        run: cp -a dist/sentinela-pet/browser "$RUNNER_TEMP/sibraps-prod"
       - name: Compilacao experimental
         run: npm run build -- --configuration ensaio
+      - name: Instalar Chromium para ensaio visual
+        run: |
+          npm install --prefix "$RUNNER_TEMP/sibraps-browser" --no-audit --no-fund --ignore-scripts playwright@1.56.1
+          node "$RUNNER_TEMP/sibraps-browser/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Ensaio de navegador com dados sinteticos
+        env:
+          PLAYWRIGHT_PREFIX: ${{ runner.temp }}/sibraps-browser
+        run: node scripts/etapa8-9-browser.mjs "$RUNNER_TEMP/sibraps-prod" browser-evidence
+      - name: Evidencias do navegador
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: etapa8-9-navegador
+          path: frontend/sentinela-pet/browser-evidence/
+          retention-days: 7
+          if-no-files-found: warn
 
   frontend-permissoes:
     name: Cadastro unico - Suite Angular completa e contrato experimental
