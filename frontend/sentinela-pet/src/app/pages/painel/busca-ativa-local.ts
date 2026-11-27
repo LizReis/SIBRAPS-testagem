@@ -166,7 +166,7 @@ export class BuscaAtivaLocal implements OnInit {
           this.exigeConsulta=true;
           const status=e?.status;
           if(typeof status==='number'&&status>=400&&status<500&&status!==408&&status!==429)this.pendente=undefined;
-          this.erro=interpretarErroHttp(e,{escrita:true,padra:'Não foi possível registrar esta ação.'}).mensagem;
+          this.erro=interpretarErroHttp(e,{escrita:true,padrao:'Não foi possível registrar esta ação.'}).mensagem;
         },
       });
   }
