@@ -977,7 +977,7 @@ class ModeloVinculoOperacionalTests {
             assertThat(semProva.path("presencasComprovadas").isNull()).isTrue();
             assertThat(semProva.path("historicoLocalRequerConferencia").asBoolean()).isTrue();
             validarResolucaoColetivaConcorrente(app,sql,unidade,prof,colega,token,tokenColega,tokenAdmin,tokenExterno);
-            validarRevisaoOrigemHistorico(app,sql,unidade,token,tokenAdmin,tokenExterno,tokenRecepcao,prof,admin,externo);
+            validarRevisaoOrigemHistorico(app,sql,unidade,token,tokenAdmin,tokenExterno,tokenRecepcao,prof,admin,externo,colega,tokenColega);
         }
     }
 
@@ -1115,7 +1115,8 @@ class ModeloVinculoOperacionalTests {
     }
 
     private void validarRevisaoOrigemHistorico(ConfigurableApplicationContext app,JdbcTemplate sql,long unidade,
-            String tokenProf,String tokenAdmin,String tokenExterno,String tokenRecepcao,String prof,String admin,String externoEmail) throws Exception {
+            String tokenProf,String tokenAdmin,String tokenExterno,String tokenRecepcao,String prof,String admin,String externoEmail,
+            String colega,String tokenColega) throws Exception {
         var dados=cadastro(cpfSintetico(92),cnsSintetico(92),"Origem histórica",unidade);
         var novo=http(app,"POST","/api/pacientes?ignorarSimilaridade=true",tokenProf,dados);
         assertThat(novo.statusCode()).as(novo.body()).isEqualTo(201);
@@ -1558,6 +1559,7 @@ class ModeloVinculoOperacionalTests {
                 assertThat(itemAuditoria.path("versaoResultante").asInt()).isGreaterThan(itemAuditoria.path("versaoAnterior").asInt());
             }
             assertThat(http(app,"GET",rotaAuditoria,tokenExterno,null).statusCode()).isEqualTo(404);
+            assertThat(http(app,"GET",rotaAuditoria,tokenColega,null).statusCode()).isEqualTo(403);
             assertThat(http(app,"GET",rotaAuditoria,tokenRecepcao,null).statusCode()).isEqualTo(403);
             assertThat(http(app,"GET",rotaAuditoria,null,null).statusCode()).isEqualTo(401);
             assertThat(http(app,"GET",rotaAuditoria+"?page=-1",tokenAdmin,null).statusCode()).isEqualTo(422);
@@ -1567,6 +1569,43 @@ class ModeloVinculoOperacionalTests {
         }
         assertThat(http(app,"GET","/api/agendamentos/99999999/auditoria-correcoes",tokenAdmin,null).statusCode()).isEqualTo(404);
         assertThat(http(app,"GET","/api/grupos/sessoes/99999999/auditoria-correcoes",tokenAdmin,null).statusCode()).isEqualTo(404);
+        assertThat(LegacyMigrationFixture.snapshot(sql.getDataSource(),colunasAuditoria)).isEqualTo(antesAuditoria);
+
+        // Transferir a coordenação pela API real, sem alterar a sessão realizada.
+        long grupoIdAuditoria=json(app,grupo).path("grupo").asLong();
+        int versaoGrupoAuditoria=sql.queryForObject("select version from tb_grupo_terapeutico where id=?",Integer.class,grupoIdAuditoria);
+        UUID novoCoordenador=sql.queryForObject("select id_publico from tb_usuario where email=?",UUID.class,colega);
+        String rotaIndividualAuditoria="/api/agendamentos/"+falta.id()+"/auditoria-correcoes";
+        String rotaColetivaAuditoria="/api/grupos/sessoes/"+sessao+"/auditoria-correcoes";
+        var trilhaColetivaAntes=http(app,"GET",rotaColetivaAuditoria,tokenProf,null);
+        assertThat(trilhaColetivaAntes.statusCode()).as(trilhaColetivaAntes.body()).isEqualTo(200);
+        var transferencia=http(app,"PUT","/api/grupos/"+grupoIdAuditoria,tokenAdmin,Map.of(
+                "tema","Origem coletiva sintética","coordenadorId",novoCoordenador,"recorrencia","UNICA",
+                "dataPrimeiraSessao",dataGrupo,"horario","09:00","version",versaoGrupoAuditoria));
+        assertThat(transferencia.statusCode()).as(transferencia.body()).isEqualTo(200);
+        var trilhaAposTroca=http(app,"GET",rotaColetivaAuditoria,tokenProf,null);
+        assertThat(trilhaAposTroca.statusCode()).as(trilhaAposTroca.body()).isEqualTo(200);
+        assertThat(json(app,trilhaAposTroca)).isEqualTo(json(app,trilhaColetivaAntes));
+        assertThat(http(app,"GET",rotaColetivaAuditoria,tokenColega,null).statusCode()).isEqualTo(403);
+        assertThat(http(app,"GET",rotaColetivaAuditoria,tokenAdmin,null).statusCode()).isEqualTo(200);
+
+        // Simular somente a lotação atual em fixture sintética, não alterar fatos
+        // históricos nem testar aqui o fluxo administrativo de transferência.
+        long unidadeExternaAuditoria=sql.queryForObject("select usf_atuacao_id from tb_usuario where email=?",Long.class,externoEmail);
+        try {
+            sql.update("update tb_usuario set usf_atuacao_id=? where email=?",unidadeExternaAuditoria,prof);
+            String tokenTransferido=login(app,prof);
+            for(String rotaAuditoria:List.of(rotaIndividualAuditoria,rotaColetivaAuditoria)) {
+                assertThat(http(app,"GET",rotaAuditoria,tokenTransferido,null).statusCode()).isEqualTo(404);
+                var consultaLocal=http(app,"GET",rotaAuditoria,tokenAdmin,null);
+                assertThat(consultaLocal.statusCode()).as(consultaLocal.body()).isEqualTo(200);
+                var itemLocal=json(app,consultaLocal).path("content").get(0);
+                assertThat(itemLocal.path("responsavelAtendimentoId").asString()).isEqualTo(coordenador.toString());
+                assertThat(http(app,"GET",rotaAuditoria,tokenExterno,null).statusCode()).isEqualTo(404);
+            }
+        } finally {
+            sql.update("update tb_usuario set usf_atuacao_id=? where email=?",unidade,prof);
+        }
         assertThat(LegacyMigrationFixture.snapshot(sql.getDataSource(),colunasAuditoria)).isEqualTo(antesAuditoria);
         assertThat(sql.queryForObject("select count(*) from tb_aplicacao_origem_historica where historico_id in (?,?)",Integer.class,h,hGrupo)).isEqualTo(3);
         assertThat(faltasResolucao(sql,outroVinculo)).isZero();
