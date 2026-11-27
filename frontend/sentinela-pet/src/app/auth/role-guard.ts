@@ -1,6 +1,7 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
 import { catchError, map, of, take } from 'rxjs';
+import { interpretarErroHttp } from '../services/erro-http';
 import { UsuarioLogadoService } from '../services/usuario-logado-service';
 
 export const roleGuard: CanActivateFn = (route) => {
@@ -11,6 +12,8 @@ export const roleGuard: CanActivateFn = (route) => {
   return usuarioService.obterUsuarioLogado().pipe(
     take(1),
     map((usuario) => roles.includes(usuario.tipoUsuario) ? true : router.createUrlTree(['/inicio'])),
-    catchError(() => of(router.createUrlTree(['/login']))),
+    catchError(erro => of(router.createUrlTree(
+      interpretarErroHttp(erro).tipo === 'AUTHENTICATION_REQUIRED' ? ['/login'] : ['/inicio'],
+    ))),
   );
 };

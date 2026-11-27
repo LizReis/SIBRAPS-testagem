@@ -1,3 +1,4 @@
+import { interpretarErroHttp } from '../../services/erro-http';
 import { contratoExperimental } from '../../services/configuracao-contrato';
 import {
     CommonModule
@@ -6,6 +7,7 @@ import {
     HttpErrorResponse
 } from '@angular/common/http';
 import {
+    ChangeDetectorRef,
     Component,
     HostListener,
     OnDestroy,
@@ -26,7 +28,6 @@ import {
 import {
     AgendamentoDTO,
     AgendamentoService,
-    StandardError
 } from '../../services/agendamento-service';
 import {
     UsuarioLogadoDTO,
@@ -145,6 +146,7 @@ export class Agenda implements OnInit, OnDestroy {
         private profissionalService: ProfissionalService,
         private agendamentoService: AgendamentoService,
         private router: Router,
+        private readonly cdr: ChangeDetectorRef,
     ) {}
 
     ngOnInit(): void {
@@ -161,8 +163,8 @@ export class Agenda implements OnInit, OnDestroy {
                 this.carregarAgenda();
             },
             error: (erro) => {
-                console.error('Erro ao identificar usuário logado', erro);
-                this.erroGeral = 'Não foi possível identificar o usuário logado.';
+                this.erroGeral = interpretarErroHttp(erro, { padrao: 'Não foi possível identificar o usuário logado.' }).mensagem;
+                this.cdr.markForCheck();
                 this.carregandoUsuarioLogado = false;
             },
         });
@@ -186,8 +188,7 @@ export class Agenda implements OnInit, OnDestroy {
                 this.profissionais = profissionais;
                 this.carregandoProfissionais = false;
             },
-            error: (erro) => {
-                console.error('Erro ao carregar profissionais', erro);
+            error: () => {
                 this.carregandoProfissionais = false;
             },
         });
@@ -208,11 +209,13 @@ export class Agenda implements OnInit, OnDestroy {
         this.agendamentoService.buscarAgendaPorPeriodo(inicio, fim, profissionalId).subscribe({
             next: (agendamentos) => {
                 this.agendamentos = this.ordenar(agendamentos);
+                this.agendaRecarregada = true;
                 this.carregando = false;
+                this.cdr.markForCheck();
             },
             error: (erro) => {
-                console.error('Erro ao carregar agenda', erro);
-                this.erroGeral = this.mensagemErroAgenda();
+                this.erroGeral = interpretarErroHttp(erro, { padrao: this.mensagemErroAgenda() }).mensagem;
+                this.cdr.markForCheck();
                 this.carregando = false;
             },
         });
@@ -409,13 +412,17 @@ export class Agenda implements OnInit, OnDestroy {
     }
     readonly contratoExperimental = contratoExperimental;
     correcao?: AgendamentoDTO;
+    revisaoDesatualizada = false;
+    private agendaRecarregada = true;
     justificativa = '';
     tipoRegularizacao: 'RECUPERAR' | 'PRESENTE' | 'FALTOU' = 'RECUPERAR';
 
     corrigirFrequencia(a: AgendamentoDTO): void {
         if (contratoExperimental) {
+            if (this.revisaoDesatualizada && !this.agendaRecarregada) return;
+            if (!this.revisaoDesatualizada || this.correcao?.id !== a.id) this.justificativa = '';
             this.correcao = a;
-            this.justificativa = '';
+            this.revisaoDesatualizada = false;
             this.tipoRegularizacao = 'RECUPERAR';
             this.menuAbertoId = null;
             return;
@@ -425,7 +432,8 @@ export class Agenda implements OnInit, OnDestroy {
     confirmarCorrecao(): void {
         const a = this.correcao;
         const justificativa = this.justificativa.trim();
-        if (!a || justificativa.length < 10) return;
+        if (!a || this.revisaoDesatualizada || this.atualizandoId === a.id || justificativa.length < 10) return;
+        this.erroGeral = null;
         const destino = a.frequenciaAssistencial === 'PRESENTE' ? 'FALTOU' : 'PRESENTE';
         const comando = a.situacaoReserva === 'CANCELADA' && a.frequenciaAssistencial === 'NAO_REGISTRADA'
             ? this.tipoRegularizacao === 'RECUPERAR'
@@ -441,10 +449,12 @@ export class Agenda implements OnInit, OnDestroy {
             },
             error: (erro: HttpErrorResponse) => {
                 this.atualizandoId = null;
-                this.erroGeral = erro.error?.message ?? 'Não foi possível atualizar a frequência.';
-                if (erro.status === 409 || (erro.status === 422 && this.erroGeral?.includes('Versão local divergente'))) {
-                    this.correcao = undefined;
-                    this.carregarAgenda(true);
+                const resultado = interpretarErroHttp(erro, { escrita: true, padrao: 'Não foi possível atualizar a frequência.' });
+                this.erroGeral = resultado.mensagem;
+                this.cdr.markForCheck();
+                if (resultado.tipo === 'STALE_VERSION') {
+                    this.revisaoDesatualizada = true;
+                    this.agendaRecarregada = false;
                 }
             },
         });
@@ -469,13 +479,8 @@ export class Agenda implements OnInit, OnDestroy {
             },
             error: (erro: HttpErrorResponse) => {
                 this.atualizandoId = null;
-                if (erro.status === 409 || erro.error?.message?.includes("Versão local divergente")) {
-                    this.erroGeral = 'Este agendamento foi alterado por outra pessoa. A agenda foi atualizada — confira antes de tentar novamente.';
-                    this.carregarAgenda(true);
-                    return;
-                }
-                const standardError = erro.error as StandardError | undefined;
-                this.erroGeral = standardError?.message ?? 'Não foi possível atualizar o status do agendamento.';
+                this.erroGeral = interpretarErroHttp(erro, { escrita: true, padrao: 'Não foi possível atualizar o status do agendamento.' }).mensagem;
+                this.cdr.markForCheck();
             }
         });
     }

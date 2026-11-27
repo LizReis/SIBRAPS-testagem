@@ -1,4 +1,5 @@
-import { of } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
+import { of, throwError } from 'rxjs';
 import { Agenda } from './agenda';
 import { AgendamentoDTO } from '../../services/agendamento-service';
 
@@ -16,12 +17,12 @@ const base: AgendamentoDTO = {
   version: 1,
 };
 
-function criarComponente(): Agenda {
+function criarComponente(servicos = {}): Agenda {
   const usuarioService = { obterUsuarioLogado: () => of({ idPublico: 'u', nome: 'Admin', email: 'a@a.com', tipoUsuario: 'ADMINISTRADOR', unidadeAtuacao: 'CAPS' }) };
   const profissionalService = { listar: () => of([]) };
-  const agendamentoService = { buscarAgendaPorPeriodo: () => of([]), atualizarStatus: () => of(base) };
+  const agendamentoService = { buscarAgendaPorPeriodo: () => of([]), atualizarStatus: () => of(base), ...servicos };
   const router = { navigate: () => Promise.resolve(true) };
-  return new Agenda(usuarioService as any, profissionalService as any, agendamentoService as any, router as any);
+  return new Agenda(usuarioService as any, profissionalService as any, agendamentoService as any, router as any, { markForCheck() {} } as any);
 }
 
 describe('Agenda', () => {
@@ -91,6 +92,42 @@ describe('Agenda', () => {
       'CANCELADO:0',
       'AGENDAMENTO ANTERIOR:0',
     ]);
+  });
+
+  it('preserva a justificativa e exige consulta e nova decisão após versão desatualizada', () => {
+    const correcao = { ...base, frequenciaAssistencial: 'PRESENTE' } as const;
+    const atual = { ...correcao, version: 2 };
+    const corrigirFrequencia = vi.fn()
+      .mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 422, error: { code: 'STALE_VERSION' } })))
+      .mockReturnValueOnce(of(atual));
+    const buscarAgendaPorPeriodo = vi.fn().mockReturnValue(of([atual]));
+    const component = criarComponente({ corrigirFrequencia, buscarAgendaPorPeriodo });
+    component.corrigirFrequencia(correcao);
+    component.justificativa = 'Justificativa sintética conferida.';
+
+    component.confirmarCorrecao();
+    expect(component.revisaoDesatualizada).toBe(true);
+    expect(component.justificativa).toBe('Justificativa sintética conferida.');
+    expect(component.erroGeral).toContain('desatualizados');
+    expect(buscarAgendaPorPeriodo).not.toHaveBeenCalled();
+    component.confirmarCorrecao();
+    expect(corrigirFrequencia).toHaveBeenCalledOnce();
+
+    component.tentarNovamente();
+    component.corrigirFrequencia(atual);
+    expect(component.justificativa).toBe('Justificativa sintética conferida.');
+    expect(corrigirFrequencia).toHaveBeenCalledOnce();
+    component.confirmarCorrecao();
+    expect(corrigirFrequencia).toHaveBeenLastCalledWith(base.id, 'FALTOU', 2, 'Justificativa sintética conferida.');
+  });
+
+  it('exibe o conflito de negócio sem atribuir alteração a outro profissional', () => {
+    const atualizarStatus = vi.fn().mockReturnValue(throwError(() =>
+      new HttpErrorResponse({ status: 409, error: { code: 'BUSINESS_CONFLICT', message: 'Já há frequência registrada.' } })));
+    const component = criarComponente({ atualizarStatus });
+    component.registrarPresenca(base);
+    expect(component.erroGeral).toBe('Já há frequência registrada.');
+    expect(atualizarStatus).toHaveBeenCalledOnce();
   });
 
   it('controla exibição das ações principais no card', () => {

@@ -1,6 +1,7 @@
+import { interpretarErroHttp } from '../../services/erro-http';
 import { CommonModule } from "@angular/common";
 import { HttpErrorResponse } from "@angular/common/http";
-import { Component, OnDestroy, OnInit, inject } from "@angular/core";
+import { ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from "@angular/core";
 import { FormBuilder, ReactiveFormsModule, Validators } from "@angular/forms";
 import { ActivatedRoute, Router, RouterLink } from "@angular/router";
 import {
@@ -36,6 +37,7 @@ import {
   styleUrl: "./agendar-grupo-terapeutico.css",
 })
 export class AgendarGrupoTerapeutico implements OnInit, OnDestroy {
+  private readonly cdr = inject(ChangeDetectorRef);
   private readonly fb = inject(FormBuilder);
 
   readonly recorrencias: { valor: RecorrenciaGrupo; label: string }[] = [
@@ -335,17 +337,8 @@ export class AgendarGrupoTerapeutico implements OnInit, OnDestroy {
   }
 
   private tratarErro(e: HttpErrorResponse): void {
-    const mensagens: Record<number, string> = {
-      400: "Há dados inválidos no formulário.",
-      403: "Você não possui permissão para agendar este grupo.",
-      404: "Coordenador ou paciente não encontrado.",
-      409: "Um participante já está inscrito em outro grupo na mesma data e horário.",
-      422: "Não foi possível validar os dados informados.",
-    };
-    this.erroGeral =
-      e.error?.message ||
-      mensagens[e.status] ||
-      "Não foi possível agendar o grupo. Tente novamente.";
+    this.erroGeral = interpretarErroHttp(e, { escrita: true, padrao: 'Não foi possível salvar o grupo.' }).mensagem;
+    this.cdr.markForCheck();
   }
 
   private formatarData(data: string): string {

@@ -39,6 +39,7 @@ describe('ConfiguracaoAgenda - formulários inline', () => {
       disponibilidade,
       bloqueio,
       excecao,
+      { markForCheck() {} } as any,
     );
 
     component.isAdmin = true;

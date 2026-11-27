@@ -1,6 +1,7 @@
+import { interpretarErroHttp } from '../../services/erro-http';
 import { DatePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, inject, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { finalize } from 'rxjs';
@@ -30,6 +31,7 @@ interface EventoAuditoria {
   `],
 })
 export class BuscaAtivaLocal implements OnInit {
+  private readonly cdr = inject(ChangeDetectorRef);
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
   private readonly usuario = inject(UsuarioLogadoService);
@@ -55,6 +57,9 @@ export class BuscaAtivaLocal implements OnInit {
       next: u => {
         this.podeEncaminhar = ['ADMINISTRADOR', 'PROFISSIONAL'].includes(u.tipoUsuario);
         this.podeAuditar = u.tipoUsuario === 'ADMINISTRADOR';
+      },
+      error: () => {
+        this.podeEncaminhar = this.podeAuditar = false;
       },
     });
     this.carregar();
@@ -117,7 +122,8 @@ export class BuscaAtivaLocal implements OnInit {
         next: () => { this.requisicoes.delete(chave); sucesso(); },
         error: e => {
           if (e.status >= 400 && e.status < 500) this.requisicoes.delete(chave);
-          this.erro = e.error?.message ?? 'Não foi possível registrar esta ação.';
+          this.erro = interpretarErroHttp(e, { escrita: true, padrao: 'Não foi possível registrar esta ação.' }).mensagem;
+          this.cdr.markForCheck();
         },
       });
   }

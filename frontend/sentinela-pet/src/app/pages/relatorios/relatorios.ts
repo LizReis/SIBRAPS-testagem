@@ -1,6 +1,7 @@
+import { interpretarErroHttp } from '../../services/erro-http';
 import { CommonModule } from '@angular/common';
 import { HttpResponse } from '@angular/common/http';
-import { Component, OnInit, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { finalize, Subscription } from 'rxjs';
@@ -72,6 +73,7 @@ export class Relatorios implements OnInit {
 
   readonly contratoExperimental = contratoExperimental;
   readonly rotuloRevisao = rotuloRevisaoLocal;
+  private readonly cdr = inject(ChangeDetectorRef);
   private readonly usuario = contratoExperimental ? inject(UsuarioLogadoService) : null;
   podeRevisar = false;
   buscandoRelatorio = false;
@@ -98,7 +100,10 @@ export class Relatorios implements OnInit {
       next: (profissionais) => this.profissionais = profissionais,
       error: () => this.profissionais = [],
     });
-    this.usuario?.obterUsuarioLogado().subscribe({next: u => this.podeRevisar = u.tipoUsuario === 'ADMINISTRADOR'});
+    this.usuario?.obterUsuarioLogado().subscribe({
+      next: u => this.podeRevisar = u.tipoUsuario === 'ADMINISTRADOR',
+      error: () => this.podeRevisar = false,
+    });
     this.carregarPrevia();
     this.grupoService.listarGrupos().subscribe({
       next: (grupos) => this.grupos = grupos,
@@ -234,7 +239,10 @@ export class Relatorios implements OnInit {
     this.relatorioService.decidir(item, decisao, this.justificativaDecisao.trim())
       .pipe(finalize(() => this.salvandoDecisao = false)).subscribe({
         next: () => this.carregarPendencias(this.pendencias?.pagina ?? 0),
-        error: e => this.erroConsulta = e.error?.message ?? 'Não foi possível registrar a decisão.',
+        error: e => {
+          this.erroConsulta = interpretarErroHttp(e, { escrita: true, padrao: 'Não foi possível registrar a decisão.' }).mensagem;
+          this.cdr.markForCheck();
+        },
       });
   }
 
@@ -255,7 +263,10 @@ export class Relatorios implements OnInit {
     const prefixo = this.abaAtiva === 'buscaAtiva' ? 'relatorio-busca-ativa' : 'relatorio-frequencia-grupos';
     requisicao.pipe(finalize(() => this.exportandoPdf = false)).subscribe({
       next: (resposta) => this.baixarResposta(resposta, `${prefixo}-${formatarDataLocal(new Date())}.pdf`, 'application/pdf', 'PDF'),
-      error: () => this.erroExportacao = 'Não foi possível gerar o relatório em PDF. Tente novamente.',
+      error: e => {
+        this.erroExportacao = interpretarErroHttp(e, { padrao: 'Não foi possível gerar o relatório em PDF. Tente novamente.' }).mensagem;
+        this.cdr.markForCheck();
+      },
     });
   }
 
@@ -270,7 +281,10 @@ export class Relatorios implements OnInit {
     requisicao.pipe(finalize(() => this.exportandoPdf = false)).subscribe({
       next: (resposta) => this.baixarResposta(resposta, `${prefixo}-${formatarDataLocal(new Date())}.xlsx`,
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Excel'),
-      error: () => this.erroExportacao = 'Não foi possível gerar o relatório em Excel. Tente novamente.',
+      error: e => {
+        this.erroExportacao = interpretarErroHttp(e, { padrao: 'Não foi possível gerar o relatório em Excel. Tente novamente.' }).mensagem;
+        this.cdr.markForCheck();
+      },
     });
   }
 

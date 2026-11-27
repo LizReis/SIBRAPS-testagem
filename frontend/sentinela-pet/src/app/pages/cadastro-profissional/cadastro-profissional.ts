@@ -1,3 +1,4 @@
+import { interpretarErroHttp } from '../../services/erro-http';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
@@ -16,8 +17,6 @@ import { UsuarioLogadoService } from '../../services/usuario-logado-service';
 import {
   ProfissionalPayload,
   ProfissionalService,
-  ValidationError,
-  StandardError,
 } from '../../services/profissional/profissional-service';
 
 enum TipoUsuario {
@@ -153,8 +152,7 @@ export class CadastroProfissional implements OnInit {
         this.changeDetector.markForCheck();
       },
       error: (erro) => {
-        console.error('Erro ao carregar profissional', erro);
-        this.erroGeral = 'Não foi possível carregar os dados do profissional.';
+        this.erroGeral = interpretarErroHttp(erro, { padrao: 'Não foi possível carregar os dados do profissional.' }).mensagem;
         this.carregando = false;
         this.changeDetector.markForCheck();
       },
@@ -207,38 +205,13 @@ export class CadastroProfissional implements OnInit {
   }
 
   private tratarErro(erro: HttpErrorResponse): void {
-    if (!erro.error) {
-      this.erroGeral = 'Não foi possível conectar ao servidor. Tente novamente.';
-      return;
+    const resultado = interpretarErroHttp(erro, { escrita: true, padrao: 'Não foi possível salvar os dados do profissional.' });
+    for (const campo of resultado.campos) {
+      if (this.profissionalForm.get(campo.fieldName)) this.errosPorCampo[campo.fieldName] = campo.message;
     }
-
-    if (erro.status === 422 && Array.isArray(erro.error.errors)) {
-      const validationError = erro.error as ValidationError;
-
-      validationError.errors.forEach((campo) => {
-        this.errosPorCampo[campo.fieldName] = campo.message;
-      });
-
-      this.erroGeral = validationError.message;
-      this.marcarCamposComoTocados();
-      return;
-    }
-
-    if (erro.status === 409) {
-      const standardError = erro.error as StandardError;
-      this.erroGeral = standardError.message ?? 'Já existe um profissional com esses dados.';
-      return;
-    }
-
-    if (erro.error.message) {
-      const standardError = erro.error as StandardError;
-      this.erroGeral = standardError.message;
-      return;
-    }
-
-    this.erroGeral = this.modoEdicao
-      ? 'Não foi possível atualizar o profissional.'
-      : 'Não foi possível cadastrar o profissional.';
+    this.erroGeral = resultado.mensagem;
+    this.marcarCamposComoTocados();
+    this.changeDetector.markForCheck();
   }
 
   private marcarCamposComoTocados(): void {

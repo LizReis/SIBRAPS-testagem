@@ -1,3 +1,4 @@
+import { interpretarErroHttp } from '../../services/erro-http';
 import { CommonModule } from '@angular/common';
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -56,7 +57,10 @@ export class Profissionais implements OnInit {
   ngOnInit(): void {
     this.usuarioLogadoService
       .obterUsuarioLogado()
-      .subscribe((usuario) => (this.podeGerenciar = usuario.tipoUsuario === 'ADMINISTRADOR'));
+      .subscribe({
+        next: usuario => this.podeGerenciar = usuario.tipoUsuario === 'ADMINISTRADOR',
+        error: () => this.podeGerenciar = false,
+      });
     this.carregarProfissionais();
     this.unidadeSaudeService.listarUnidades().subscribe({
       next: (unidades) => {
@@ -86,8 +90,7 @@ export class Profissionais implements OnInit {
         this.changeDetector.markForCheck();
       },
       error: (erro) => {
-        console.error('Erro ao carregar profissionais', erro);
-        this.erro = 'Não foi possível carregar os profissionais.';
+        this.erro = interpretarErroHttp(erro, { padrao: 'Não foi possível carregar os profissionais.' }).mensagem;
         this.carregando = false;
         this.changeDetector.markForCheck();
       },

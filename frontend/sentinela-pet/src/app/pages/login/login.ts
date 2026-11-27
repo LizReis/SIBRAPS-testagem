@@ -1,4 +1,5 @@
-import { Component, inject } from '@angular/core';
+import { interpretarErroHttp } from '../../services/erro-http';
+import { ChangeDetectorRef, Component, inject } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 import { finalize, timeout } from 'rxjs/operators';
@@ -12,6 +13,7 @@ import { LoginService } from '../../services/login/login-service';
   styleUrl: './login.css',
 })
 export class Login {
+  private readonly cdr = inject(ChangeDetectorRef);
   private fb = inject(FormBuilder);
   private loginService = inject(LoginService);
   private router = inject(Router);
@@ -74,27 +76,8 @@ export class Login {
             return;
           }
 
-          switch (err.status) {
-            case 401:
-            case 403:
-              this.showError('E-mail ou senha inválidos.');
-              break;
-
-            case 0:
-              this.showError(
-                'Não foi possível conectar ao servidor. Verifique sua conexão ou tente novamente.',
-              );
-              break;
-
-            case 500:
-              this.showError(
-                'Ocorreu um erro interno no servidor. Tente novamente em alguns instantes.',
-              );
-              break;
-
-            default:
-              this.showError('Ocorreu um erro inesperado durante o login.');
-          }
+          const resultado = interpretarErroHttp(err, { padrao: 'Não foi possível concluir o login.' });
+          this.showError(resultado.tipo === 'AUTHENTICATION_REQUIRED' ? 'E-mail ou senha inválidos.' : resultado.mensagem);
         },
       });
   }
@@ -104,10 +87,12 @@ export class Login {
    */
   private showError(message: string): void {
     this.errorMessage = message;
+    this.cdr.markForCheck();
 
     setTimeout(() => {
       if (this.errorMessage === message) {
         this.errorMessage = '';
+        this.cdr.markForCheck();
       }
     }, this.ERROR_DISPLAY_TIME);
   }

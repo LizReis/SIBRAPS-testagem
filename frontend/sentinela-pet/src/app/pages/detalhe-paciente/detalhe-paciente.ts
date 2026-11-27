@@ -1,7 +1,9 @@
+import { interpretarErroHttp } from '../../services/erro-http';
 import {
     CommonModule
 } from '@angular/common';
 import {
+    ChangeDetectorRef,
     Component,
     HostListener,
     OnInit
@@ -47,6 +49,7 @@ export class DetalhePaciente implements OnInit {
     referenciasDisponiveis = false;
     referencias: UsuarioReferencia[] = [];
     motivoReativacao = '';
+    private readonly cdr = inject(ChangeDetectorRef);
     private readonly profissionais = contratoExperimental ? inject(ProfissionalService) : null;
     motivo = '';
     descricao = '';
@@ -56,11 +59,16 @@ export class DetalhePaciente implements OnInit {
     podeGerenciar = false;
     podeEditar = false;
     constructor(private route: ActivatedRoute, private router: Router, private service: PacienteService, usuario: UsuarioLogadoService) {
-        usuario.obterUsuarioLogado().subscribe(u => {
-            this.podeGerenciar = ['ADMINISTRADOR', 'PROFISSIONAL'].includes(u.tipoUsuario);
-            this.podeEditar = podeEditarPaciente(u.tipoUsuario);
-            this.podeAdministrar = contratoExperimental && u.tipoUsuario === 'ADMINISTRADOR';
-        })
+        usuario.obterUsuarioLogado().subscribe({
+            next: u => {
+                this.podeGerenciar = ['ADMINISTRADOR', 'PROFISSIONAL'].includes(u.tipoUsuario);
+                this.podeEditar = podeEditarPaciente(u.tipoUsuario);
+                this.podeAdministrar = contratoExperimental && u.tipoUsuario === 'ADMINISTRADOR';
+            },
+            error: () => {
+                this.podeGerenciar = this.podeEditar = this.podeAdministrar = false;
+            },
+        });
     }
     ngOnInit() {
         this.id = this.route.snapshot.paramMap.get('id') || '';
@@ -111,6 +119,7 @@ export class DetalhePaciente implements OnInit {
     }
     encerrar() {
         if (!this.motivo || this.motivo === 'OUTRO' && !this.descricao.trim()) return;
+        this.erroModal = '';
         this.salvando = true;
         this.service.encerrar(this.id, this.motivo, this.descricao, this.p?.local).subscribe({
             next: () => {
@@ -119,7 +128,8 @@ export class DetalhePaciente implements OnInit {
                 this.carregar()
             },
             error: e => {
-                this.erro = e.error?.message || 'Não foi possível encerrar.';
+                this.erroModal = interpretarErroHttp(e, { escrita: true, padrao: 'Não foi possível encerrar.' }).mensagem;
+                this.cdr.markForCheck();
                 this.salvando = false
             }
         })
@@ -161,7 +171,8 @@ export class DetalhePaciente implements OnInit {
             },
             error: erro => {
                 this.salvando = false;
-                this.erroModal = erro.error?.message ?? 'Não foi possível atualizar o vínculo.';
+                this.erroModal = interpretarErroHttp(erro, { escrita: true, padrao: 'Não foi possível atualizar o vínculo.' }).mensagem;
+                this.cdr.markForCheck();
             },
         });
     }
@@ -196,8 +207,8 @@ export class DetalhePaciente implements OnInit {
 
             error: (e) => {
                 this.erroModal =
-                    e.error?.message ||
-                    'Não foi possível registrar a busca ativa. Tente novamente.';
+                    interpretarErroHttp(e, { escrita: true, padrao: 'Não foi possível registrar a busca ativa.' }).mensagem;
+                    this.cdr.markForCheck();
 
                 this.salvando = false;
             }

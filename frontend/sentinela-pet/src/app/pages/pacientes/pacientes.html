@@ -38,7 +38,8 @@
   <section class="list">
     <h2>Lista de pacientes <small>{{dados?.totalRegistros || 0}} registros</small></h2>
     <div aria-live="polite" class="state" *ngIf="carregando">Carregando pacientes…</div>
-    <div class="table-wrap" *ngIf="!carregando">
+    <p class="state" role="alert" *ngIf="erroConsulta">{{ erroConsulta }}</p>
+    <div class="table-wrap" *ngIf="!carregando && !erroConsulta">
       <table>
         <thead>
           <tr>

@@ -1,3 +1,4 @@
+import { interpretarErroHttp } from '../../services/erro-http';
 import { contratoExperimental } from '../../services/configuracao-contrato';
 import { VersoesPacienteLocal } from '../../services/contrato-clinico-local';
 import { CommonModule } from '@angular/common';
@@ -13,8 +14,6 @@ import { CadastroExistente } from './cadastro-existente';
 import {
   PacientePayload,
   PacienteService,
-  ValidationError,
-  StandardError,
 } from '../../services/paciente/paciente-service';
 
 enum SexoEnum {
@@ -204,8 +203,7 @@ export class CadastroPaciente implements OnInit {
         }
       },
 
-      error: (erro) => {
-        console.error(erro);
+      error: () => {
         this.erroUnidades = true;
         this.carregandoUnidades = false;
       },
@@ -256,8 +254,8 @@ export class CadastroPaciente implements OnInit {
       },
 
       error: (erro) => {
-        console.error(erro);
-        this.erroGeral = 'Não foi possível carregar os dados do paciente.';
+        this.erroGeral = interpretarErroHttp(erro, { padrao: 'Não foi possível carregar os dados do paciente.' }).mensagem;
+        this.cdr.markForCheck();
         this.carregandoPaciente = false;
       },
     });
@@ -402,38 +400,13 @@ export class CadastroPaciente implements OnInit {
   }
 
   private tratarErro(erro: HttpErrorResponse): void {
-    if (!erro.error) {
-      this.erroGeral = 'Não foi possível conectar ao servidor. Tente novamente.';
-      return;
+    const resultado = interpretarErroHttp(erro, { escrita: true, padrao: 'Não foi possível salvar os dados do paciente.' });
+    for (const campo of resultado.campos) {
+      if (this.pacienteForm.get(campo.fieldName)) this.errosPorCampo[campo.fieldName] = campo.message;
     }
-
-    if (erro.status === 422 && Array.isArray(erro.error.errors)) {
-      const validationError = erro.error as ValidationError;
-
-      for (const campo of validationError.errors) {
-        this.errosPorCampo[campo.fieldName] = campo.message;
-      }
-
-      this.erroGeral = validationError.message;
-      this.marcarCamposComoTocados();
-      return;
-    }
-
-    if (erro.status === 409) {
-      const standardError = erro.error as StandardError;
-      this.erroGeral = standardError.message ?? 'Já existe um paciente com esses dados.';
-      return;
-    }
-
-    if (erro.error.message) {
-      const standardError = erro.error as StandardError;
-      this.erroGeral = standardError.message;
-      return;
-    }
-
-    this.erroGeral = this.modoEdicao
-      ? 'Não foi possível atualizar o paciente.'
-      : 'Não foi possível salvar o paciente.';
+    this.erroGeral = resultado.mensagem;
+    this.marcarCamposComoTocados();
+    this.cdr.markForCheck();
   }
 
   private marcarCamposComoTocados(): void {

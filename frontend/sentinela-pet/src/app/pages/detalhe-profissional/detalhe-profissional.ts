@@ -1,5 +1,6 @@
+import { interpretarErroHttp } from '../../services/erro-http';
 import { CommonModule } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import {
@@ -17,6 +18,7 @@ import { UsuarioLogadoService } from '../../services/usuario-logado-service';
   styleUrl: './detalhe-profissional.css',
 })
 export class DetalheProfissional implements OnInit {
+  private readonly cdr = inject(ChangeDetectorRef);
   profissional: ProfissionalPayload | null = null;
 
   carregando = false;
@@ -36,7 +38,10 @@ export class DetalheProfissional implements OnInit {
   ngOnInit(): void {
     this.usuarioLogadoService
       .obterUsuarioLogado()
-      .subscribe((usuario) => (this.podeGerenciar = usuario.tipoUsuario === 'ADMINISTRADOR'));
+      .subscribe({
+        next: usuario => this.podeGerenciar = usuario.tipoUsuario === 'ADMINISTRADOR',
+        error: () => this.podeGerenciar = false,
+      });
 
     const idPublico = this.route.snapshot.paramMap.get('id');
 
@@ -58,8 +63,8 @@ export class DetalheProfissional implements OnInit {
         this.carregando = false;
       },
       error: (erro) => {
-        console.error('Erro ao carregar profissional', erro);
-        this.erro = 'Não foi possível carregar os dados do profissional.';
+        this.erro = interpretarErroHttp(erro, { padrao: 'Não foi possível carregar os dados do profissional.' }).mensagem;
+        this.cdr.markForCheck();
         this.carregando = false;
       },
     });
@@ -93,10 +98,10 @@ export class DetalheProfissional implements OnInit {
         this.router.navigate(['/profissionais']);
       },
       error: (erro) => {
-        console.error('Erro ao excluir profissional', erro);
         this.excluindo = false;
         this.confirmandoExclusao = false;
-        this.erro = 'Não foi possível excluir o profissional. Tente novamente.';
+        this.erro = interpretarErroHttp(erro, { escrita: true, padrao: 'Não foi possível excluir o profissional.' }).mensagem;
+        this.cdr.markForCheck();
       },
     });
   }

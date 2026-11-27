@@ -1,6 +1,7 @@
+import { interpretarErroHttp } from '../../services/erro-http';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, HostListener, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, HostListener, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { catchError, finalize, forkJoin, Observable, of } from 'rxjs';
 
@@ -13,7 +14,6 @@ import {
 import {
   DisponibilidadeDTO,
   DisponibilidadeService,
-  StandardError,
 } from '../../services/disponibilidade-service';
 import {
   ProfissionalPayload,
@@ -110,6 +110,7 @@ export class ConfiguracaoAgenda implements OnInit {
     private readonly disponibilidadeService: DisponibilidadeService,
     private readonly bloqueioAgendaService: BloqueioAgendaService,
     private readonly disponibilidadeExcecaoService: DisponibilidadeExcecaoService,
+    private readonly cdr: ChangeDetectorRef,
   ) {}
 
   ngOnInit(): void {
@@ -508,7 +509,7 @@ export class ConfiguracaoAgenda implements OnInit {
       error: (erro: HttpErrorResponse) => {
         this.definirErro(
           tipo,
-          this.extrairMensagemErro(erro, 'Não foi possível concluir a operação.'),
+          this.extrairMensagemErro(erro, 'Não foi possível concluir a operação.', true),
         );
       },
     });
@@ -631,7 +632,6 @@ export class ConfiguracaoAgenda implements OnInit {
     recurso: string,
     erros: string[],
   ): Observable<T[]> {
-    console.error(`Erro ao carregar ${recurso}`, erro);
     erros.push(this.extrairMensagemErro(erro, `Não foi possível carregar ${recurso}.`));
     return of([] as T[]);
   }
@@ -654,36 +654,9 @@ export class ConfiguracaoAgenda implements OnInit {
     });
   }
 
-  private extrairMensagemErro(erro: HttpErrorResponse, mensagemPadrao: string): string {
-    const corpo = erro.error as
-      | (StandardError & { errors?: Array<{ message: string }> })
-      | undefined;
-
-    const mensagensValidacao = corpo?.errors
-      ?.map((item) => item.message)
-      .filter(Boolean)
-      .join(' ');
-
-    if (mensagensValidacao) {
-      return mensagensValidacao;
-    }
-
-    if (corpo?.message) {
-      return corpo.message;
-    }
-
-    if (erro.status === 0) {
-      return 'Não foi possível conectar ao servidor.';
-    }
-
-    if (erro.status === 401) {
-      return 'Sua sessão expirou. Entre novamente.';
-    }
-
-    if (erro.status === 403) {
-      return 'Você não tem permissão para realizar esta operação.';
-    }
-
-    return mensagemPadrao;
+  private extrairMensagemErro(erro: HttpErrorResponse, padrao: string, escrita = false): string {
+    const resultado = interpretarErroHttp(erro, { padrao, escrita });
+    this.cdr.markForCheck();
+    return resultado.campos.map(campo => campo.message).join(' ') || resultado.mensagem;
   }
 }

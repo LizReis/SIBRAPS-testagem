@@ -35,6 +35,7 @@ export class Sidebar implements OnInit {
             ? this.todosMenuItems.filter((item) => item.route !== '/profissionais')
             : [...this.todosMenuItems];
       },
+      error: () => this.menuItems = this.todosMenuItems.filter(item => item.route !== '/profissionais'),
     });
   }
 

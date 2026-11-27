@@ -1,7 +1,8 @@
+import { interpretarErroHttp } from '../../services/erro-http';
 import { contratoExperimental } from '../../services/configuracao-contrato';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
@@ -21,8 +22,6 @@ import {
   HorarioDisponivel,
   HorariosDisponiveisPayload,
   NovoAgendamentoPayload,
-  StandardError,
-  ValidationError,
   VagasPorTurno,
 } from '../../services/agendamento-service';
 import {
@@ -78,6 +77,7 @@ export class NovoAgendamento implements OnInit, OnDestroy {
     data: string;
     turno: string;
   }>();
+  private readonly cdr = inject(ChangeDetectorRef);
   private readonly destroy$ = new Subject<void>();
 
   constructor(
@@ -187,7 +187,8 @@ export class NovoAgendamento implements OnInit, OnDestroy {
             .pipe(
               catchError((erro: HttpErrorResponse) => {
                 this.erroHorarios =
-                  erro.error?.message || 'Não foi possível consultar os horários.';
+                  interpretarErroHttp(erro, { padrao: 'Não foi possível consultar os horários.' }).mensagem;
+                this.cdr.markForCheck();
                 return of<HorariosDisponiveisPayload | null>(null);
               }),
               finalize(() => {
@@ -228,8 +229,8 @@ export class NovoAgendamento implements OnInit, OnDestroy {
         this.profissionais = profissionais;
       },
       error: (erro) => {
-        console.error('Erro ao carregar profissionais', erro);
-        this.erroGeral = 'Não foi possível carregar a lista de profissionais.';
+        this.erroGeral = interpretarErroHttp(erro, { padrao: 'Não foi possível carregar a lista de profissionais.' }).mensagem;
+        this.cdr.markForCheck();
       },
     });
   }
@@ -269,9 +270,8 @@ export class NovoAgendamento implements OnInit, OnDestroy {
         });
       },
       error: (erro) => {
-        console.error('Erro ao carregar agendamento original', erro);
-        this.erroGeral =
-          'Não foi possível carregar o agendamento original para remarcação.';
+        this.erroGeral = interpretarErroHttp(erro, { padrao: 'Não foi possível carregar o agendamento original para remarcação.' }).mensagem;
+        this.cdr.markForCheck();
         this.carregandoRemarcacao = false;
       },
     });
@@ -301,8 +301,8 @@ export class NovoAgendamento implements OnInit, OnDestroy {
           this.vagas = vagas;
         },
         error: (erro) => {
-          console.error('Erro ao consultar vagas', erro);
-          this.erroGeral = 'Não foi possível consultar as vagas disponíveis.';
+          this.erroGeral = interpretarErroHttp(erro, { padrao: 'Não foi possível consultar as vagas disponíveis.' }).mensagem;
+          this.cdr.markForCheck();
         },
       });
   }
@@ -401,25 +401,12 @@ export class NovoAgendamento implements OnInit, OnDestroy {
   }
 
   private tratarErro(erro: HttpErrorResponse): void {
-    if (!erro.error) {
-      this.erroGeral = 'Não foi possível conectar ao servidor. Tente novamente.';
-      return;
+    const resultado = interpretarErroHttp(erro, { escrita: true, padrao: 'Não foi possível salvar o agendamento.' });
+    for (const campo of resultado.campos) {
+      this.errosPorCampo[campo.fieldName] = campo.message;
     }
-
-    if (erro.status === 422 && Array.isArray(erro.error.errors)) {
-      const validationError = erro.error as ValidationError;
-
-      validationError.errors.forEach((campo) => {
-        this.errosPorCampo[campo.fieldName] = campo.message;
-      });
-
-      this.erroGeral = validationError.message;
-      return;
-    }
-
-    this.erroGeral =
-      (erro.error as StandardError)?.message ||
-      'Não foi possível criar o agendamento.';
+    this.erroGeral = resultado.mensagem;
+    this.cdr.markForCheck();
   }
 
   cancelar(): void {

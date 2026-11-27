@@ -1,6 +1,7 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { PacienteService } from '../../services/paciente/paciente-service';
 import { UsuarioLogadoService } from '../../services/usuario-logado-service';
 import { Pacientes } from './pacientes';
@@ -29,5 +30,24 @@ describe('Pacientes', () => {
     expect(fixture.componentInstance).toBeTruthy();
     expect(pesquisar).toHaveBeenCalledOnce();
     expect(fixture.nativeElement.textContent).toContain('Nenhum paciente encontrado.');
+  });
+
+  it('apresenta uma falha de busca sem expor a resposta do servidor', async () => {
+    const fixture = TestBed.createComponent(Pacientes);
+    await fixture.whenStable();
+    pesquisar.mockReturnValueOnce(throwError(() => new HttpErrorResponse({
+      status: 503, error: { code: 'SERVICE_UNAVAILABLE', message: 'SQL interno sintético' },
+    })));
+    const component = fixture.componentInstance;
+    component.termo = 'Paciente sintético';
+    component.pesquisar();
+
+    await vi.waitFor(() => expect(pesquisar).toHaveBeenCalledTimes(2));
+    await fixture.whenStable();
+    const alerta = fixture.nativeElement.querySelector('[role="alert"]');
+    expect(alerta.textContent).toContain('temporariamente indisponível');
+    expect(alerta.textContent).not.toContain('SQL');
+    expect(component.termo).toBe('Paciente sintético');
+    expect(component.carregando).toBe(false);
   });
 });

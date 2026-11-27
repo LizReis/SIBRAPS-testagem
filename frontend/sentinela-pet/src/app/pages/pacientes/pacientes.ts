@@ -1,8 +1,10 @@
+import { interpretarErroHttp } from '../../services/erro-http';
 import { contratoExperimental } from '../../services/configuracao-contrato';
 import {
     CommonModule
 } from '@angular/common';
 import {
+    ChangeDetectorRef,
     Component,
     HostListener,
     OnDestroy,
@@ -15,7 +17,9 @@ import {
     RouterLink
 } from '@angular/router';
 import {
+    EMPTY,
     Subject,
+    catchError,
     debounceTime,
     distinctUntilChanged,
     filter,
@@ -50,21 +54,28 @@ export class Pacientes implements OnInit, OnDestroy {
     tamanho = 10;
     dados ? : PacientePesquisa;
     carregando = false;
+    erroConsulta = '';
     podeCadastrar = false;
     podeEditar = false;
     menu ? : string;
     private busca$ = new Subject < string > ();
     private destroy$ = new Subject < void > ();
-    constructor(private service: PacienteService, usuario: UsuarioLogadoService) {
-        usuario.obterUsuarioLogado().subscribe(u => {
-            this.podeCadastrar = podeCadastrarPaciente(u.tipoUsuario);
-            this.podeEditar = podeEditarPaciente(u.tipoUsuario);
+    constructor(private service: PacienteService, usuario: UsuarioLogadoService, private readonly cdr: ChangeDetectorRef) {
+        usuario.obterUsuarioLogado().subscribe({
+            next: u => {
+                this.podeCadastrar = podeCadastrarPaciente(u.tipoUsuario);
+                this.podeEditar = podeEditarPaciente(u.tipoUsuario);
+            },
+            error: e => this.falharConsulta(e),
         });
     }
     ngOnInit() {
         this.busca$.pipe(debounceTime(350), distinctUntilChanged(), filter(v => this.buscaValida(v)), switchMap(() => {
             this.pagina = 0;
-            return this.consultar()
+            return this.consultar().pipe(catchError(e => {
+                this.falharConsulta(e);
+                return EMPTY;
+            }));
         }), takeUntil(this.destroy$)).subscribe();
         this.carregar();
     }
@@ -84,6 +95,7 @@ export class Pacientes implements OnInit, OnDestroy {
         this.carregar();
     }
     consultar() {
+        this.erroConsulta = '';
         this.carregando = true;
         return this.service.pesquisar({
             q: this.termo.trim() || undefined,
@@ -100,10 +112,13 @@ export class Pacientes implements OnInit, OnDestroy {
                 this.dados = d;
                 this.carregando = false
             },
-            error: () => {
-                this.carregando = false
-            }
+            error: e => this.falharConsulta(e),
         });
+    }
+    private falharConsulta(erro: unknown): void {
+        this.carregando = false;
+        this.erroConsulta = interpretarErroHttp(erro, { padrao: 'Não foi possível consultar a lista de pacientes.' }).mensagem;
+        this.cdr.markForCheck();
     }
     limpar() {
         this.termo = '';

@@ -44,6 +44,7 @@
               (click)="trocarPaciente()">Trocar paciente</button><small *ngIf="modoRemarcacao">Somente leitura</small>
           </div>
         </ng-template>
+        <p class="state error-text" role="alert" *ngIf="errosPorCampo['pacienteId']">{{ errosPorCampo['pacienteId'] }}</p>
       </section>
       <section class="step-card">
         <h2><span class="step-number">2</span>Escolher profissional e data</h2>
@@ -52,9 +53,13 @@
               (change)="onProfissionalOuDataAlterado()" [disabled]="modoRemarcacao">
               <option [ngValue]="null">Selecione o profissional</option>
               <option *ngFor="let p of profissionais" [value]="p.idPublico">{{p.nome}}</option>
-            </select></div>
+            </select>
+            <p class="state error-text" role="alert" *ngIf="errosPorCampo['usuarioId']">{{ errosPorCampo['usuarioId'] }}</p>
+          </div>
           <div><label for="data">Data do atendimento</label><input id="data" type="date" [(ngModel)]="dataSelecionada"
-              [min]="dataMinima" (change)="onProfissionalOuDataAlterado()"></div>
+              [min]="dataMinima" (change)="onProfissionalOuDataAlterado()">
+            <p class="state error-text" role="alert" *ngIf="errosPorCampo['dataAgendamento']">{{ errosPorCampo['dataAgendamento'] }}</p>
+          </div>
         </div>
         <div class="suggestions" *ngIf="modoRemarcacao&&sugestoesRemarcacao.length">Datas sugeridas: <button
             type="button" *ngFor="let d of sugestoesRemarcacao"
@@ -65,11 +70,13 @@
             [attr.aria-pressed]="turnoSelecionado===t" (click)="selecionarTurno(t)"><span
               aria-hidden="true">{{t==='MANHA'?'☀':'◐'}}</span><strong>{{labelEnum(t)}}</strong><small>{{vagasDoTurno(t)>0?vagasDoTurno(t)+'
               vagas disponíveis':'Sem vagas disponíveis'}}</small><i *ngIf="turnoSelecionado===t">✓</i></button></div>
+        <p class="state error-text" role="alert" *ngIf="errosPorCampo['turnoAgendamento']">{{ errosPorCampo['turnoAgendamento'] }}</p>
       </section>
       <section class="step-card">
         <h2><span class="step-number">3</span>Selecionar horário disponível</h2>
         <p class="state" *ngIf="!turnoSelecionado">Selecione profissional, data e turno para consultar os horários.</p>
         <p class="state" *ngIf="consultandoHorarios">Consultando horários disponíveis...</p>
+        <p class="state error-text" role="alert" *ngIf="errosPorCampo['horaAtendimento']">{{ errosPorCampo['horaAtendimento'] }}</p>
         <p class="state error-text" role="alert" *ngIf="erroHorarios">{{erroHorarios}}</p>
         <p class="state" *ngIf="turnoSelecionado&&!consultandoHorarios&&!erroHorarios&&!horarios.length">
           {{mensagemHorarios()}}</p>

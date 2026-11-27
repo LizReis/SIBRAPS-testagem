@@ -22,8 +22,9 @@
       </select>
     </label>
     <label>Justificativa<textarea [(ngModel)]="justificativa" maxlength="2000" rows="3"></textarea></label>
+    <p *ngIf="revisaoDesatualizada">Atualize a agenda e abra novamente a revisão deste atendimento para conferir os dados.</p>
     <button type="button" (click)="correcao = undefined" [disabled]="atualizandoId === atendimento.id">Cancelar</button>
-    <button type="button" (click)="confirmarCorrecao()" [disabled]="justificativa.trim().length < 10 || atualizandoId === atendimento.id">Salvar revisão</button>
+    <button type="button" (click)="confirmarCorrecao()" [disabled]="revisaoDesatualizada || justificativa.trim().length < 10 || atualizandoId === atendimento.id">Salvar revisão</button>
   </section>
   <div class="alert-erro" *ngIf="erroGeral">
     {{ erroGeral }}

@@ -1,3 +1,4 @@
+import { interpretarErroHttp } from '../../services/erro-http';
 import { contratoExperimental } from '../../services/configuracao-contrato';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -106,11 +107,10 @@ export class CadastroExistente implements OnDestroy {
       },
       error: (erro: HttpErrorResponse) => {
         this.buscando = false;
-        this.erro = erro.status === 404
+        const resultado = interpretarErroHttp(erro, { padrao: 'Não foi possível conferir o cadastro.' });
+        this.erro = resultado.tipo === 'RESOURCE_NOT_FOUND'
           ? 'Cadastro não localizado. Para uma pessoa nova, use o formulário abaixo.'
-          : erro.status === 422
-            ? 'Os documentos não puderam ser conferidos. Revise os dados ou solicite correção cadastral.'
-            : 'Não foi possível conferir o cadastro. Tente novamente.';
+          : resultado.mensagem;
         this.cdr.markForCheck();
       },
     });
@@ -162,9 +162,10 @@ export class CadastroExistente implements OnDestroy {
         this.identidade = null;
         this.documentosConsultados = null;
         this.confirmouIdentidade = false;
-        this.erro = erro.status === 422 || erro.status === 409 || erro.status === 404
-          ? 'Vínculo não realizado. Confirme novamente os dados com a equipe.'
-          : 'Não foi possível vincular à unidade. Confira sua conexão e tente a conferência novamente.';
+        const resultado = interpretarErroHttp(erro, { escrita: true, padrao: 'Não foi possível conferir o vínculo.' });
+        this.erro = resultado.tipo === 'VALIDATION_FAILED' && resultado.campos.length === 0
+          ? `Vínculo não realizado. ${resultado.mensagem} Confira novamente os dados do cadastro.`
+          : resultado.mensagem;
         this.cdr.markForCheck();
       },
     });

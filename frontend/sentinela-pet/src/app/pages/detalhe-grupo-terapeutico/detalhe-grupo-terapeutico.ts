@@ -1,10 +1,11 @@
+import { interpretarErroHttp } from '../../services/erro-http';
 import { contratoExperimental } from '../../services/configuracao-contrato';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { forkJoin, of, switchMap } from 'rxjs';
+import { catchError, forkJoin, of, throwError } from 'rxjs';
 import { GrupoTerapeuticoPayload, GrupoTerapeuticoService, ParticipanteGrupoPayload, SessaoGrupoPayload, SessaoInscricaoRetroativaPayload, StatusPresencaGrupo } from '../../services/grupo-terapeutico-service';
 import { PacienteLista, PacienteService } from '../../services/paciente/paciente-service';
 import { UsuarioLogadoService } from '../../services/usuario-logado-service';
@@ -20,6 +21,7 @@ type OpcaoOcorrencia = 'ocorreu' | 'cancelada';
   styleUrl: './detalhe-grupo-terapeutico.css',
 })
 export class DetalheGrupoTerapeutico implements OnInit {
+  private readonly cdr = inject(ChangeDetectorRef);
   grupoId!: number;
   sessaoId!: number;
   grupo: GrupoTerapeuticoPayload | null = null;
@@ -61,8 +63,9 @@ export class DetalheGrupoTerapeutico implements OnInit {
       grupos: this.grupos.listarGrupos(),
       usuario: this.usuario.obterUsuarioLogado(),
       retroativas: this.grupos.listarSessoesParaInscricaoRetroativa(this.grupoId).pipe(
-        // Recepção não possui acesso a RF20; a sessão ainda pode ser carregada pela data do link.
-        switchMap(s => of(s)),
+        // A recusa de RF20 não impede o acesso de leitura à sessão pelo link.
+        catchError(e => interpretarErroHttp(e).tipo === 'ACCESS_DENIED' && data
+          ? of([]) : throwError(() => e)),
       ),
     }).subscribe({
       next: ({ grupos, usuario, retroativas }) => {
@@ -75,15 +78,7 @@ export class DetalheGrupoTerapeutico implements OnInit {
         if (!dataSessao) return this.falhar('Não foi possível localizar a sessão pelo contrato de leitura atual. Volte à lista de grupos e acesse novamente.');
         this.carregarSessao(dataSessao);
       },
-      error: (e: HttpErrorResponse) => {
-        // RF20 responde 403 para recepção. O carregamento principal continua com a data presente no link.
-        if (e.status === 403 && data) {
-          this.usuario.obterUsuarioLogado().subscribe(u => {
-            this.podeExecutarAcoesClinicas = ['ADMINISTRADOR', 'PROFISSIONAL'].includes(u.tipoUsuario);
-            this.grupos.listarGrupos().subscribe(gs => { this.grupo = gs.find(g => g.id === this.grupoId) ?? null; this.carregarParticipantesGrupo(); this.carregarSessao(data); });
-          });
-        } else this.tratarErro(e);
-      },
+      error: e => this.tratarErro(e),
     });
   }
 
@@ -128,17 +123,17 @@ export class DetalheGrupoTerapeutico implements OnInit {
       : this.grupos.inscreverEmSessoesFuturas(this.grupoId, this.pacienteSelecionado.idPublico);
     request$.subscribe({
       next: () => { this.salvando = false; this.pacienteSelecionado = null; this.termoPaciente = ''; this.frequenciasRetroativas = {}; this.sucesso = 'Paciente inscrito com sucesso.'; this.carregarParticipantesGrupo(); this.carregarSessao(this.sessao!.dataSessao); },
-      error: e => { this.salvando = false; this.tratarErro(e); },
+      error: e => { this.salvando = false; this.tratarErro(e, true); },
     });
   }
   private carregarParticipantesGrupo(): void { this.grupos.listarParticipantesDoGrupo(this.grupoId).subscribe({ next: p => this.participantesGrupo = p, error: e => this.tratarErro(e) }); }
-  removerParticipante(): void { if (!this.participanteParaRemover) return; this.salvando = true; this.grupos.removerParticipanteDoGrupo(this.grupoId, this.participanteParaRemover.pacienteId).subscribe({ next: () => { this.salvando = false; this.participanteParaRemover = null; this.sucesso = 'Participante removido das próximas sessões.'; this.carregarParticipantesGrupo(); this.carregarSessao(this.sessao!.dataSessao); }, error: e => { this.salvando = false; this.tratarErro(e); } }); }
+  removerParticipante(): void { if (!this.participanteParaRemover) return; this.salvando = true; this.grupos.removerParticipanteDoGrupo(this.grupoId, this.participanteParaRemover.pacienteId).subscribe({ next: () => { this.salvando = false; this.participanteParaRemover = null; this.sucesso = 'Participante removido das próximas sessões.'; this.carregarParticipantesGrupo(); this.carregarSessao(this.sessao!.dataSessao); }, error: e => { this.salvando = false; this.tratarErro(e, true); } }); }
   iniciarCorrecao(): void { this.editandoFrequencia = true; this.frequencias = {}; this.sessao?.participantes.forEach(p => this.frequencias[p.pacienteId] = p.statusPresenca); }
   cancelarCorrecao(): void { this.editandoFrequencia = false; this.confirmandoCorrecao = false; this.frequencias = {}; this.sessao?.participantes.forEach(p => this.frequencias[p.pacienteId] = p.statusPresenca); }
   readonly contratoExperimental = contratoExperimental;
   justificativaCorrecao = '';
-  solicitarCorrecao(): void { this.justificativaCorrecao = ''; this.confirmandoCorrecao = true; }
-  salvarCorrecoes(): void { if (!this.sessao || (contratoExperimental && this.justificativaCorrecao.trim().length < 10)) return; const alteradas = this.sessao.participantes.filter(p => this.frequencias[p.pacienteId] !== p.statusPresenca).map(p => ({ pacienteId: p.pacienteId, statusPresenca: this.frequencias[p.pacienteId]! })); if (!alteradas.length) return this.cancelarCorrecao(); this.salvando = true; this.grupos.corrigirFrequencias(this.sessao.id, alteradas, this.sessao.version, contratoExperimental ? this.justificativaCorrecao.trim() : undefined).subscribe({ next: s => { this.sessao = s; this.salvando = false; this.editandoFrequencia = false; this.confirmandoCorrecao = false; this.sucesso = 'Frequências corrigidas com sucesso.'; }, error: e => { this.salvando = false; this.tratarErro(e); } }); }
+  solicitarCorrecao(): void { this.erro = ''; this.justificativaCorrecao = ''; this.confirmandoCorrecao = true; }
+  salvarCorrecoes(): void { if (!this.sessao || (contratoExperimental && this.justificativaCorrecao.trim().length < 10)) return; const alteradas = this.sessao.participantes.filter(p => this.frequencias[p.pacienteId] !== p.statusPresenca).map(p => ({ pacienteId: p.pacienteId, statusPresenca: this.frequencias[p.pacienteId]! })); if (!alteradas.length) return this.cancelarCorrecao(); this.salvando = true; this.grupos.corrigirFrequencias(this.sessao.id, alteradas, this.sessao.version, contratoExperimental ? this.justificativaCorrecao.trim() : undefined).subscribe({ next: s => { this.sessao = s; this.salvando = false; this.editandoFrequencia = false; this.confirmandoCorrecao = false; this.sucesso = 'Frequências corrigidas com sucesso.'; }, error: e => { this.salvando = false; this.tratarErro(e, true); } }); }
   confirmarOcorrencia(): void {
     if (!this.sessao || this.somenteLeitura) return;
     this.salvando = true; this.erro = '';
@@ -146,7 +141,7 @@ export class DetalheGrupoTerapeutico implements OnInit {
     const frequencias = ocorreu ? Object.entries(this.frequencias).filter(([, status]) => !!status).map(([pacienteId, statusPresenca]) => ({ pacienteId, statusPresenca: statusPresenca! })) : [];
     this.grupos.confirmarOcorrencia(this.sessaoId, { ocorreu, frequencias, motivoCancelamento: ocorreu ? null : (this.motivoCancelamento.trim() || null), version: this.sessao.version }).subscribe({
       next: atualizada => { this.sessao = atualizada; this.salvando = false; this.sucesso = ocorreu ? 'Ocorrência confirmada com sucesso.' : 'Cancelamento confirmado com sucesso.'; },
-      error: e => { this.salvando = false; this.tratarErro(e); if (e.status === 409) this.carregarSessao(this.sessao!.dataSessao); },
+      error: e => { this.salvando = false; this.tratarErro(e, true); },
     });
   }
   statusLabel(): string { return ({ AGENDADO: 'Agendado', EM_ANDAMENTO: 'Em andamento', REALIZADO: 'Realizado', CANCELADO: 'Cancelado' } as const)[this.sessao!.statusExibicao]; }
@@ -154,5 +149,8 @@ export class DetalheGrupoTerapeutico implements OnInit {
   formatarData(data: string): string { const [a,m,d] = data.split('-').map(Number); return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(a,m-1,d)); }
   iniciais(nome: string): string { return nome.trim().split(/\s+/).slice(0,2).map(n => n[0]).join('').toUpperCase(); }
   private falhar(mensagem: string): void { this.erro = mensagem; this.carregando = false; }
-  private tratarErro(e: HttpErrorResponse): void { const mensagens: Record<number,string> = { 403: 'Você não possui permissão para realizar esta ação.', 404: 'Grupo ou sessão não encontrado.', 409: 'A sessão foi alterada por outro usuário. Atualize os dados antes de continuar.', 422: e.error?.message || 'Verifique os dados informados.' }; this.falhar(mensagens[e.status] || 'Não foi possível concluir a operação. Tente novamente.'); }
+  private tratarErro(e: HttpErrorResponse, escrita = false): void {
+    this.falhar(interpretarErroHttp(e, { escrita }).mensagem);
+    this.cdr.markForCheck();
+  }
 }

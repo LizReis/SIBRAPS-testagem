@@ -16,7 +16,7 @@
     </div>
     <div class="head-actions"><a routerLink="/pacientes">Voltar</a><a *ngIf="podeEditar"
         [routerLink]="['/pacientes/editar',id]" class="primary">Editar dados</a><button *ngIf="ativo&&podeGerenciar"
-        class="danger" (click)="modal='encerrar'">Encerrar acompanhamento</button>
+        class="danger" (click)="erroModal = ''; modal = 'encerrar'">Encerrar acompanhamento</button>
       <button *ngIf="ativo && podeAdministrar" (click)="abrirAcaoAdministrativa('configurar')">Configurar acompanhamento</button>
       <button *ngIf="ativo && podeAdministrar" (click)="abrirAcaoAdministrativa('inativar')">Inativar vínculo</button>
       <button *ngIf="p?.statusPaciente && !ativo && podeAdministrar" (click)="abrirAcaoAdministrativa('reativar')">Reativar vínculo</button>
@@ -167,7 +167,7 @@
   </textarea>
     </label>
 
-    <p *ngIf="modal === 'busca' && erroModal" class="modal-error" role="alert">
+    <p *ngIf="erroModal" class="modal-error" role="alert">
       {{ erroModal }}
     </p>
     <div><button (click)="modal=''">Cancelar</button><button class="danger" [disabled]="salvando"
