@@ -1,6 +1,6 @@
 <header class="header">
   <!-- Botão Assistente Virtual -->
-  <button type="button" class="menu-button" aria-label="Abrir ou fechar menu lateral" (click)="toggleMenu()">
+  <button type="button" class="menu-button" aria-label="Abrir ou fechar menu lateral" aria-controls="menu-lateral" [attr.aria-expanded]="menuAberto" (click)="toggleMenu()">
     <span class="material-symbols-outlined" aria-hidden="true">menu</span>
   </button>
 

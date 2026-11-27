@@ -247,6 +247,10 @@
 
 .modal {
     width: min(480px, 90vw);
+    box-sizing: border-box;
+    max-height: 90vh;
+    max-height: 90dvh;
+    overflow-y: auto;
     background: white;
     border-radius: 14px;
     padding: 25px
@@ -273,6 +277,7 @@
 .modal>div {
     display: flex;
     justify-content: flex-end;
+    flex-wrap: wrap;
     gap: 10px
 }
 

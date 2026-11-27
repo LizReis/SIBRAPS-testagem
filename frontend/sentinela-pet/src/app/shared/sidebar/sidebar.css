@@ -11,7 +11,8 @@
     height:100%; width:284px; 
     background:linear-gradient(180deg,var(--sibrasp-navy-800) 0%,var(--sibrasp-navy-950) 42%,var(--sibrasp-navy-900) 100%);
     box-shadow:4px 0 24px rgba(6,41,89,.22); 
-    overflow:hidden; 
+    overflow-x:hidden;
+    overflow-y:auto; 
 }
 .logo-container { 
     padding: 40px 22px 10px; 

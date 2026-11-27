@@ -17,6 +17,14 @@ describe('MainLayout', () => {
     }).compileComponents();
   });
 
+  it('atualiza estado acessível e fecha menu móvel pelo Escape', () => {
+    const fixture = TestBed.createComponent(MainLayout); fixture.detectChanges();
+    const c = fixture.componentInstance; c.isMobile.set(true); c.isSidebarOpen.set(true); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.menu-button').getAttribute('aria-expanded')).toBe('true');
+    c.fecharMenuMovel(); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.menu-button').getAttribute('aria-expanded')).toBe('false');
+    expect(c.isSidebarOpen()).toBe(false);
+  });
   it('should create', () => {
     const fixture = TestBed.createComponent(MainLayout);
     fixture.detectChanges();

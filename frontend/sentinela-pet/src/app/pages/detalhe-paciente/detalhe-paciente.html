@@ -1,4 +1,4 @@
-<main class="page" *ngIf="detalhe as d">
+<main class="page" *ngIf="detalhe as d" [attr.inert]="modal || acaoAdministrativa ? '' : null">
   <div *ngIf="sucesso" class="feedback-toast success" role="status">
     <span>✓</span>
     {{ sucesso }}
@@ -15,7 +15,7 @@
     </div>
     <div class="head-actions"><a routerLink="/pacientes">Voltar</a><a *ngIf="podeEditar"
         [routerLink]="['/pacientes/editar',id]" class="primary">Editar cadastro compartilhado</a><button *ngIf="ativo&&podeGerenciar"
-        class="danger" (click)="erroModal = ''; modal = 'encerrar'">Encerrar acompanhamento</button>
+        class="danger" [disabled]="salvando || vinculoDesatualizado" (click)="erroModal = ''; motivo = ''; descricao = ''; modal = 'encerrar'">Encerrar acompanhamento</button>
       <button *ngIf="ativo && podeAdministrar" (click)="abrirAcaoAdministrativa('configurar')">Configurar acompanhamento</button>
       <button *ngIf="ativo && podeAdministrar" (click)="abrirAcaoAdministrativa('inativar')">Inativar vínculo</button>
       <button *ngIf="p?.statusPaciente && !ativo && podeAdministrar" (click)="abrirAcaoAdministrativa('reativar')">Reativar vínculo</button>
@@ -137,7 +137,7 @@
           [class.alerta]="!(ativo && d.classificacaoRisco === 'VERDE' && !p?.indicadoresLocais?.revisaoNecessaria)">{{d.atencaoNecessaria}}</h3>
         <p>{{d.classificacaoRisco==='VERMELHO'?'Faltas recorrentes ou ausência conforme critérios do
           sistema.':d.classificacaoRisco==='AMARELO'?'Acompanhe presença e próximos atendimentos.':!d.classificacaoRisco ? 'Classificação inconclusiva.' : (ativo && d.classificacaoRisco === 'VERDE' && !p?.indicadoresLocais?.revisaoNecessaria ? 'Sem alerta de busca ativa no momento.' : 'Consulte a situação do acompanhamento e os indicadores locais.')}}</p><button *ngIf="ativo&&d.classificacaoRisco==='VERMELHO'&&podeGerenciar"
-          class="primary" (click)="abrirBuscaAtiva()">
+          [disabled]="!podeRegistrarBusca" class="primary" (click)="abrirBuscaAtiva()">
           Registrar busca ativa
         </button>
       </section>
@@ -151,10 +151,11 @@
 </main>
 <p class="loading" aria-live="polite" *ngIf="carregando">Carregando paciente…</p>
 <p class="error" role="alert" *ngIf="erro">{{erro}}</p>
+<button type="button" *ngIf="erro && id && !vinculoDesatualizado" (click)="carregar()">Tentar consultar novamente</button>
 <button type="button" *ngIf="vinculoDesatualizado && !modal && !acaoAdministrativa" (click)="carregar()">Atualizar vínculo</button>
-<div class="backdrop" *ngIf="modal" role="dialog" aria-modal="true">
+<div class="backdrop" *ngIf="modal" role="dialog" aria-modal="true" aria-labelledby="titulo-confirmacao-paciente">
   <section class="modal">
-    <h2>{{modal==='encerrar'?'Encerrar acompanhamento':'Registrar busca ativa'}}</h2><ng-container
+    <h2 id="titulo-confirmacao-paciente">{{modal==='encerrar'?'Encerrar acompanhamento':'Registrar busca ativa'}}</h2><ng-container
       *ngIf="modal==='encerrar'"><label>Motivo do encerramento<select [(ngModel)]="motivo">
           <option value="">Selecione</option>
           <option value="ALTA_TERAPEUTICA">Alta terapêutica</option>
@@ -173,7 +174,7 @@
     <p *ngIf="erroModal" class="modal-error" role="alert">
       {{ erroModal }}
     </p>
-    <div><button (click)="modal=''">Cancelar</button><button class="danger" [disabled]="salvando || vinculoDesatualizado"
+    <div><button type="button" [disabled]="salvando" (click)="modal=''">Cancelar</button><button class="danger" [disabled]="salvando || vinculoDesatualizado"
         (click)="modal==='encerrar'?encerrar():registrar()">
 
         {{

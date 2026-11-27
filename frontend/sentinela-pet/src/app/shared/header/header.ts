@@ -1,4 +1,4 @@
-import { Component, EventEmitter, OnInit, Output, inject } from '@angular/core';
+import { Component, EventEmitter, Input, OnInit, Output, inject } from '@angular/core';
 import { take } from 'rxjs';
 import { InicioService } from '../../services/inicio-service';
 import { UsuarioLogadoDTO, UsuarioLogadoService } from '../../services/usuario-logado-service';
@@ -9,6 +9,7 @@ import { UsuarioLogadoDTO, UsuarioLogadoService } from '../../services/usuario-l
   templateUrl: './header.html',
   styleUrl: './header.css' })
 export class Header implements OnInit {
+  @Input() menuAberto = true;
   @Output() menuToggle = new EventEmitter<void>();
   private usuarioLogadoService = inject(UsuarioLogadoService);
 

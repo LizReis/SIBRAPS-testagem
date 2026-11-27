@@ -1,0 +1,3 @@
+# Etapa 8.8 — parecer técnico de encerramento
+
+Base ec5648c91e878b73afa97f7a92ae12b04a9c5e75, CI #46068561189: três jobs integralmente aprovados, Maven verify e concorrência, Angular padrão/experimental e ambos os builds. Entregas documentadas em etapa8-8-historico-indicadores.md, etapa8-8-relatorios-busca-ativa.md, etapa8-8-consumidores-indicadores.md, etapa8-8-correcao-budget-angular.md e etapa8-8-revisao-rnf17.md. Encerramento técnico do pacote de integração 8.8, sem declarar aceite visual ou validação de produção. Não modificar política clínica, RF26, marco histórico ou contratos. Restam 8.9 usabilidade/permissões/acessibilidade e 8.10 jornadas integradas; Etapa 9 não iniciada. Sem merge/PR.

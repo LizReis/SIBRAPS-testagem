@@ -5,6 +5,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription } from 'rxjs';
 import { RouterLink } from '@angular/router';
 import { InicioService, ResumoInicioPayload } from '../../services/inicio-service';
+import { UsuarioLogadoService } from '../../services/usuario-logado-service';
+import { podeCadastrarPaciente, podeCriarAgendamento, TIPOS_USUARIO } from '../../auth/permissoes';
 
 @Component({
   selector: 'app-inicio',
@@ -30,14 +32,22 @@ export class Inicio implements OnInit {
     { titulo: 'Indicadores Atenção', descricao: contratoExperimental ? 'Classificações amarela e vermelha confirmadas' : 'Requerem atenção', icone: 'shield', campo: 'totalPacientesAtencao', cor: 'orange' },
   ] as const;
 
-  readonly acoesRapidas = [
-    { titulo: 'Cadastrar paciente', rota: '/pacientes/novo', icone: 'person_add' },
-    { titulo: 'Novo agendamento', rota: '/agenda/novo', icone: 'edit_calendar' },
-    { titulo: 'Registrar presença', rota: '/agenda', icone: 'fact_check' },
-    { titulo: 'Registrar busca ativa', rota: '/pacientes', icone: 'location_on' },
+  private readonly usuario = inject(UsuarioLogadoService);
+  private perfil = '';
+  private readonly acoes = [
+    { titulo: 'Cadastrar paciente', rota: '/pacientes/novo', icone: 'person_add', permitido: podeCadastrarPaciente },
+    { titulo: 'Novo agendamento', rota: '/agenda/novo', icone: 'edit_calendar', permitido: podeCriarAgendamento },
+    { titulo: 'Consultar agenda', rota: '/agenda', icone: 'fact_check', permitido: (tipo: string) => TIPOS_USUARIO.some(p => p === tipo) },
+    { titulo: 'Consultar busca ativa', rota: '/painel', icone: 'location_on', permitido: (tipo: string) => TIPOS_USUARIO.some(p => p === tipo) },
   ];
 
+  get acoesRapidas() { return this.acoes.filter(acao => acao.permitido(this.perfil)); }
+
   ngOnInit(): void {
+    this.usuario.obterUsuarioLogado().pipe(takeUntilDestroyed(this.destroy)).subscribe({
+      next: u => { this.perfil = u.tipoUsuario; this.cdr.markForCheck(); },
+      error: () => { this.perfil = ''; this.cdr.markForCheck(); },
+    });
     this.buscarResumo();
   }
 

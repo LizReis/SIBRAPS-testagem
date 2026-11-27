@@ -18,5 +18,8 @@ export class MainLayout implements OnInit {
       this.isMobile.set(mobile); 
       this.isSidebarOpen.set(!mobile); 
     }
+  @HostListener('document:keydown.escape') fecharMenuMovel() {
+    if (this.isMobile() && this.isSidebarOpen()) this.isSidebarOpen.set(false);
+  }
   toggleSidebar() { this.isSidebarOpen.set(!this.isSidebarOpen()); }
 }

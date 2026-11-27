@@ -3,16 +3,19 @@ import { provideRouter } from '@angular/router';
 import { of, Subject, throwError } from 'rxjs';
 import { InicioService, ResumoInicioPayload } from '../../services/inicio-service';
 import { Inicio } from './inicio';
+import { UsuarioLogadoService } from '../../services/usuario-logado-service';
 
 describe('Inicio', () => {
   const resumo: ResumoInicioPayload = { totalPacientesAtivos: 12, totalAgendamentosHoje: 2, totalFaltasUltimosSeteDias: 1, totalPacientesAtencao: 3, totalNotificacoes: 2, pacientesPrioritarios: [] };
   const buscarResumo = vi.fn(() => of(resumo));
 
+  let perfil = 'ADMINISTRADOR';
   beforeEach(async () => {
+    perfil = 'ADMINISTRADOR';
     buscarResumo.mockClear();
     await TestBed.configureTestingModule({
       imports: [Inicio],
-      providers: [provideRouter([]), { provide: InicioService, useValue: { buscarResumo } }],
+      providers: [provideRouter([]), { provide: InicioService, useValue: { buscarResumo } }, { provide: UsuarioLogadoService, useValue: { obterUsuarioLogado: () => of({ tipoUsuario: perfil }) } }],
     }).compileComponents();
   });
 
@@ -39,6 +42,16 @@ describe('Inicio', () => {
     expect(component.resumo).toBeUndefined();
     expect(component.valorIndicador('totalPacientesAtivos')).toBe('—');
     expect(component.erro).toBe(true);
+  });
+
+  it.each(['ADMINISTRADOR', 'RECEPCAO', 'PROFISSIONAL'])('exibe atalhos permitidos para %s', (tipo) => {
+    perfil = tipo;
+    const fixture = TestBed.createComponent(Inicio);
+    fixture.detectChanges();
+    const rotas = fixture.componentInstance.acoesRapidas.map(a => a.rota);
+    expect(rotas).toContain('/pacientes/novo');
+    expect(rotas).toContain('/painel');
+    expect(rotas.includes('/agenda/novo')).toBe(tipo !== 'PROFISSIONAL');
   });
 
   it('ignora resultado de consulta superada', () => {

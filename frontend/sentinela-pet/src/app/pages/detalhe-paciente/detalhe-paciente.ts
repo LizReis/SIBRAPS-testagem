@@ -4,6 +4,7 @@ import {
 } from '@angular/common';
 import {
     ChangeDetectorRef,
+    DestroyRef,
     Component,
     HostListener,
     OnInit
@@ -26,6 +27,8 @@ import {
 import { contratoExperimental } from '../../services/configuracao-contrato';
 import { ProfissionalService, UsuarioReferencia } from '../../services/profissional/profissional-service';
 import { inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Subscription } from 'rxjs';
 import { podeCriarAgendamento, podeEditarPaciente } from '../../auth/permissoes';
 
 @Component({
@@ -50,6 +53,8 @@ export class DetalhePaciente implements OnInit {
     referencias: UsuarioReferencia[] = [];
     motivoReativacao = '';
     private readonly cdr = inject(ChangeDetectorRef);
+    private readonly destroy = inject(DestroyRef);
+    private consulta?: Subscription;
     private readonly profissionais = contratoExperimental ? inject(ProfissionalService) : null;
     motivo = '';
     descricao = '';
@@ -61,15 +66,17 @@ export class DetalhePaciente implements OnInit {
     podeAgendar = false;
     vinculoDesatualizado = false;
     constructor(private route: ActivatedRoute, private router: Router, private service: PacienteService, usuario: UsuarioLogadoService) {
-        usuario.obterUsuarioLogado().subscribe({
+        usuario.obterUsuarioLogado().pipe(takeUntilDestroyed(this.destroy)).subscribe({
             next: u => {
                 this.podeGerenciar = ['ADMINISTRADOR', 'PROFISSIONAL'].includes(u.tipoUsuario);
                 this.podeEditar = podeEditarPaciente(u.tipoUsuario);
                 this.podeAgendar = podeCriarAgendamento(u.tipoUsuario);
                 this.podeAdministrar = contratoExperimental && u.tipoUsuario === 'ADMINISTRADOR';
+                this.cdr.markForCheck();
             },
             error: () => {
-                this.podeGerenciar = this.podeEditar = this.podeAdministrar = false;
+                this.podeGerenciar = this.podeEditar = this.podeAdministrar = this.podeAgendar = false;
+                this.cdr.markForCheck();
             },
         });
     }
@@ -77,12 +84,18 @@ export class DetalhePaciente implements OnInit {
         this.id = this.route.snapshot.paramMap.get('id') || '';
         if (!this.id) {
             this.erro = 'Paciente não informado';
+            this.carregando = false;
             return
         }
         this.carregar()
     }
     carregar() {
-        this.service.buscarDetalhe(this.id).subscribe({
+        if (this.salvando) return;
+        this.consulta?.unsubscribe();
+        this.detalhe = undefined;
+        this.carregando = true;
+        this.erro = '';
+        this.consulta = this.service.buscarDetalhe(this.id).pipe(takeUntilDestroyed(this.destroy)).subscribe({
             next: d => {
                 const vinculo = this.route.snapshot.queryParamMap?.get('vinculo');
                 if (vinculo && d.paciente.local?.vinculo !== vinculo) {
@@ -134,7 +147,7 @@ export class DetalhePaciente implements OnInit {
         return t === 'cpf' ? `•••.${d.slice(3, 6)}.${d.slice(6, 9)}-••` : `•••••••••${d.slice(-6)}`
     }
     encerrar() {
-        if (this.salvando || this.vinculoDesatualizado || !this.podeGerenciar || !this.ativo
+        if (this.salvando || this.carregando || this.vinculoDesatualizado || !this.podeGerenciar || !this.ativo
             || !this.motivo || this.motivo === 'OUTRO' && !this.descricao.trim()) return;
         this.erroModal = '';
         this.salvando = true;
@@ -155,6 +168,7 @@ export class DetalhePaciente implements OnInit {
     }
 
     abrirAcaoAdministrativa(acao: 'configurar' | 'reativar' | 'inativar'): void {
+        if (this.salvando || this.carregando || this.vinculoDesatualizado || !this.podeAdministrar || !this.p?.local) return;
         this.acaoAdministrativa = acao;
         this.erroModal = '';
         this.modalidade = this.p?.tipoAcompanhamento ?? '';
@@ -172,7 +186,7 @@ export class DetalhePaciente implements OnInit {
     salvarAcaoAdministrativa(): void {
         const acao = this.acaoAdministrativa;
         const local = this.p?.local;
-        if (!acao || !local || this.salvando || this.vinculoDesatualizado || !this.podeAdministrar
+        if (!acao || !local || this.salvando || this.carregando || this.vinculoDesatualizado || !this.podeAdministrar
             || (acao === 'reativar' ? !this.p?.statusPaciente || this.ativo : !this.ativo)) return;
         if ((acao === 'configurar' && (!this.modalidade || !this.referenciasDisponiveis || this.referencia === undefined)) || (acao === 'reativar' && !this.motivoReativacao.trim())) return;
         const comando = acao === 'configurar'
@@ -200,12 +214,18 @@ export class DetalhePaciente implements OnInit {
     }
 
     abrirBuscaAtiva(): void {
+        if (!this.podeRegistrarBusca) return;
         this.descricao = '';
         this.erroModal = '';
         this.sucesso = '';
         this.modal = 'busca';
     }
+    get podeRegistrarBusca(): boolean {
+        return !this.salvando && !this.carregando && !this.vinculoDesatualizado && this.podeGerenciar && this.ativo
+            && this.detalhe?.classificacaoRisco === 'VERMELHO';
+    }
     registrar() {
+        if (this.modal !== 'busca' || !this.podeRegistrarBusca) return;
         const descricao = this.descricao.trim();
 
         this.erroModal = '';
@@ -225,12 +245,14 @@ export class DetalhePaciente implements OnInit {
                 this.salvando = false;
 
                 this.sucesso = 'Busca ativa registrada com sucesso.';
+                this.carregar();
             },
 
             error: (e) => {
-                this.erroModal =
-                    interpretarErroHttp(e, { escrita: true, padrao: 'Não foi possível registrar a busca ativa.' }).mensagem;
-                    this.cdr.markForCheck();
+                const resultado = interpretarErroHttp(e, { escrita: true, padrao: 'Não foi possível registrar a busca ativa.' });
+                this.erroModal = resultado.mensagem;
+                this.vinculoDesatualizado = ['STALE_VERSION', 'NETWORK_ERROR', 'SERVICE_UNAVAILABLE', 'DATABASE_FAILURE', 'INTERNAL_ERROR', 'UNKNOWN_ERROR'].includes(resultado.tipo);
+                this.cdr.markForCheck();
 
                 this.salvando = false;
             }
@@ -240,8 +262,9 @@ export class DetalhePaciente implements OnInit {
         this.router.navigate(['/pacientes/detalhes', this.id, 'historico'])
     }
     @HostListener('document:keydown.escape') escape() {
+        if (this.salvando) return;
         this.modal = '';
-        if (!this.salvando) this.acaoAdministrativa = '';
+        this.acaoAdministrativa = '';
     }
 
 
