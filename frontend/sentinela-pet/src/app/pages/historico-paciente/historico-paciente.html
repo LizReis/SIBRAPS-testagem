@@ -26,7 +26,8 @@
           {{ formatarEnum(historico.classificacaoAtual) }}
         </span>
       </div>
-      <p>Histórico completo do acompanhamento do paciente.</p>
+      <p>Histórico do acompanhamento na unidade. Registros sem origem comprovada podem não estar disponíveis.</p>
+      <p *ngIf="historico.unidadeLocal">Unidade: {{ historico.unidadeLocal }}</p>
     </header>
 
     <nav class="tabs" aria-label="Navegação do paciente">
@@ -44,7 +45,7 @@
         <div><span>Faltas consecutivas</span><strong>{{ historico.quantidadeFaltasAtual ?? 'Não confirmado' }}</strong></div>
         <div>
           <span>Última presença</span>
-          <strong>{{ historico.dataUltimaPresenca ? formatarDataHora(historico.dataUltimaPresenca) : 'Nenhuma presença registrada' }}</strong>
+          <strong>{{ ultimaPresenca(historico) }}</strong>
         </div>
         <div>
           <span>Dias sem comparecer</span>
@@ -54,11 +55,11 @@
     </section>
 
     <section class="indicadores" aria-label="Resumo do histórico">
-      <p *ngIf="historico.historicoLocalRequerConferencia" role="status">Histórico local requer conferência. Os totais exibidos incluem somente registros comprovados.</p>
+      <p *ngIf="historico.historicoLocalRequerConferencia" role="status" style="grid-column: 1 / -1">Histórico local requer conferência. Os totais de frequência podem estar indisponíveis; os registros visíveis não representam necessariamente todo o histórico.</p>
       <article class="indicador"><strong>{{ historico.totalConsultasAgendadas }}</strong><span>Consultas agendadas</span></article>
-      <article class="indicador"><strong>{{ historico.totalPresencas }}</strong><span>Presenças</span></article>
-      <article class="indicador"><strong>{{ historico.totalFaltas }}</strong><span>Faltas</span></article>
-      <article class="indicador"><strong>{{ historico.totalRemarcacoes }}</strong><span>Remarcações</span></article>
+      <article class="indicador"><strong>{{ historico.totalPresencas ?? 'Não confirmado' }}</strong><span>Presenças</span></article>
+      <article class="indicador"><strong>{{ historico.totalFaltas ?? 'Não confirmado' }}</strong><span>Faltas</span></article>
+      <article class="indicador"><strong>{{ historico.totalRemarcacoes ?? 'Não confirmado' }}</strong><span>Remarcações</span></article>
       <article class="indicador"><strong>{{ historico.totalGruposTerapeuticos }}</strong><span>Grupos terapêuticos</span></article>
       <article class="indicador"><strong>{{ historico.totalRegistrosBuscaAtiva }}</strong><span>Registros de busca ativa</span></article>
     </section>
@@ -66,7 +67,7 @@
     <section class="timeline-card" aria-labelledby="timeline-titulo">
       <h2 id="timeline-titulo">Linha do tempo</h2>
       <p *ngIf="historico.eventos.length === 0" class="vazio">
-        Nenhum evento foi registrado no histórico deste paciente.
+        {{ historico.historicoLocalRequerConferencia ? 'Nenhum evento comprovado disponível nesta consulta.' : 'Nenhum evento foi registrado no histórico deste paciente.' }}
       </p>
       <ol class="timeline" *ngIf="historico.eventos.length > 0">
         <li *ngFor="let evento of historico.eventos" [class]="classeEvento(evento)">
@@ -84,6 +85,8 @@
             <p class="metadados secundario" *ngIf="evento.funcaoResponsavel || evento.nomeUnidade">
               {{ formatarEnum(evento.funcaoResponsavel) }}<span *ngIf="evento.funcaoResponsavel && evento.nomeUnidade"> · </span>{{ formatarEnum(evento.nomeUnidade) }}
             </p>
+            <p *ngIf="evento.desconsiderado" role="status">Registro preservado — frequência desconsiderada nos cálculos por resolução.</p>
+            <p *ngIf="evento.origemCorrigida">Origem histórica reconhecida por revisão.</p>
             <p class="descricao" *ngIf="evento.descricao">{{ evento.descricao }}</p>
           </article>
         </li>
@@ -94,7 +97,8 @@
       <ul>
         <li *ngFor="let sessao of historico.sessoesLocais">
           {{ sessao.tema }} · {{ sessao.data | date:'dd/MM/yyyy' }} · {{ sessao.hora.slice(0, 5) }}
-          · {{ formatarEnum(sessao.status) }} · {{ sessao.frequencia ? formatarEnum(sessao.frequencia) : 'Frequência não confirmada' }}
+          · {{ formatarEnum(sessao.status) }} · {{ sessao.status === 'REALIZADA' ? (sessao.frequencia ? formatarEnum(sessao.frequencia) : 'Frequência não confirmada') : 'Sem frequência confirmada' }}
+          <span *ngIf="sessao.desconsiderado"> · Frequência desconsiderada por resolução (registro preservado)</span>
         </li>
       </ul>
     </section>

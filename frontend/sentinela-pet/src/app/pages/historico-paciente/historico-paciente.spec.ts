@@ -43,4 +43,22 @@ describe('HistoricoPaciente', () => {
     fixture.nativeElement.querySelector('.btn-primario').click();
     expect(buscarHistorico).toHaveBeenCalledTimes(2);
   });
+
+  it('distingue presença inconclusiva e totais nulos de ausência comprovada', () => {
+    const base={idPublico:'paciente-publico',nomePaciente:'Paciente',statusPaciente:'ATIVO',classificacaoAtual:null,
+      tipoAcompanhamento:'INDIVIDUAL',quantidadeFaltasAtual:null,totalConsultasAgendadas:1,totalPresencas:null,totalFaltas:null,
+      totalRemarcacoes:0,totalGruposTerapeuticos:0,totalRegistrosBuscaAtiva:0,eventos:[],historicoLocalRequerConferencia:true};
+    buscarHistorico.mockReturnValue(of({...base,ultimaPresencaConclusiva:false}));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Não confirmada');
+    expect(fixture.nativeElement.textContent).toContain('Não confirmado');
+    expect(fixture.nativeElement.textContent).not.toContain('Nenhuma presença comprovada');
+    expect(fixture.componentInstance.ultimaPresenca({...base,ultimaPresencaConclusiva:true})).toBe('Nenhuma presença comprovada');
+  });
+  it('limpa histórico anterior quando atualização é recusada',()=>{
+    fixture.detectChanges();
+    buscarHistorico.mockReturnValue(throwError(()=>new Error('falha')));
+    fixture.componentInstance.carregarHistorico();
+    expect(fixture.componentInstance.historico).toBeNull();
+  });
 });

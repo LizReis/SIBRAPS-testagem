@@ -1,5 +1,8 @@
 import { CommonModule, DatePipe } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, DestroyRef, OnInit, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Subscription, finalize } from 'rxjs';
+import { interpretarErroHttp } from '../../services/erro-http';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import {
@@ -17,6 +20,9 @@ import {
   styleUrl: './historico-paciente.css',
 })
 export class HistoricoPaciente implements OnInit {
+  private readonly cdr = inject(ChangeDetectorRef);
+  private readonly destroy = inject(DestroyRef);
+  private consulta?: Subscription;
   historico: HistoricoPacientePayload | null = null;
   idPublico: string | null = null;
   carregando = false;
@@ -40,18 +46,28 @@ export class HistoricoPaciente implements OnInit {
 
   carregarHistorico(): void {
     if (!this.idPublico) return;
+    this.consulta?.unsubscribe();
+    this.historico = null;
     this.carregando = true;
     this.erro = null;
-    this.pacienteService.buscarHistorico(this.idPublico).subscribe({
-      next: (historico) => {
-        this.historico = { ...historico, eventos: historico.eventos ?? [] };
+    this.consulta = this.pacienteService.buscarHistorico(this.idPublico)
+      .pipe(takeUntilDestroyed(this.destroy), finalize(() => {
         this.carregando = false;
-      },
-      error: () => {
-        this.erro = 'Não foi possível carregar o histórico do paciente.';
-        this.carregando = false;
-      },
-    });
+        this.cdr.markForCheck();
+      })).subscribe({
+        next: (historico) => {
+          this.historico = { ...historico, eventos: historico.eventos ?? [] };
+        },
+        error: e => {
+          this.erro = interpretarErroHttp(e, { padrao: 'Não foi possível carregar o histórico do paciente.' }).mensagem;
+        },
+      });
+  }
+
+  ultimaPresenca(h: HistoricoPacientePayload): string {
+    if (h.ultimaPresencaConclusiva === false) return 'Não confirmada';
+    if (h.dataUltimaPresenca) return this.formatarDataHora(h.dataUltimaPresenca);
+    return h.ultimaPresencaConclusiva === true ? 'Nenhuma presença comprovada' : 'Não informada';
   }
 
   voltarParaDetalhes(): void {

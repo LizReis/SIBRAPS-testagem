@@ -11,7 +11,7 @@
         </select></div>
     </label>
     <label><span>UNIDADE</span><div class="select-wrap"><i class="bi bi-building"></i><select name="unidade" [(ngModel)]="filtros.unidade" (change)="alterarFiltroPrincipal()">
-      <option [ngValue]="undefined">Todas as unidades</option>@for (unidade of dados?.unidadesDisponiveis; track unidade.valor) {<option [value]="unidade.valor">{{ unidade.nome }}</option>}
+      <option [ngValue]="undefined">Minha unidade</option>@for (unidade of dados?.unidadesDisponiveis; track unidade.valor) {<option [value]="unidade.valor">{{ unidade.nome }}</option>}
     </select></div></label>
     <label><span>VISUALIZAR POR</span><div class="select-wrap"><i class="bi bi-graph-up"></i><select aria-label="Visualizar por"><option>Classificação</option></select></div></label>
     <div class="more-filter-wrap"><button class="outline-button" type="button" (click)="maisFiltrosAberto = !maisFiltrosAberto" [attr.aria-expanded]="maisFiltrosAberto"><i class="bi bi-sliders"></i> Mais filtros</button>
@@ -26,7 +26,10 @@
   @if (erro) {<div class="error-card" role="alert"><span class="material-symbols-outlined">error</span><div><strong>Não foi possível carregar os indicadores do painel.</strong><p>Verifique sua conexão e tente novamente.</p></div><button type="button" (click)="carregar()">Tentar novamente</button></div>}
   @else if (carregando) {<div class="loading" role="status" aria-label="Carregando painel"><div></div><div></div><div></div></div>}
   @else if (dados) {
-    <div class="active-total"><span class="material-symbols-outlined">group</span><strong>Pacientes ativos</strong><b>{{ dados.totalPacientesAtivos }}</b></div>
+    <div class="active-total"><span class="material-symbols-outlined">group</span><strong>Pacientes ativos confirmados</strong><b>{{ dados.totalPacientesAtivos }}</b></div>
+    @if (dados.estadoNaoConfirmado != null && dados.estadoNaoConfirmado > 0) {
+      <p class="history-note" role="status">{{ dados.estadoNaoConfirmado }} vínculo(s) com estado não confirmado, fora do total de ativos confirmados.</p>
+    }
     <div class="risk-grid">@for (risco of riscos; track risco.titulo) {<article class="risk-card" [class]="'risk-card ' + risco.classe"><span class="risk-line"></span><span class="risk-icon material-symbols-outlined">{{ risco.icone }}</span><div><h2>{{ risco.titulo }}</h2><strong>{{ valor(risco.chave) }}</strong><p>{{ formatarPercentual(percentual(risco.percentual)) }}% do total de ativos</p></div></article>}</div>
 
     <div class="charts-grid">
@@ -97,7 +100,7 @@
     </div>
 
     <article class="panel-card priority"><div class="priority-heading"><h2><span class="material-symbols-outlined">stars</span> Pacientes prioritários</h2><a routerLink="/pacientes">Ver todos <span class="material-symbols-outlined">chevron_right</span></a></div>
-      @if (dados.pacientesPrioritarios.length === 0) {<div class="empty-state"><span class="material-symbols-outlined">verified</span><p>Nenhum paciente necessita de busca ativa ou atenção no momento.</p></div>}
+      @if (dados.pacientesPrioritarios.length === 0) {<div class="empty-state"><span class="material-symbols-outlined">verified</span><p>Nenhum paciente prioritário confirmado nesta consulta. Registros inconclusivos podem exigir conferência.</p></div>}
       @else {<div class="priority-list">@for (paciente of dados.pacientesPrioritarios; track paciente.idPublico) {<div class="patient-row"><span class="avatar">{{ iniciais(paciente.nome) }}</span><div class="patient-name"><strong>{{ paciente.nome }}</strong><small>{{ paciente.idade === null ? 'Idade não informada' : paciente.idade + ' anos' }}</small></div><span [class]="'risk-badge ' + (paciente.classificacaoRisco?.toLowerCase() ?? 'unknown')"><span class="material-symbols-outlined">warning</span>{{ rotuloRisco(paciente.classificacaoRisco) }}</span><div class="needed"><span class="material-symbols-outlined">notification_important</span>{{ paciente.acaoNecessaria }}</div><a class="patient-button" [routerLink]="['/pacientes/detalhes', paciente.idPublico]">Ver paciente</a></div>}</div>}
     </article>
     <footer class="info-footer"><span class="material-symbols-outlined">info</span>Os dados são dinâmicos e atualizados conforme os filtros selecionados.</footer>

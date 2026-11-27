@@ -1,0 +1,7 @@
+# Parecer de encerramento técnico — Pacote 3 (8.6 e 8.7)
+
+Base aprovada 2da7998c618deed472b5a491a4e310ba289d95d8; CI [#45941719793](https://github.com/LizReis/SIBRAPS-testagem/actions/runs/45941719793). Java 1448/1448 sem falhas, erros ou ignorados, concorrência 12/12, Angular 201/201 (40 arquivos), contrato experimental 5/5; ambos builds aprovados. Entregas: etapa8-6-fila-administrativa.md, etapa8-6-solicitacao-revisao.md, etapa8-7-reconciliacao-frontend.md, etapa8-7-auditorias-correcao-local.md.
+
+Aprovado no escopo técnico automatizado: painel administrativo abaixo de Relatórios; solicitação/decisão separada de aplicação; resolução e origem, trilhas, reversão/reabertura; auditorias individuais/coletivas operacionais somente leitura. Última CI confirmou colega 403, transferência de coordenação via API, responsável histórico conserva acesso na mesma unidade, sucessor não herda trilha, profissional transferido e administrador externo 404, administrador local conserva acesso, snapshot preservado. Lotação simulada por SQL sintético, não prova comando administrativo de transferência.
+
+Reservas: validação visual e E2E Angular+backend ainda pendentes. Link de auditoria individual pode aparecer para colega local, API nega; revisar apresentação na 8.9. Autoria inconclusiva não regularizada; trilha de regularização de cancelamento não coberta pelas rotas de correção. Aceite humano e SGBD definitivo pendentes. Próximo pacote 8.8–8.10; sem merge ou início da etapa 9.

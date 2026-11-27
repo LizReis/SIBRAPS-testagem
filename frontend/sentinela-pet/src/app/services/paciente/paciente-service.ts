@@ -109,6 +109,9 @@ export interface HistoricoPacienteEvento {
   funcaoResponsavel?: string;
   nomeUnidade?: string;
   numeroFaltaConsecutiva?: number;
+  sessaoId?: number;
+  desconsiderado?: boolean;
+  origemCorrigida?: boolean;
 }
 
 export interface HistoricoPacientePayload {
@@ -121,10 +124,13 @@ export interface HistoricoPacientePayload {
   diasSemComparecer?: number;
   quantidadeFaltasAtual: number | null;
   historicoLocalRequerConferencia?: boolean;
+  ultimaPresencaConclusiva?: boolean;
+  unidadeLocal?: string;
+  atendimentosDesconsiderados?: number[];
   sessoesLocais?: ProntuarioLocal['sessoes'];
   totalConsultasAgendadas: number;
-  totalPresencas: number;
-  totalFaltas: number;
+  totalPresencas: number | null;
+  totalFaltas: number | null;
   totalRemarcacoes: number | null;
   totalGruposTerapeuticos: number;
   totalRegistrosBuscaAtiva: number;
@@ -302,8 +308,11 @@ export class PacienteService {
       idPublico, nomePaciente: p.paciente.nome, statusPaciente: p.paciente.indicadores.statusPaciente ?? 'Não confirmado',
       classificacaoAtual: p.paciente.indicadores.classificacaoRisco,
       tipoAcompanhamento: p.paciente.indicadores.tipoAcompanhamento ?? 'Não confirmado',
+      ultimaPresencaConclusiva: p.paciente.indicadores.ultimaPresencaConclusiva,
+      unidadeLocal: p.paciente.unidade,
       dataUltimaPresenca: p.paciente.indicadores.ultimaPresencaConclusiva
         ? p.paciente.indicadores.dataUltimaPresenca ?? undefined : undefined,
+      atendimentosDesconsiderados: p.atendimentosDesconsiderados ?? [],
       quantidadeFaltasAtual: p.paciente.indicadores.countFaltas,
       totalConsultasAgendadas: p.atendimentos.length, totalPresencas: p.presencasComprovadas, totalFaltas: p.faltasComprovadas,
       totalRemarcacoes: p.atendimentos.filter(a => a.situacaoAtendimento === 'REMARCADO_ORIGEM').length,

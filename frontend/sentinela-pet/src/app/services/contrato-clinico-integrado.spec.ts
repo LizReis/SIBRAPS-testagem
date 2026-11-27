@@ -77,4 +77,23 @@ describe('Contratos HTTP do pacote 6B.2', () => {
     expect(provisoria.request.body).toEqual({ statusPresenca: 'PRESENTE' });
     provisoria.flush({ id: 5, version: 2 });
   });
+
+  it('preserva ausência de conclusão, totais nulos e flags do prontuário local',()=>{
+    TestBed.inject(PacienteService).buscarHistorico('pessoa').subscribe(h=>{
+      expect(h.ultimaPresencaConclusiva).toBe(false);
+      expect(h.dataUltimaPresenca).toBeUndefined();
+      expect(h.totalPresencas).toBeNull();
+      expect(h.totalFaltas).toBeNull();
+      expect(h.atendimentosDesconsiderados).toEqual([14]);
+      expect(h.eventos[0].desconsiderado).toBe(true);
+      expect(h.eventos[0].origemCorrigida).toBe(true);
+      expect(h.sessoesLocais?.[0].desconsiderado).toBe(true);
+    });
+    http.expectOne(`${raizClinica}/pacientes/pessoa/prontuario`).flush({
+      paciente:{nome:'Sintético',unidade:'USF:1',indicadores:{statusPaciente:'ATIVO',tipoAcompanhamento:'AMBOS',ultimaPresencaConclusiva:false,dataUltimaPresenca:'2026-11-01',classificacaoRisco:null,countFaltas:null}},
+      atendimentos:[],sessoes:[{sessao:2,status:'REALIZADA',frequencia:'FALTOU',desconsiderado:true}],
+      historico:[{id:1,tipo:'FALTA',situacao:'FALTOU',unidadeOrigem:'USF:1',desconsiderado:true,origemCorrigida:true}],
+      presencasComprovadas:null,faltasComprovadas:null,atendimentosDesconsiderados:[14],historicoLocalRequerConferencia:true
+    });
+  });
 });

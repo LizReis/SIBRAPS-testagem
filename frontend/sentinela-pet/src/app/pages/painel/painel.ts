@@ -2,10 +2,11 @@ import { contratoExperimental } from '../../services/configuracao-contrato';
 import { BuscaAtivaLocal } from './busca-ativa-local';
 import { rotuloRiscoLocal } from '../../services/contrato-clinico-local';
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, DestroyRef, OnInit, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { finalize } from 'rxjs';
+import { finalize, Subscription } from 'rxjs';
 import { EvolucaoPainel, FiltrosPainel, PainelPayload, PainelService } from '../../services/painel-service';
 
 type SegmentoDonut = {
@@ -27,6 +28,9 @@ type SegmentoDonut = {
 export class Painel implements OnInit {
   readonly contratoExperimental = contratoExperimental;
   private readonly painelService = inject(PainelService);
+  private readonly cdr = inject(ChangeDetectorRef);
+  private readonly destroy = inject(DestroyRef);
+  private consulta?: Subscription;
   dados?: PainelPayload;
   carregando = true;
   erro = false;
@@ -43,11 +47,15 @@ export class Painel implements OnInit {
 
   ngOnInit(): void { this.carregar(); }
   carregar(): void {
+    this.consulta?.unsubscribe();
     this.carregando = true; this.erro = false;
-    this.painelService.buscarResumo(this.filtros).pipe(finalize(() => this.carregando = false)).subscribe({
-      next: dados => this.dados = dados,
-      error: () => this.erro = true,
-    });
+    this.consulta = this.painelService.buscarResumo({...this.filtros})
+      .pipe(takeUntilDestroyed(this.destroy), finalize(() => {
+        this.carregando = false; this.cdr.markForCheck();
+      })).subscribe({
+        next: dados => this.dados = dados,
+        error: () => { this.dados = undefined; this.erro = true; },
+      });
   }
   alterarFiltroPrincipal(): void { this.carregar(); }
   aplicarMaisFiltros(): void {

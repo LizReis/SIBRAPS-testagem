@@ -151,14 +151,15 @@ export interface PacienteLocalDetalhe {
 export interface ProntuarioLocal {
   paciente: PacienteLocal;
   atendimentos: import('./paciente/paciente-service').AgendamentoPaciente[];
-  sessoes: { sessao: number; grupo: number; tema: string; data: string; hora: string; status: string; frequencia: string | null }[];
+  sessoes: { sessao: number; grupo: number; tema: string; data: string; hora: string; status: string; frequencia: string | null; desconsiderado?: boolean }[];
   historico: (Omit<import('./paciente/paciente-service').HistoricoPacienteEvento, 'titulo' | 'situacaoAtendimento'> & {
     situacao: string | null;
     unidadeOrigem: string;
   })[];
-  presencasComprovadas: number;
-  faltasComprovadas: number;
+  presencasComprovadas: number | null;
+  faltasComprovadas: number | null;
   historicoLocalRequerConferencia: boolean;
+  atendimentosDesconsiderados?: number[];
 }
 
 export interface VersoesPacienteLocal {

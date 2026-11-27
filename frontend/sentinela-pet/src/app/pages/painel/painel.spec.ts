@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { UsuarioLogadoService } from '../../services/usuario-logado-service';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { provideRouter } from '@angular/router';
 import { PainelService } from '../../services/painel-service';
 import { Painel } from './painel';
@@ -47,7 +47,7 @@ describe('Painel', () => {
   });
   it('mostra estado vazio', () => {
     service.buscarResumo.mockReturnValue(of({ ...payload, pacientesPrioritarios: [] })); fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Nenhum paciente necessita');
+    expect(fixture.nativeElement.textContent).toContain('Nenhum paciente prioritário confirmado');
   });
   it('mostra erro e permite tentar novamente', () => {
     service.buscarResumo.mockReturnValue(throwError(() => new Error('falha'))); fixture.detectChanges();
@@ -83,5 +83,23 @@ describe('Painel', () => {
     expect(component.segmentosDonut.every(segmento => segmento.tamanho === 0)).toBe(true);
     expect(fixture.nativeElement.querySelectorAll('.donut-segment')).toHaveLength(0);
     expect(fixture.nativeElement.querySelector('.donut-center').textContent).toContain('0');
+  });
+
+  it('descarta resposta antiga quando filtro muda',()=>{
+    const antiga=new Subject<typeof payload>(), recente=new Subject<typeof payload>();
+    service.buscarResumo.mockReturnValueOnce(antiga).mockReturnValueOnce(recente);
+    fixture.detectChanges();
+    component.filtros.periodoMeses=3;
+    component.alterarFiltroPrincipal();
+    recente.next({...payload,totalPacientesAtivos:7});recente.complete();
+    antiga.next({...payload,totalPacientesAtivos:99});antiga.complete();
+    expect(component.dados?.totalPacientesAtivos).toBe(7);
+    expect(component.carregando).toBe(false);
+  });
+  it('informa estados não confirmados sem somá-los aos ativos',()=>{
+    service.buscarResumo.mockReturnValue(of({...payload,estadoNaoConfirmado:2}));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('2 vínculo(s) com estado não confirmado');
+    expect(component.dados?.totalPacientesAtivos).toBe(3);
   });
 });
