@@ -25,6 +25,7 @@ export class AgendamentosPaciente implements OnInit {
   carregando = true;
   erro = '';
   podeAgendar = false;
+  podeConsultarAuditoria = false;
   readonly rotuloReserva = rotuloReserva;
   readonly rotuloFrequencia = rotuloFrequencia;
 
@@ -44,8 +45,11 @@ export class AgendamentosPaciente implements OnInit {
     }
 
     this.usuario.obterUsuarioLogado().subscribe({
-      next: u => this.podeAgendar = podeCriarAgendamento(u.tipoUsuario),
-      error: () => this.podeAgendar = false,
+      next: u => {
+        this.podeAgendar = podeCriarAgendamento(u.tipoUsuario);
+        this.podeConsultarAuditoria = u.tipoUsuario === 'ADMINISTRADOR' || u.tipoUsuario === 'PROFISSIONAL';
+      },
+      error: () => { this.podeAgendar = false; this.podeConsultarAuditoria = false; },
     });
     this.carregar();
   }

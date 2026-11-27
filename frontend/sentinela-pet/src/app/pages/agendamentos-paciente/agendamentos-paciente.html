@@ -90,6 +90,7 @@
               <th>Tipo</th>
               <th>Reserva</th>
               <th>Frequência</th>
+              <th *ngIf="podeConsultarAuditoria">Auditoria</th>
             </tr>
           </thead>
 
@@ -116,6 +117,7 @@
                 {{ rotuloFrequencia(a.frequenciaAssistencial) }}
                 <small *ngIf="a.migracaoPendente">Requer conferência</small>
               </td>
+              <td *ngIf="podeConsultarAuditoria" data-label="Auditoria"><a [routerLink]="['/auditoria-correcoes/individual', a.id]">Consultar correções</a></td>
             </tr>
           </tbody>
         </table>

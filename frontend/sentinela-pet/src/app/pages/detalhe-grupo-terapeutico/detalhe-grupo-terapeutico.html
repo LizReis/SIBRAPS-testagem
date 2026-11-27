@@ -39,6 +39,7 @@
       }
     </section>
 
+    <p *ngIf="podeCorrigirSessao"><a class="edit-button" [routerLink]="['/auditoria-correcoes/coletiva', sessao.id]">Consultar auditoria de correções</a></p>
     <nav class="tabs" role="tablist" aria-label="Gerenciamento do grupo">
       <button role="tab" [attr.aria-selected]="aba==='visao-geral'" [class.active]="aba==='visao-geral'" (click)="selecionarAba('visao-geral')"><i class="bi bi-grid"></i> Visão geral</button>
       <button role="tab" [attr.aria-selected]="aba==='participantes'" [class.active]="aba==='participantes'" (click)="selecionarAba('participantes')"><i class="bi bi-people"></i> Participantes</button>

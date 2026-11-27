@@ -22,6 +22,7 @@ import { Relatorios } from './pages/relatorios/relatorios';
 import { PendenciasClinicas } from './pages/pendencias-clinicas/pendencias-clinicas';
 import { RevisoesPaciente } from './pages/revisoes-paciente/revisoes-paciente';
 import { ReconciliacaoPaciente } from './pages/reconciliacao-paciente/reconciliacao-paciente';
+import { AuditoriaCorrecoes } from './pages/auditoria-correcoes/auditoria-correcoes';
 import { roleGuard } from './auth/role-guard';
 import { GruposTerapeuticos } from './pages/grupos-terapeuticos/grupos-terapeuticos';
 import { AgendarGrupoTerapeutico } from './pages/agendar-grupo-terapeutico/agendar-grupo-terapeutico';
@@ -69,6 +70,8 @@ export const routes: Routes = [
       { path: 'grupos-terapeuticos/detalhes/:grupoId/sessao/:sessaoId', component: DetalheGrupoTerapeutico, canActivate: [roleGuard], data: { roles: TODOS } },
       { path: 'grupos-terapeuticos/novo', component: AgendarGrupoTerapeutico, canActivate: [roleGuard], data: { roles: TODOS } },
       { path: 'grupos-terapeuticos/editar/:grupoId', component: AgendarGrupoTerapeutico, canActivate: [roleGuard], data: { roles: TODOS } },
+      { path: 'auditoria-correcoes/individual/:registro', component: AuditoriaCorrecoes, canActivate: [roleGuard], data: { roles: ['ADMINISTRADOR', 'PROFISSIONAL'], tipo: 'individual' } },
+      { path: 'auditoria-correcoes/coletiva/:registro', component: AuditoriaCorrecoes, canActivate: [roleGuard], data: { roles: ['ADMINISTRADOR', 'PROFISSIONAL'], tipo: 'coletiva' } },
       { path: 'relatorios', component: Relatorios },
       { path: 'pendencias-clinicas', component: PendenciasClinicas, canActivate: [roleGuard], data: { roles: ADMIN } },
     ],

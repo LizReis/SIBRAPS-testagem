@@ -1532,6 +1532,39 @@ class ModeloVinculoOperacionalTests {
         assertThat(sql.queryForObject("select count(*) from tb_historico_paciente where id in (?,?) and unidade_origem_chave is null",Integer.class,h,hGrupo)).isEqualTo(2);
         assertThat(sql.queryForObject("select count(*) from tb_prova_aprovacao_origem where decisao_id in (?,?) and frequencia='FALTOU'",Integer.class,novaDecisao,novaDecisaoGrupo)).isEqualTo(2);
         assertThat(sql.queryForObject("select count(*) from tb_auditoria_correcao_frequencia where paciente_id=?",Integer.class,pessoa)).isEqualTo(2);
+        // Leitura operacional das trilhas reais geradas acima, sem mutação do banco.
+        var colunasAuditoria=LegacyMigrationFixture.columns(sql.getDataSource());
+        colunasAuditoria.keySet().retainAll(java.util.Set.of("tb_auditoria_correcao_frequencia"));
+        assertThat(colunasAuditoria).isNotEmpty();
+        var antesAuditoria=LegacyMigrationFixture.snapshot(sql.getDataSource(),colunasAuditoria);
+        for(String rotaAuditoria:List.of("/api/agendamentos/"+falta.id()+"/auditoria-correcoes",
+                "/api/grupos/sessoes/"+sessao+"/auditoria-correcoes")) {
+            for(String token:List.of(tokenProf,tokenAdmin)) {
+                var consulta=http(app,"GET",rotaAuditoria+"?page=0&size=1",token,null);
+                assertThat(consulta.statusCode()).as(consulta.body()).isEqualTo(200);
+                assertThat(consulta.headers().firstValue("Cache-Control").orElse("")).contains("no-store");
+                var paginaAuditoria=json(app,consulta);
+                assertThat(paginaAuditoria.path("totalElements").asLong()).isEqualTo(1);
+                assertThat(paginaAuditoria.path("content").size()).isEqualTo(1);
+                var itemAuditoria=paginaAuditoria.path("content").get(0);
+                assertThat(itemAuditoria.path("pacienteId").asString()).isEqualTo(paciente.toString());
+                assertThat(itemAuditoria.path("responsavelAtendimentoId").asString()).isEqualTo(coordenador.toString());
+                assertThat(itemAuditoria.path("frequenciaAnterior").asString()).isEqualTo("FALTOU");
+                assertThat(itemAuditoria.path("frequenciaNova").asString()).isEqualTo("PRESENTE");
+                assertThat(itemAuditoria.path("justificativa").asString()).isNotBlank();
+                assertThat(itemAuditoria.path("versaoResultante").asInt()).isGreaterThan(itemAuditoria.path("versaoAnterior").asInt());
+            }
+            assertThat(http(app,"GET",rotaAuditoria,tokenExterno,null).statusCode()).isEqualTo(404);
+            assertThat(http(app,"GET",rotaAuditoria,tokenRecepcao,null).statusCode()).isEqualTo(403);
+            assertThat(http(app,"GET",rotaAuditoria,null,null).statusCode()).isEqualTo(401);
+            assertThat(http(app,"GET",rotaAuditoria+"?page=-1",tokenAdmin,null).statusCode()).isEqualTo(422);
+            var vazia=http(app,"GET",rotaAuditoria+"?page=1&size=1",tokenAdmin,null);
+            assertThat(vazia.statusCode()).isEqualTo(200);
+            assertThat(json(app,vazia).path("content").size()).isZero();
+        }
+        assertThat(http(app,"GET","/api/agendamentos/99999999/auditoria-correcoes",tokenAdmin,null).statusCode()).isEqualTo(404);
+        assertThat(http(app,"GET","/api/grupos/sessoes/99999999/auditoria-correcoes",tokenAdmin,null).statusCode()).isEqualTo(404);
+        assertThat(LegacyMigrationFixture.snapshot(sql.getDataSource(),colunasAuditoria)).isEqualTo(antesAuditoria);
         assertThat(sql.queryForObject("select count(*) from tb_aplicacao_origem_historica where historico_id in (?,?)",Integer.class,h,hGrupo)).isEqualTo(3);
         assertThat(faltasResolucao(sql,outroVinculo)).isZero();
         // Nova versão sem correção auditada continua inconclusiva; não ampliar a prova.

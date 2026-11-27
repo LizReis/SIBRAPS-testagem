@@ -1,0 +1,30 @@
+<main class="relatorios-page">
+  <header class="page-header">
+    <h1>Auditoria de correções de frequência</h1>
+    <p>{{ tipo==='individual'?'Atendimento individual':'Sessão de grupo' }} · {{ registro }}</p>
+    <p>Trilha de consulta. Nenhuma correção pode ser alterada ou apagada por esta tela.</p>
+    <p><a [routerLink]="tipo==='individual'?'/pacientes':'/grupos-terapeuticos'">Voltar à listagem</a></p>
+  </header>
+  <button type="button" class="export-button" [disabled]="carregando" (click)="carregar()">Atualizar consulta</button>
+  <p *ngIf="carregando" role="status">Consultando trilha autorizada…</p>
+  <p *ngIf="erro" role="alert" class="export-error">{{ erro }}</p>
+  <section *ngIf="dados as d" class="card filter-card">
+    <h2>Correções registradas ({{ d.totalElements }})</h2>
+    <article *ngFor="let r of d.content" class="card filter-card">
+      <h3>{{ r.ocorridoEm | date:'dd/MM/yyyy HH:mm':'-0300' }} — {{ r.frequenciaAnterior }} → {{ r.frequenciaNova }}</h3>
+      <p>Paciente (identificador): {{ r.pacienteId }}</p>
+      <p *ngIf="r.participanteId!==null">Participação {{ r.participanteId }}</p>
+      <p *ngIf="r.situacaoReserva">Reserva: {{ r.situacaoReserva }}</p><p *ngIf="r.situacaoSessao">Sessão: {{ r.situacaoSessao }}</p>
+      <p>Autor da correção: {{ r.usuarioId }} · {{ r.perfil }}</p>
+      <p>Responsável registrado no evento: {{ r.responsavelAtendimentoId }}</p>
+      <p>Versão anterior: {{ r.versaoAnterior }} · resultante: {{ r.versaoResultante }}</p>
+      <h4>Justificativa</h4><p>{{ r.justificativa }}</p>
+    </article>
+    <p *ngIf="!d.content.length">Nenhuma correção autorizada nesta página.</p>
+    <div class="export-row">
+      <button type="button" class="export-button" [disabled]="carregando||d.number===0" (click)="carregar(d.number-1)">Anterior</button>
+      <span>Página {{ d.number+1 }}</span>
+      <button type="button" class="export-button" [disabled]="carregando||d.number+1>=d.totalPages" (click)="carregar(d.number+1)">Próxima</button>
+    </div>
+  </section>
+</main>

@@ -49,7 +49,8 @@ public class ModeloVinculoConfig {
     @Import({ConsultasVinculoController.class, EscritoresVinculoController.Cadastro.class,
             EscritoresVinculoController.Individual.class, EscritoresVinculoController.Coletivo.class,
             br.sibraps.modelovinculo.ResolucoesFrequenciaController.class,
-            br.sibraps.modelovinculo.RevisaoOrigemController.class})
+            br.sibraps.modelovinculo.RevisaoOrigemController.class,
+            br.sibraps.modelovinculo.AuditoriaCorrecaoLocalController.class})
     static class Operacional {
         @Bean
         static BeanFactoryPostProcessor protegerConfiguracao(ConfigurableEnvironment ambiente) {
