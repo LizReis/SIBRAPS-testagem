@@ -10,6 +10,7 @@
   <p *ngIf="aviso" role="status">{{ aviso }}</p>
   <p *ngIf="erro" class="export-error" role="alert">{{ erro }}</p>
   <ng-container *ngIf="prontuario as p">
+    <p><a [routerLink]="['/pacientes/detalhes', paciente, 'revisoes', vinculo, 'resolucoes']">Conferir duplicidades e consultar resoluções de frequência</a></p>
     <section class="card table-card">
       <header class="card-header"><h2>{{ p.paciente.nome }} — {{ p.paciente.unidade }}</h2>
         <p>Registros disponíveis para conferência. O servidor verifica a elegibilidade de cada solicitação.</p></header>

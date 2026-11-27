@@ -1,0 +1,76 @@
+<main class="relatorios-page">
+  <header class="page-header"><h1>{{ origem ? 'Revisão de origem histórica' : 'Resoluções de frequência' }}</h1>
+    <p>Operações restritas ao vínculo autorizado. Os registros originais são preservados.</p>
+    <p><a [routerLink]="['/pacientes/detalhes',paciente,'revisoes',vinculo]">Voltar às revisões do paciente</a></p>
+    <p *ngIf="ticket"><a routerLink="/pendencias-clinicas">Voltar à fila administrativa</a></p>
+    <p *ngIf="ticket">Esta jornada está vinculada à solicitação {{ ticket }}.</p>
+  </header>
+  <button type="button" class="export-button" [disabled]="salvando||carregando" (click)="carregar()">Atualizar consulta</button>
+  <p *ngIf="carregando" role="status">Consultando evidências…</p>
+  <p *ngIf="aviso" role="status">{{ aviso }}</p><p *ngIf="erro" role="alert" class="export-error">{{ erro }}</p>
+  <section *ngIf="auditoriaOrigem as a" class="card filter-card">
+    <h2>Trilha da origem — histórico {{ a.historico }}</h2>
+    <p>Aplicação: {{ a.estadoAplicacao.replaceAll('_',' ') }}</p>
+    <p *ngIf="!a.integridadeEventos" role="alert">Evidência inconclusiva. Operações indisponíveis.</p>
+    <h3>Solicitação</h3><ng-container *ngTemplateOutlet="evento; context:{$implicit:a.solicitacao}"></ng-container>
+    <div *ngIf="a.decisao as d"><h3>Decisão: {{ d.resultado }}</h3><ng-container *ngTemplateOutlet="evento; context:{$implicit:d.evento}"></ng-container></div>
+    <div *ngIf="a.prova as p"><h3>Prova registrada na aprovação</h3>
+      <p>{{ p.fonte }} · registro {{ p.registroFonte }} · versão {{ p.versaoFonte }}</p><p>{{ p.ocorridoEm }} · {{ p.frequencia }} · {{ p.tipoHistorico }}</p>
+      <p>A prova histórica não garante que a fonte permaneça válida. O servidor fará nova conferência.</p>
+    </div>
+    <div *ngIf="a.aplicacao as ap"><h3>Aplicação</h3><ng-container *ngTemplateOutlet="evento; context:{$implicit:ap}"></ng-container></div>
+    <div *ngIf="a.reversao as r"><h3>Reversão</h3><ng-container *ngTemplateOutlet="evento; context:{$implicit:r}"></ng-container></div>
+    <p *ngIf="a.reaberturaAnterior">Solicitação anterior: {{ a.reaberturaAnterior.anterior }} — {{ a.reaberturaAnterior.motivo }}</p>
+    <p *ngIf="a.reaberturaPosterior as r">Nova solicitação: <a [routerLink]="['/pacientes/detalhes',paciente,'revisoes',vinculo,'origem',r.nova]">{{ r.nova }}</a> — {{ r.motivo }}</p>
+    <p>Reconhecer origem não cria nova frequência. Reabrir exige nova análise e decisão administrativa; o servidor verifica se a aprovação foi revertida ou desatualizada.</p>
+    <ng-container *ngTemplateOutlet="motivo"></ng-container>
+    <div class="export-row">
+      <button type="button" class="export-button" [disabled]="!podeOrigem('aplicar')" (click)="comandoOrigem('aplicar')">Aplicar reconhecimento de origem</button>
+      <button type="button" class="export-button" [disabled]="!podeOrigem('desfazer')" (click)="comandoOrigem('desfazer')">Desfazer aplicação</button>
+      <button type="button" class="export-button" [disabled]="!podeOrigem('reabrir')" (click)="comandoOrigem('reabrir')">Reabrir revisão</button>
+    </div>
+  </section>
+  <section *ngIf="candidatos" class="card filter-card"><ng-container *ngTemplateOutlet="motivo"></ng-container></section>
+  <section *ngIf="candidatos as c" class="card filter-card">
+    <h2>Candidatos à conferência</h2>
+    <p>Coincidência ou contradição no mesmo instante não comprova duplicidade. Só desconsidere um fato quando a duplicidade estiver comprovada.</p>
+    <p *ngIf="c.revisaoNecessaria">A revisão histórica é necessária.</p>
+    <div *ngFor="let g of c.candidatos" class="card filter-card">
+      <h3>{{ g.ocorridoEm }} — {{ g.tipo.replaceAll('_',' ') }}</h3>
+      <p *ngFor="let f of g.fatos">{{ f.referencia.fonte }} · {{ f.referencia.id }} — {{ f.presente?'Presente':'Faltou' }}{{ f.podeDesconsiderar?'':' — protegido contra desconsideração' }}</p>
+      <button type="button" class="export-button" [disabled]="bloqueado" (click)="selecionar(g)">Conferir fatos</button>
+    </div>
+    <p *ngIf="!c.candidatos.length">Nenhum candidato autorizado nesta página.</p>
+    <div class="export-row"><button type="button" class="export-button" [disabled]="salvando||carregando||c.pagina===0" (click)="carregar(c.pagina-1,paginaA)">Anterior</button>
+      <span>Página {{ c.pagina+1 }}</span><button type="button" class="export-button" [disabled]="salvando||carregando||(c.pagina+1)*c.tamanho>=c.total" (click)="carregar(c.pagina+1,paginaA)">Próxima</button></div>
+    <div *ngIf="grupo as g" class="card filter-card">
+      <h3>Selecionar registros distintos</h3>
+      <label class="field">Fato válido<select [(ngModel)]="valido" [disabled]="bloqueado"><option [ngValue]="undefined">Selecione</option>
+        <option *ngFor="let f of g.fatos" [ngValue]="f">{{ f.referencia.fonte }} · {{ f.referencia.id }} — {{ f.presente?'Presente':'Faltou' }}</option></select></label>
+      <label class="field">Fato a desconsiderar<select [(ngModel)]="desconsiderado" [disabled]="bloqueado"><option [ngValue]="undefined">Selecione</option>
+        <option *ngFor="let f of g.fatos" [ngValue]="f" [disabled]="!f.podeDesconsiderar">{{ f.referencia.fonte }} · {{ f.referencia.id }} — {{ f.presente?'Presente':'Faltou' }}</option></select></label>
+      <label><input type="checkbox" [(ngModel)]="confirmou" [disabled]="bloqueado"> Conferi as evidências e confirmo a duplicidade; somente a contribuição indevida será desconsiderada.</label>
+      <p *ngIf="ticket">O servidor exige que o fato desconsiderado corresponda à solicitação aprovada.</p>
+      <button type="button" class="export-button" [disabled]="!podeResolver" (click)="resolver()">Registrar resolução</button>
+    </div>
+  </section>
+  <section *ngIf="auditoria as a" class="card filter-card">
+    <h2>Auditoria das resoluções de frequência</h2>
+    <p>Use nova justificativa para desfazer uma resolução. O histórico original não será apagado.</p>
+    <div *ngFor="let r of a.registros" class="card filter-card">
+      <h3>{{ r.reversao?'Resolução revertida':'Resolução registrada' }} — {{ r.horario }}</h3>
+      <p>Válido: {{ r.fonteValida }} · {{ r.fatoValido }} · {{ r.frequenciaValida }} · versão {{ r.versaoValida }}</p>
+      <p>Desconsiderado: {{ r.fonteDesconsiderada }} · {{ r.fatoDesconsiderado }} · {{ r.frequenciaDesconsiderada }} · versão {{ r.versaoDesconsiderada }}</p>
+      <p>{{ r.registradoEm | date:'dd/MM/yyyy HH:mm' }} · {{ r.perfil }} · {{ r.ator }}</p><p>{{ r.justificativa }}</p>
+      <p *ngIf="r.ticket">Solicitação {{ r.ticket }} · decisão {{ r.decisao }}</p>
+      <p *ngIf="r.reversao">Reversão: {{ r.revertidoEm | date:'dd/MM/yyyy HH:mm' }} · {{ r.perfilReversao }} · {{ r.atorReversao }} — {{ r.justificativaReversao }}</p>
+      <button *ngIf="!r.reversao" type="button" class="export-button" [disabled]="!podeDesfazer(r)" (click)="desfazer(r)">Desfazer resolução</button>
+    </div>
+    <p *ngIf="!a.registros.length">Nenhuma resolução autorizada nesta página.</p>
+    <div class="export-row"><button type="button" class="export-button" [disabled]="salvando||carregando||a.pagina===0" (click)="carregar(paginaC,a.pagina-1)">Anterior</button>
+      <span>Página {{ a.pagina+1 }}</span><button type="button" class="export-button" [disabled]="salvando||carregando||(a.pagina+1)*a.tamanho>=a.total" (click)="carregar(paginaC,a.pagina+1)">Próxima</button></div>
+  </section>
+  <ng-template #motivo><label class="field"><span>Justificativa da operação (10 a 2.000 caracteres)</span><textarea [(ngModel)]="justificativa" maxlength="2000" rows="3" [disabled]="bloqueado"></textarea></label>
+    <p *ngIf="exigeConsulta">Atualize a consulta antes de outra operação. A atualização limpa o rascunho.</p></ng-template>
+  <ng-template #evento let-e><p>{{ e.registradoEm | date:'dd/MM/yyyy HH:mm' }} · {{ e.perfil }} · {{ e.ator }}</p><p>{{ e.justificativa }}</p></ng-template>
+</main>

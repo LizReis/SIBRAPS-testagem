@@ -25,4 +25,24 @@ describe('RevisaoClinicaService', () => {
     expect(r.request.body).toEqual({tipo:'HISTORICO',registro:12,justificativa:'Conferência sintética suficiente'});
     r.flush('ticket-sintetico');
   });
+  it('envia resolução com versões dos dois fatos e ticket explícito, sem inferir aplicação', () => {
+    const a={fonte:'ATENDIMENTO_INDIVIDUAL' as const,id:8,versao:2}, b={fonte:'SESSAO_GRUPO' as const,id:9,versao:4};
+    api.resolverFrequencia('p','v',3,a,b,'Justificativa sintética suficiente','t').subscribe();
+    const req=http.expectOne({method:'POST',url:raizClinica+'/pacientes/p/vinculos/v/resolucoes-frequencia?version=3'});
+    expect(req.request.body).toEqual({valido:a,desconsiderado:b,justificativa:'Justificativa sintética suficiente',ticket:'t'});
+    req.flush({id:'resolucao'});
+    api.desfazerFrequencia('p','v',4,'r','Nova justificativa sintética').subscribe();
+    http.expectOne({method:'POST',url:raizClinica+'/pacientes/p/vinculos/v/resolucoes-frequencia/r/desfazer?version=4'}).flush({id:'reversao'});
+  });
+  it('separa auditoria, aplicação, reversão e reabertura de origem', () => {
+    const raiz=raizClinica+'/pacientes/p/vinculos/v/revisoes';
+    api.auditoriaOrigem('p','v','t').subscribe();
+    http.expectOne({method:'GET',url:raiz+'/t/origem/auditoria'}).flush({});
+    for(const acao of ['aplicar','reabrir','desfazer'] as const){
+      api.comandoOrigem('p','v',5,acao,'id','Justificativa sintética suficiente').subscribe();
+      const req=http.expectOne({method:'POST',url:raiz+(acao==='desfazer'?'/origem/aplicacoes/id/desfazer':'/id/origem/'+acao)+'?version=5'});
+      expect(req.request.body).toEqual({justificativa:'Justificativa sintética suficiente'});
+      req.flush({id:'novo'});
+    }
+  });
 });
