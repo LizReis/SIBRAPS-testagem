@@ -55,7 +55,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let p of dados?.pacientes">
+          <tr *ngFor="let p of dados.pacientes">
             <td data-label="Paciente">
               <div class="person"><span
                   class="avatar">{{iniciais(p.nome)}}</span><span><b>{{p.nome}}</b><small>{{label(p.tipoAcompanhamento)}}</small></span>
@@ -78,7 +78,7 @@
           </tr>
         </tbody>
       </table>
-      <p class="empty" *ngIf="!dados?.pacientes?.length">Nenhum paciente encontrado.</p>
+      <p class="empty" *ngIf="!dados.pacientes.length">Nenhum paciente encontrado.</p>
     </div>
     <footer *ngIf="dados && dados.totalRegistros"><span>Mostrando
         {{pagina*tamanho+1}}–{{Math.min((pagina+1)*tamanho,dados.totalRegistros)}} de {{dados.totalRegistros}}</span>

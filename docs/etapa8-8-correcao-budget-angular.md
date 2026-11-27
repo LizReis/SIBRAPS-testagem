@@ -1,0 +1,5 @@
+# Etapa 8.8 — correção do orçamento de carregamento inicial
+
+CI #46066729997, commit fbafd4a653ffd8c8362a85999e59b717d858623a: backend Maven verify e matriz de concorrência aprovados; suíte Angular padrão e contrato experimental aprovados. Build de produção falhou exclusivamente pelo orçamento inicial de 1 MB excedido em 2,10 kB. Build experimental não alcançado. Avisos NG8107 por encadeamentos opcionais redundantes na lista de pacientes.
+
+Correção: carregar Relatórios e Pendências clínicas sob demanda por loadComponent, mantendo paths, layout, guards e metadados de autorização originais. Componentes standalone já existentes; nenhum ajuste de dependência ou orçamento. Remover dois encadeamentos opcionais redundantes no bloco protegido por dados. Acrescentar dois testes de carregamento de rotas e preservação da proteção. Nenhuma regra clínica, API, migration, workflow ou teste existente alterado. Sem execução local: CI deve comprovar ambos os builds e regressão. Não declarar encerramento da 8.8 antes da aprovação e da revisão RNF17. Sem PR/merge.

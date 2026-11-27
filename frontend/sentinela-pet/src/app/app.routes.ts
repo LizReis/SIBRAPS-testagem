@@ -18,8 +18,6 @@ import { ConfiguracaoAgenda } from './pages/configuracao-agenda/configuracao-age
 import { NovoAgendamento } from './pages/novo-agendamento/novo-agendamento';
 import { HistoricoPaciente } from './pages/historico-paciente/historico-paciente';
 import { AgendamentosPaciente } from './pages/agendamentos-paciente/agendamentos-paciente';
-import { Relatorios } from './pages/relatorios/relatorios';
-import { PendenciasClinicas } from './pages/pendencias-clinicas/pendencias-clinicas';
 import { RevisoesPaciente } from './pages/revisoes-paciente/revisoes-paciente';
 import { ReconciliacaoPaciente } from './pages/reconciliacao-paciente/reconciliacao-paciente';
 import { AuditoriaCorrecoes } from './pages/auditoria-correcoes/auditoria-correcoes';
@@ -72,8 +70,8 @@ export const routes: Routes = [
       { path: 'grupos-terapeuticos/editar/:grupoId', component: AgendarGrupoTerapeutico, canActivate: [roleGuard], data: { roles: TODOS } },
       { path: 'auditoria-correcoes/individual/:registro', component: AuditoriaCorrecoes, canActivate: [roleGuard], data: { roles: ['ADMINISTRADOR', 'PROFISSIONAL'], tipo: 'individual' } },
       { path: 'auditoria-correcoes/coletiva/:registro', component: AuditoriaCorrecoes, canActivate: [roleGuard], data: { roles: ['ADMINISTRADOR', 'PROFISSIONAL'], tipo: 'coletiva' } },
-      { path: 'relatorios', component: Relatorios },
-      { path: 'pendencias-clinicas', component: PendenciasClinicas, canActivate: [roleGuard], data: { roles: ADMIN } },
+      { path: 'relatorios', loadComponent: () => import('./pages/relatorios/relatorios').then(m => m.Relatorios) },
+      { path: 'pendencias-clinicas', loadComponent: () => import('./pages/pendencias-clinicas/pendencias-clinicas').then(m => m.PendenciasClinicas), canActivate: [roleGuard], data: { roles: ADMIN } },
     ],
   },
 ];
