@@ -1534,9 +1534,12 @@ class ModeloVinculoOperacionalTests {
         assertThat(sql.queryForObject("select count(*) from tb_auditoria_correcao_frequencia where paciente_id=?",Integer.class,pessoa)).isEqualTo(2);
         // Leitura operacional das trilhas reais geradas acima, sem mutação do banco.
         var colunasAuditoria=LegacyMigrationFixture.columns(sql.getDataSource());
-        colunasAuditoria.keySet().retainAll(java.util.Set.of("tb_auditoria_correcao_frequencia"));
-        assertThat(colunasAuditoria).isNotEmpty();
+        // Preservar a grafia física retornada pelo catálogo: o H2 pode usar maiúsculas.
+        colunasAuditoria.keySet().removeIf(nome -> !nome.equalsIgnoreCase("tb_auditoria_correcao_frequencia"));
+        assertThat(colunasAuditoria).as("Tabela física da trilha de correções").hasSize(1);
         var antesAuditoria=LegacyMigrationFixture.snapshot(sql.getDataSource(),colunasAuditoria);
+        assertThat(antesAuditoria.values().iterator().next())
+                .as("Snapshot deve conter os registros reais de correção").hasSizeGreaterThanOrEqualTo(2);
         for(String rotaAuditoria:List.of("/api/agendamentos/"+falta.id()+"/auditoria-correcoes",
                 "/api/grupos/sessoes/"+sessao+"/auditoria-correcoes")) {
             for(String token:List.of(tokenProf,tokenAdmin)) {
