@@ -79,7 +79,7 @@ async function scenario(name, viewport, perfil, run) {
     assert.deepEqual(errors,[],'Erros JavaScript não tratados');
     results.push({name,viewport,perfil,status:'PASS'});
   } catch (e) {
-    results.push({name,viewport,perfil,status:'FAIL',message:String(e),errors,unexpected});
+    results.push({name,viewport,perfil,status:'FAIL',message:String(e),stack:e instanceof Error ? e.stack : undefined,errors,unexpected});
     await shot(page,name+'-failure').catch(()=>{});
   } finally { await context.close(); }
 }
@@ -131,13 +131,19 @@ try {
       if (vp.width===1366) {
         await aprovar.press('Enter');
         await visible(page.getByRole('alert').filter({hasText:'desatualizados'}));
-        assert.equal(state.writes.length,1);
-        assert(await aprovar.isDisabled());
-        assert.equal(await campo.inputValue(),'Justificativa sintética suficiente');
+        assert.equal(state.writes.length,1,'A decisão recusada deve ter exatamente uma tentativa de escrita');
+        assert(await aprovar.isDisabled(),'A decisão deve permanecer bloqueada até nova consulta');
+        assert.equal(await campo.inputValue(),'Justificativa sintética suficiente','A justificativa deve permanecer após recusa');
         state.failQueue();
+        const respostaFila = page.waitForResponse(r => new URL(r.url()).pathname === '/api/relatorios/pendencias'
+          && r.request().method() === 'GET' && r.status() === 503);
         await page.getByRole('button',{name:'Atualizar consulta'}).click();
-        await visible(page.getByRole('alert'));
-        assert.equal(await page.getByRole('heading',{name:'Pendentes',exact:true}).count(),0);
+        await respostaFila;
+        await visible(page.getByRole('alert').filter({hasText:'O serviço está temporariamente indisponível.'}));
+        assert.equal(await page.getByRole('heading',{name:'Pendentes',exact:true}).count(),0,'A fila anterior não deve permanecer após a nova consulta falhar');
+        assert.equal(await campo.count(),0,'O formulário da seleção anterior deve ser descartado');
+        assert.equal(await detalhes.count(),0,'Os registros anteriores não podem permanecer disponíveis');
+        assert.equal(state.writes.length,1,'A atualização da fila não deve repetir a escrita recusada');
         await shot(page,n+'-erro');
       }
     });
@@ -147,8 +153,8 @@ try {
       await login(page); await page.locator('button[type=submit]').press('Enter');
       await page.waitForURL('**/inicio');
       await visible(page.locator('.quick-action[href="/pacientes/novo"]'));
-      assert.equal(await page.locator('.quick-action[href="/agenda/novo"]').count(),perfil==='RECEPCAO'?1:0);
-      assert.equal(await page.locator('app-sidebar a[href="/pendencias-clinicas"]').count(),0);
+      assert.equal(await page.locator('.quick-action[href="/agenda/novo"]').count(),perfil==='RECEPCAO'?1:0,'Atalho de agendamento conforme perfil');
+      assert.equal(await page.locator('app-sidebar a[href="/pendencias-clinicas"]').count(),0,'Menu de pendências restrito ao administrador');
       await page.goto(base+'/pendencias-clinicas'); await page.waitForURL('**/inicio');
       await visible(page.getByRole('heading',{name:'Visão geral da unidade'}));
       await shot(page,perfil.toLowerCase()+'-inicio');
