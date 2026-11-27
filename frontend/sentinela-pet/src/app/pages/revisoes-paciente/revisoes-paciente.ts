@@ -164,6 +164,7 @@ export class RevisoesPaciente implements OnInit {
   get podeSolicitar(): boolean {
     const n = this.justificativa.trim().length;
     return this.autorizado && !!this.prontuario && !!this.selecionado &&
+      (this.registros.includes(this.selecionado) || (this.admin && this.candidatos.includes(this.selecionado))) &&
       !this.exigeConsulta && !this.carregando && !this.carregandoOrigem && !this.salvando && n >= 10 && n <= 2000;
   }
 

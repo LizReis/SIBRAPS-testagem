@@ -30,7 +30,6 @@
       <button type="button" class="export-button" [disabled]="!podeOrigem('reabrir')" (click)="comandoOrigem('reabrir')">Reabrir revisão</button>
     </div>
   </section>
-  <section *ngIf="candidatos" class="card filter-card"><ng-container *ngTemplateOutlet="motivo"></ng-container></section>
   <section *ngIf="candidatos as c" class="card filter-card">
     <h2>Candidatos à conferência</h2>
     <p>Coincidência ou contradição no mesmo instante não comprova duplicidade. Só desconsidere um fato quando a duplicidade estiver comprovada.</p>
@@ -45,12 +44,13 @@
       <span>Página {{ c.pagina+1 }}</span><button type="button" class="export-button" [disabled]="salvando||carregando||(c.pagina+1)*c.tamanho>=c.total" (click)="carregar(c.pagina+1,paginaA)">Próxima</button></div>
     <div *ngIf="grupo as g" class="card filter-card">
       <h3>Selecionar registros distintos</h3>
-      <label class="field">Fato válido<select [(ngModel)]="valido" [disabled]="bloqueado"><option [ngValue]="undefined">Selecione</option>
+      <label class="field">Fato válido<select [(ngModel)]="valido" (ngModelChange)="confirmou=false" [disabled]="bloqueado"><option [ngValue]="undefined">Selecione</option>
         <option *ngFor="let f of g.fatos" [ngValue]="f">{{ f.referencia.fonte }} · {{ f.referencia.id }} — {{ f.presente?'Presente':'Faltou' }}</option></select></label>
-      <label class="field">Fato a desconsiderar<select [(ngModel)]="desconsiderado" [disabled]="bloqueado"><option [ngValue]="undefined">Selecione</option>
+      <label class="field">Fato a desconsiderar<select [(ngModel)]="desconsiderado" (ngModelChange)="confirmou=false" [disabled]="bloqueado"><option [ngValue]="undefined">Selecione</option>
         <option *ngFor="let f of g.fatos" [ngValue]="f" [disabled]="!f.podeDesconsiderar">{{ f.referencia.fonte }} · {{ f.referencia.id }} — {{ f.presente?'Presente':'Faltou' }}</option></select></label>
       <label><input type="checkbox" [(ngModel)]="confirmou" [disabled]="bloqueado"> Conferi as evidências e confirmo a duplicidade; somente a contribuição indevida será desconsiderada.</label>
       <p *ngIf="ticket">O servidor exige que o fato desconsiderado corresponda à solicitação aprovada.</p>
+      <ng-container *ngTemplateOutlet="motivo"></ng-container>
       <button type="button" class="export-button" [disabled]="!podeResolver" (click)="resolver()">Registrar resolução</button>
     </div>
   </section>
@@ -64,7 +64,14 @@
       <p>{{ r.registradoEm | date:'dd/MM/yyyy HH:mm' }} · {{ r.perfil }} · {{ r.ator }}</p><p>{{ r.justificativa }}</p>
       <p *ngIf="r.ticket">Solicitação {{ r.ticket }} · decisão {{ r.decisao }}</p>
       <p *ngIf="r.reversao">Reversão: {{ r.revertidoEm | date:'dd/MM/yyyy HH:mm' }} · {{ r.perfilReversao }} · {{ r.atorReversao }} — {{ r.justificativaReversao }}</p>
-      <button *ngIf="!r.reversao" type="button" class="export-button" [disabled]="!podeDesfazer(r)" (click)="desfazer(r)">Desfazer resolução</button>
+      <button *ngIf="!r.reversao && reversaoSelecionada !== r" type="button" class="export-button" [disabled]="!podeSelecionarReversao(r)" (click)="selecionarReversao(r)">Preparar reversão</button>
+      <section *ngIf="reversaoSelecionada === r" aria-label="Confirmação da reversão">
+        <p>Você está desfazendo esta resolução. O histórico original e a decisão anterior serão preservados.</p>
+        <label class="field">Nova justificativa da reversão (10 a 2.000 caracteres)<textarea [(ngModel)]="justificativaReversao" maxlength="2000" rows="3" [disabled]="bloqueado"></textarea></label>
+        <p *ngIf="exigeConsulta" role="status">Atualize a consulta antes de decidir novamente. A atualização limpa o rascunho.</p>
+        <div class="export-row"><button type="button" [disabled]="salvando" (click)="cancelarReversao()">Cancelar</button>
+          <button type="button" class="export-button" [disabled]="!podeDesfazer(r)" (click)="desfazer(r)">Confirmar reversão</button></div>
+      </section>
     </div>
     <p *ngIf="!a.registros.length">Nenhuma resolução autorizada nesta página.</p>
     <div class="export-row"><button type="button" class="export-button" [disabled]="salvando||carregando||a.pagina===0" (click)="carregar(paginaC,a.pagina-1)">Anterior</button>

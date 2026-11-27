@@ -72,7 +72,7 @@
     </ng-template>
     <p><a [routerLink]="['/pacientes/detalhes', p.paciente]" [queryParams]="{vinculo: p.vinculo}">Consultar paciente na unidade</a></p>
     <p><a [routerLink]="['/pacientes/detalhes', p.paciente, 'revisoes', p.vinculo]">Consultar registros para revisão</a></p>
-    <p *ngIf="p.revisaoOrigem"><a [routerLink]="['/pacientes/detalhes', p.paciente, 'revisoes', p.vinculo, 'origem', p.ticket]">Consultar prova, aplicação e auditoria de origem</a></p>
-    <p *ngIf="p.revisaoOrigem === false && p.estado === 'APROVADA'"><a [routerLink]="['/pacientes/detalhes', p.paciente, 'revisoes', p.vinculo, 'resolucoes', p.ticket]">Conferir fatos para resolução vinculada à decisão</a></p>
+    <p *ngIf="p.revisaoOrigem && !exigeConsulta && !salvando"><a [routerLink]="['/pacientes/detalhes', p.paciente, 'revisoes', p.vinculo, 'origem', p.ticket]">Consultar prova, aplicação e auditoria de origem</a></p>
+    <p *ngIf="p.revisaoOrigem === false && p.estado === 'APROVADA' && !exigeConsulta && !salvando"><a [routerLink]="['/pacientes/detalhes', p.paciente, 'revisoes', p.vinculo, 'resolucoes', p.ticket]">Conferir fatos para resolução vinculada à decisão</a></p>
   </section>
 </main>

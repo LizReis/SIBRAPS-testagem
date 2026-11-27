@@ -30,6 +30,10 @@ describe('RevisoesPaciente', () => {
     expect(api.solicitar).toHaveBeenCalledExactlyOnceWith('p','v',3,'HISTORICO',9,'Justificativa sintética suficiente');
     expect(c.aviso).toContain('não foram alterados');
   });
+  it('não envia solicitação para registro ausente da consulta atual',()=>{
+    const c=iniciar();c.selecionado={...c.registros[0],registro:999};c.justificativa='Justificativa sintética suficiente';
+    c.solicitar();expect(api.solicitar).not.toHaveBeenCalled();
+  });
   it('recusa vínculo divergente e não disponibiliza registros', () => {
     api.prontuario.mockReturnValue(of({...prontuario,paciente:{...prontuario.paciente,vinculo:'externo'}}));
     const c=iniciar();expect(c.registros).toEqual([]);expect(c.prontuario).toBeUndefined();expect(c.podeSolicitar).toBe(false);

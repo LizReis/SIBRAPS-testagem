@@ -28,6 +28,8 @@ export class ReconciliacaoPaciente implements OnInit {
   desconsiderado?: FatoFrequencia;
   justificativa='';
   confirmou=false;
+  reversaoSelecionada?: RegistroResolucao;
+  justificativaReversao='';
   carregando=false; salvando=false; exigeConsulta=true;
   erro=''; aviso='';
   paginaC=0; paginaA=0;
@@ -48,6 +50,7 @@ export class ReconciliacaoPaciente implements OnInit {
     this.auditoriaOrigem=undefined;this.candidatos=undefined;this.auditoria=undefined;
     this.grupo=undefined;this.valido=undefined;this.desconsiderado=undefined;
     this.justificativa='';this.confirmou=false;this.erro='';this.exigeConsulta=true;
+    this.reversaoSelecionada=undefined;this.justificativaReversao='';
     if(!this.paciente||!this.vinculo||(this.origem&&!this.ticket)){this.erro='Registro não encontrado.';this.carregando=false;return;}
     this.carregando=true;
     const fim=()=>{if(g===this.geracao){this.carregando=false;this.cdr.markForCheck();}};
@@ -71,6 +74,7 @@ export class ReconciliacaoPaciente implements OnInit {
   selecionar(g:CandidatoFrequencia): void {
     if(this.bloqueado||!this.candidatos?.candidatos.includes(g))return;
     this.grupo=g;this.valido=undefined;this.desconsiderado=undefined;this.confirmou=false;this.justificativa='';
+    this.reversaoSelecionada=undefined;this.justificativaReversao='';
   }
   get bloqueado(): boolean {return this.carregando||this.salvando||this.exigeConsulta;}
   get motivoValido(): boolean {const n=this.justificativa.trim().length;return !this.bloqueado&&n>=10&&n<=2000;}
@@ -84,12 +88,25 @@ export class ReconciliacaoPaciente implements OnInit {
     this.gravar(this.api.resolverFrequencia(this.paciente,this.vinculo,this.candidatos.versaoVinculo,
       this.valido.referencia,this.desconsiderado.referencia,this.justificativa.trim(),this.ticket||undefined));
   }
+  podeSelecionarReversao(r:RegistroResolucao): boolean {
+    return !this.bloqueado&&!r.reversao&&!!this.auditoria?.registros.includes(r)&&(!this.ticket||r.ticket===this.ticket);
+  }
+  selecionarReversao(r:RegistroResolucao): void {
+    if(!this.podeSelecionarReversao(r))return;
+    this.grupo=undefined;this.valido=undefined;this.desconsiderado=undefined;this.confirmou=false;this.justificativa='';
+    this.reversaoSelecionada=r;this.justificativaReversao='';
+  }
+  cancelarReversao():void {
+    if(this.salvando)return;
+    this.reversaoSelecionada=undefined;this.justificativaReversao='';
+  }
   podeDesfazer(r:RegistroResolucao): boolean {
-    return this.motivoValido&&!r.reversao&&!!this.auditoria?.registros.includes(r)&&(!this.ticket||r.ticket===this.ticket);
+    const n=this.justificativaReversao.trim().length;
+    return this.reversaoSelecionada===r&&this.podeSelecionarReversao(r)&&n>=10&&n<=2000;
   }
   desfazer(r:RegistroResolucao): void {
     if(!this.podeDesfazer(r)||!this.auditoria)return;
-    this.gravar(this.api.desfazerFrequencia(this.paciente,this.vinculo,this.auditoria.versaoVinculo,r.id,this.justificativa.trim()));
+    this.gravar(this.api.desfazerFrequencia(this.paciente,this.vinculo,this.auditoria.versaoVinculo,r.id,this.justificativaReversao.trim()));
   }
   podeOrigem(acao:'aplicar'|'reabrir'|'desfazer'): boolean {
     const a=this.auditoriaOrigem;
@@ -106,7 +123,7 @@ export class ReconciliacaoPaciente implements OnInit {
   private gravar(req:Observable<{id:string}>):void {
     const g=this.geracao;this.salvando=true;this.erro='';this.aviso='';
     req.pipe(takeUntilDestroyed(this.destroy),finalize(()=>{if(g===this.geracao){this.salvando=false;this.cdr.markForCheck();}})).subscribe({
-      next:()=>{if(g!==this.geracao)return;this.exigeConsulta=true;this.confirmou=false;this.justificativa='';this.aviso='Operação registrada. Atualize a consulta para verificar o estado e a trilha resultantes.';},
+      next:()=>{if(g!==this.geracao)return;this.exigeConsulta=true;this.confirmou=false;this.justificativa='';this.reversaoSelecionada=undefined;this.justificativaReversao='';this.aviso='Operação registrada. Atualize a consulta para verificar o estado e a trilha resultantes.';},
       error:e=>{if(g!==this.geracao)return;this.exigeConsulta=true;this.erro=interpretarErroHttp(e,{escrita:true,padrao:'Não foi possível registrar a operação.'}).mensagem;}
     });
   }

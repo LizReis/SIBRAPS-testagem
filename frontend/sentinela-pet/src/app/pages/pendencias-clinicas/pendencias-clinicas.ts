@@ -66,7 +66,7 @@ export class PendenciasClinicas implements OnInit {
   get podeDecidir(): boolean {
     const tamanho = this.justificativa.trim().length;
     return !this.carregando && !this.salvando && !this.exigeConsulta &&
-      this.selecionada?.estado === 'PENDENTE' && tamanho >= 10 && tamanho <= 2000;
+      this.selecionada?.estado === 'PENDENTE' && !!this.lista?.itens.includes(this.selecionada) && tamanho >= 10 && tamanho <= 2000;
   }
 
   decidir(decisao: 'APROVAR' | 'REJEITAR'): void {

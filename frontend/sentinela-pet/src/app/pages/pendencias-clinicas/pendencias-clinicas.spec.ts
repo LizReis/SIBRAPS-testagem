@@ -51,6 +51,10 @@ describe('PendenciasClinicas', () => {
     c.carregar();
     expect(c.selecionada).toBeUndefined();
   });
+  it('não decide registro que não pertence à consulta atual',()=>{
+    c.selecionada={...item,ticket:'outro'};c.justificativa='Justificativa sintética suficiente';
+    c.decidir('APROVAR');expect(api.decidir).not.toHaveBeenCalled();
+  });
   it('impede trocar seleção ou repetir decisão enquanto grava', () => {
     const resposta=new Subject<string>();
     api.decidir.mockReturnValue(resposta);

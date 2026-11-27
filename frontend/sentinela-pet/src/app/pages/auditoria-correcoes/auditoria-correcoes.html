@@ -15,6 +15,7 @@
       <p>Paciente (identificador): {{ r.pacienteId }}</p>
       <p *ngIf="r.participanteId!==null">Participação {{ r.participanteId }}</p>
       <p *ngIf="r.situacaoReserva">Reserva: {{ r.situacaoReserva }}</p><p *ngIf="r.situacaoSessao">Sessão: {{ r.situacaoSessao }}</p>
+      <p>Tipo de correção: {{ r.tipoCorrecao }}</p>
       <p>Autor da correção: {{ r.usuarioId }} · {{ r.perfil }}</p>
       <p>Responsável registrado no evento: {{ r.responsavelAtendimentoId }}</p>
       <p>Versão anterior: {{ r.versaoAnterior }} · resultante: {{ r.versaoResultante }}</p>
