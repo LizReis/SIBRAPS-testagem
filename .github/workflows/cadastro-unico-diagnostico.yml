@@ -52,7 +52,8 @@ jobs:
 
   frontend-build:
     name: Cadastro unico - Build Angular
-    runs-on: ubuntu-latest
+    # Playwright 1.56.1 supports Ubuntu 24.04, not the 26.04 latest runner.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
       run:
