@@ -17,14 +17,14 @@ export class Sidebar implements OnInit {
   ) {}
 
   private readonly todosMenuItems = [
-    { label: 'Início', route: '/inicio', icon: 'home' },
-    { label: 'Painel', route: '/painel', icon: 'bar_chart' },
-    { label: 'Agenda', route: '/agenda', icon: 'calendar_today' },
-    { label: 'Pacientes', route: '/pacientes', icon: 'groups' },
-    { label: 'Profissionais', route: '/profissionais', icon: 'person_add' },
-    { label: 'Grupo Terapêutico', route: '/grupos-terapeuticos', icon: 'diversity_3' },
-    { label: 'Relatórios', route: '/relatorios', icon: 'clinical_notes' },
-    { label: 'Pendências clínicas', route: '/pendencias-clinicas', icon: 'assignment_late' },
+    { label: 'Início', route: '/inicio', icon: 'bi-house' },
+    { label: 'Painel', route: '/painel', icon: 'bi-bar-chart' },
+    { label: 'Agenda', route: '/agenda', icon: 'bi-calendar3' },
+    { label: 'Pacientes', route: '/pacientes', icon: 'bi-people' },
+    { label: 'Profissionais', route: '/profissionais', icon: 'bi-person-plus' },
+    { label: 'Grupo Terapêutico', route: '/grupos-terapeuticos', icon: 'bi-people-fill' },
+    { label: 'Relatórios', route: '/relatorios', icon: 'bi-file-earmark-medical' },
+    { label: 'Pendências clínicas', route: '/pendencias-clinicas', icon: 'bi-clipboard-exclamation' },
   ];
 
   menuItems = this.menuParaPerfil();

@@ -27,9 +27,7 @@
 
           @if (errorMessage) {
           <div class="error-box" aria-live="assertive">
-            <span class="material-symbols-outlined">
-              error
-            </span>
+            <span class="bi bi-exclamation-circle" aria-hidden="true"></span>
 
             <span>{{ errorMessage }}</span>
           </div>
@@ -99,11 +97,7 @@
 
           <button type="submit" class="btn-login" [disabled]="loginForm.invalid || isLoading">
 
-            <span class="material-symbols-outlined" [class.icon-spin]="isLoading">
-
-              {{ isLoading ? 'progress_activity' : 'login' }}
-
-            </span>
+            <span class="bi" [class.bi-arrow-repeat]="isLoading" [class.bi-box-arrow-in-right]="!isLoading" [class.icon-spin]="isLoading" aria-hidden="true"></span>
 
             {{ isLoading ? 'Entrando...' : 'Entrar' }}
 
@@ -123,9 +117,7 @@
 
         <div class="logo-circle">
 
-          <span class="material-symbols-outlined logo-icon">
-            diversity_1
-          </span>
+          <span class="bi bi-people-fill logo-icon" aria-hidden="true"></span>
 
         </div>
 

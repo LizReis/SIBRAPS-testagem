@@ -32,7 +32,7 @@
     background: #eef4fc;
 }
 
-.menu-button .material-symbols-outlined {
+.menu-button .bi {
     font-size: 32px;
 }
 
@@ -42,7 +42,7 @@
     gap: 22px;
 }
 
-.notification-button .material-symbols-outlined {
+.notification-button .bi {
     font-size: 31px;
 }
 

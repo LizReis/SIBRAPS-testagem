@@ -47,6 +47,21 @@ async function fit(page, locator) {
   const b = await locator.boundingBox(), vp = page.viewportSize();
   assert(b && b.x >= -1 && b.x + b.width <= vp.width + 1, 'Elemento ultrapassa largura visível: ' + JSON.stringify(b));
 }
+async function layout(page) {
+  const vp=page.viewportSize();
+  await visible(page.locator('app-header .header'));
+  const header=await page.locator('app-header .header').boundingBox();
+  assert(header && header.y>=-1 && header.y<=4,'Cabeçalho deve permanecer no topo, não abaixo do menu');
+  if(vp.width>768){
+    const sidebar=await page.locator('app-sidebar').boundingBox();
+    assert(sidebar && header.x>=sidebar.x+sidebar.width-2,'Menu e conteúdo devem estar lado a lado');
+  }
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1 || document.documentElement.scrollHeight>innerHeight+2);
+  assert(!overflow,'A página autenticada não deve rolar como um todo; apenas suas áreas internas');
+  await page.evaluate(()=>document.fonts.ready);
+  const icon=await page.locator('.menu-button .bi').evaluate(e=>({content:getComputedStyle(e,'::before').content,font:getComputedStyle(e,'::before').fontFamily,loaded:document.fonts.check('16px bootstrap-icons'),text:e.textContent.trim()}));
+  assert(icon.loaded && icon.font.includes('bootstrap-icons') && !['none','normal','""'].includes(icon.content) && !icon.text,'Ícone local deve aparecer sem texto de ligadura');
+}
 async function shot(page, name) {
   await page.screenshot({path:resolve(output,name+'.png'),animations:'disabled',timeout:10000});
 }
@@ -102,6 +117,7 @@ try {
       await page.waitForURL('**/inicio');
       const titulo=page.getByRole('heading',{name:'Visão geral da unidade'});
       await fit(page,titulo);
+      await layout(page);
       await visible(page.getByText('Não confirmado',{exact:true}).first());
       await visible(page.locator('.quick-action[href="/agenda/novo"]'));
       const menu=page.locator('.menu-button');
@@ -153,6 +169,7 @@ try {
       await login(page); await page.locator('button[type=submit]').press('Enter');
       await page.waitForURL('**/inicio');
       await visible(page.locator('.quick-action[href="/pacientes/novo"]'));
+      await layout(page);
       assert.equal(await page.locator('.quick-action[href="/agenda/novo"]').count(),perfil==='RECEPCAO'?1:0,'Atalho de agendamento conforme perfil');
       assert.equal(await page.locator('app-sidebar a[href="/pendencias-clinicas"]').count(),0,'Menu de pendências restrito ao administrador');
       await page.goto(base+'/pendencias-clinicas'); await page.waitForURL('**/inicio');

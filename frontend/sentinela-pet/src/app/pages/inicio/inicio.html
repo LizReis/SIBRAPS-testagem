@@ -9,7 +9,7 @@
   <!-- Cards de ação rápida -->
   @if (erro) {
     <div class="state-card error" role="alert">
-      <span class="material-symbols-outlined">error</span>
+      <span class="bi bi-exclamation-circle" aria-hidden="true"></span>
       <div>
         <strong>Não foi possível carregar os indicadores.</strong>
         <p>Tente novamente para consultar os dados atualizados do backend.</p>
@@ -22,7 +22,7 @@
     @for (indicador of indicadores; track indicador.titulo) {
       <article class="indicator-card" [class]="'indicator-card accent-' + indicador.cor">
         <div class="indicator-top">
-          <span class="indicator-icon material-symbols-outlined" aria-hidden="true">{{ indicador.icone }}</span>
+          <span class="indicator-icon bi" [ngClass]="indicador.icone" aria-hidden="true"></span>
           <h2>{{ indicador.titulo }}</h2>
         </div>
         <strong class="indicator-value">{{ carregando ? '—' : valorIndicador(indicador.campo) }}</strong>
@@ -62,7 +62,7 @@
                   <td>{{ contratoExperimental ? 'Consultar vínculo' : (paciente.dataUltimaPresenca ? (paciente.dataUltimaPresenca | date: 'dd/MM/yyyy') : 'Sem presença registrada') }}</td>
                   <td>
                     <a class="view-button" [routerLink]="['/pacientes/detalhes', paciente.idPublico]" [queryParams]="paciente.vinculo ? { vinculo: paciente.vinculo } : null" [attr.aria-label]="'Visualizar paciente ' + paciente.nome">
-                      <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
+                      <span class="bi bi-eye" aria-hidden="true"></span>
                     </a>
                   </td>
                 </tr>
@@ -70,7 +70,7 @@
             </tbody>
           </table>
         </div>
-        <a class="see-all" routerLink="/pacientes">Ver todos os pacientes <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span></a>
+        <a class="see-all" routerLink="/pacientes">Ver todos os pacientes <span class="bi bi-chevron-right" aria-hidden="true"></span></a>
       }
     </article>
 
@@ -79,7 +79,7 @@
       <div class="quick-actions-grid">
         @for (acao of acoesRapidas; track acao.titulo) {
           <a class="quick-action" [routerLink]="acao.rota">
-            <span class="quick-icon material-symbols-outlined" aria-hidden="true">{{ acao.icone }}</span>
+            <span class="quick-icon bi" [ngClass]="acao.icone" aria-hidden="true"></span>
             <strong>{{ acao.titulo }}</strong>
           </a>
         }

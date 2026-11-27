@@ -65,6 +65,7 @@
 .indicator-icon {
     width: 52px;
     height: 52px;
+    flex: 0 0 52px;
     border-radius: 9px;
     display: grid;
     place-items: center;
@@ -74,6 +75,7 @@
 }
 
 .indicator-value {
+    overflow-wrap: anywhere;
     font-size: 2.6rem;
     line-height: 1;
     font-weight: 800;
@@ -210,14 +212,16 @@ th {
 
 .quick-actions-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 20px;
     padding: 0 20px 24px;
 }
 
 .quick-action {
     min-height: 150px;
+    min-width: 0;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 18px;
     padding: 20px;
@@ -240,6 +244,8 @@ th {
 }
 
 .quick-action strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
     font-size: 1rem;
     font-weight: 800;
     line-height: 1.35;

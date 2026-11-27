@@ -26,19 +26,19 @@ export class Inicio implements OnInit {
   erro = false;
 
   readonly indicadores = [
-    { titulo: 'Pacientes Cadastrados', descricao: 'Total de pacientes ativos', icone: 'groups', campo: 'totalPacientesAtivos', cor: 'blue' },
-    { titulo: 'Agendamentos Hoje', descricao: 'Consultas agendadas', icone: 'calendar_month', campo: 'totalAgendamentosHoje', cor: 'blue' },
-    { titulo: 'Faltas Últimos 7 dias', descricao: contratoExperimental ? 'Faltas individuais comprovadas na agenda' : 'Pacientes faltaram', icone: 'trending_up', campo: 'totalFaltasUltimosSeteDias', cor: 'green' },
-    { titulo: 'Indicadores Atenção', descricao: contratoExperimental ? 'Classificações amarela e vermelha confirmadas' : 'Requerem atenção', icone: 'shield', campo: 'totalPacientesAtencao', cor: 'orange' },
+    { titulo: 'Pacientes Cadastrados', descricao: 'Total de pacientes ativos', icone: 'bi-people', campo: 'totalPacientesAtivos', cor: 'blue' },
+    { titulo: 'Agendamentos Hoje', descricao: 'Consultas agendadas', icone: 'bi-calendar3', campo: 'totalAgendamentosHoje', cor: 'blue' },
+    { titulo: 'Faltas Últimos 7 dias', descricao: contratoExperimental ? 'Faltas individuais comprovadas na agenda' : 'Pacientes faltaram', icone: 'bi-graph-up-arrow', campo: 'totalFaltasUltimosSeteDias', cor: 'green' },
+    { titulo: 'Indicadores Atenção', descricao: contratoExperimental ? 'Classificações amarela e vermelha confirmadas' : 'Requerem atenção', icone: 'bi-shield', campo: 'totalPacientesAtencao', cor: 'orange' },
   ] as const;
 
   private readonly usuario = inject(UsuarioLogadoService);
   private perfil = '';
   private readonly acoes = [
-    { titulo: 'Cadastrar paciente', rota: '/pacientes/novo', icone: 'person_add', permitido: podeCadastrarPaciente },
-    { titulo: 'Novo agendamento', rota: '/agenda/novo', icone: 'edit_calendar', permitido: podeCriarAgendamento },
-    { titulo: 'Consultar agenda', rota: '/agenda', icone: 'fact_check', permitido: (tipo: string) => TIPOS_USUARIO.some(p => p === tipo) },
-    { titulo: 'Consultar busca ativa', rota: '/painel', icone: 'location_on', permitido: (tipo: string) => TIPOS_USUARIO.some(p => p === tipo) },
+    { titulo: 'Cadastrar paciente', rota: '/pacientes/novo', icone: 'bi-person-plus', permitido: podeCadastrarPaciente },
+    { titulo: 'Novo agendamento', rota: '/agenda/novo', icone: 'bi-calendar-plus', permitido: podeCriarAgendamento },
+    { titulo: 'Consultar agenda', rota: '/agenda', icone: 'bi-clipboard-check', permitido: (tipo: string) => TIPOS_USUARIO.some(p => p === tipo) },
+    { titulo: 'Consultar busca ativa', rota: '/painel', icone: 'bi-geo-alt', permitido: (tipo: string) => TIPOS_USUARIO.some(p => p === tipo) },
   ];
 
   get acoesRapidas() { return this.acoes.filter(acao => acao.permitido(this.perfil)); }

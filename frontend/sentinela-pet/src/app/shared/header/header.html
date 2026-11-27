@@ -1,13 +1,13 @@
 <header class="header">
   <!-- Botão Assistente Virtual -->
   <button type="button" class="menu-button" aria-label="Abrir ou fechar menu lateral" aria-controls="menu-lateral" [attr.aria-expanded]="menuAberto" (click)="toggleMenu()">
-    <span class="material-symbols-outlined" aria-hidden="true">menu</span>
+    <span class="bi bi-list" aria-hidden="true"></span>
   </button>
 
   <!-- Profile -->
   <div class="header-actions">
     <button type="button" class="notification-button" aria-label="Notificações">
-      <span class="material-symbols-outlined" aria-hidden="true">notifications</span>
+      <span class="bi bi-bell" aria-hidden="true"></span>
       @if (totalNotificacoes !== null && totalNotificacoes > 0) { <span class="notification-badge">{{ totalNotificacoes }}</span> }
     </button>
     @if (userName) { <div class="profile-info"><strong>{{ userName }}</strong><span>{{ userRole }}</span></div> }
