@@ -1,0 +1,3 @@
+# Etapa 8.9 — encerramento técnico
+
+Base 3f3d744f96f5efc40fe5449c476d51328c15d6ca, CI #46079755323: todos os jobs, builds e cinco cenários Chromium aprovados, inclusive geometria e ícone local. Artefato #15237200659 com 14 arquivos. Encerramento técnico do escopo exercitado, não certificação WCAG ou aceite de todas as telas. Por decisão da usuária, revisão estética definitiva e conferência de todas as telas no Codespace continuam pendentes de aceite; não redesenhar de ofício nem fazer merge. Cobertura das jornadas restantes passa à Etapa 8.10. Triagem de vulnerabilidades npm reportadas (48, 3 críticas na CI 46073962860) antes de liberação; não confundir com exploração confirmada. Etapa 9 não iniciada.

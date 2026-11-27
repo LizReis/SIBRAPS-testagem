@@ -54,7 +54,7 @@ jobs:
     name: Cadastro unico - Build Angular
     # Playwright 1.56.1 supports Ubuntu 24.04, not the 26.04 latest runner.
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: frontend/sentinela-pet
@@ -83,6 +83,46 @@ jobs:
         env:
           PLAYWRIGHT_PREFIX: ${{ runner.temp }}/sibraps-browser
         run: node scripts/etapa8-9-browser.mjs "$RUNNER_TEMP/sibraps-prod" browser-evidence
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: backend/buscaativa/pom.xml
+      - name: Preparar servidor HTTP isolado
+        working-directory: backend/buscaativa
+        run: bash ./mvnw -B -ntp test-compile dependency:build-classpath -Dmdep.outputFile=target/ensaio-classpath.txt -Dmdep.includeScope=test
+      - name: Jornada integrada cadastro e isolamento
+        env:
+          PLAYWRIGHT_PREFIX: ${{ runner.temp }}/sibraps-browser
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p integracao-evidence
+          export SIBRAPS_ENSAIO_SENHA="$(openssl rand -hex 24)"
+          echo "::add-mask::$SIBRAPS_ENSAIO_SENHA"
+          (
+            cd ../../backend/buscaativa
+            exec java -cp "target/test-classes:target/classes:$(cat target/ensaio-classpath.txt)" br.sibraps.ensaiohttp.AplicacaoEnsaioLocal
+          ) > integracao-evidence/backend.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 90); do
+            kill -0 "$pid" || { echo "Servidor isolado encerrou antes do ensaio"; exit 1; }
+            if curl -fsS --max-time 3 -o /dev/null -H 'Content-Type: application/json' --data "{\"email\":\"administrador.a@test.local\",\"senha\":\"$SIBRAPS_ENSAIO_SENHA\"}" http://127.0.0.1:8080/api/auth/login 2>/dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          test "$ready" = 1
+          node scripts/etapa8-10-integracao.mjs dist/sentinela-pet/browser integracao-evidence
+      - name: Evidencias da integracao real
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: etapa8-10-integracao
+          path: frontend/sentinela-pet/integracao-evidence/
+          retention-days: 7
+          if-no-files-found: warn
       - name: Evidencias do navegador
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
