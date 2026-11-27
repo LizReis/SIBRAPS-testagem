@@ -55,6 +55,7 @@ export class Pacientes implements OnInit, OnDestroy {
     dados ? : PacientePesquisa;
     carregando = false;
     erroConsulta = '';
+    buscaIncompleta = false;
     podeCadastrar = false;
     podeEditar = false;
     menu ? : string;
@@ -72,7 +73,13 @@ export class Pacientes implements OnInit, OnDestroy {
     ngOnInit() {
         this.busca$.pipe(
             switchMap(digitada => {
-                if (digitada && !this.buscaValida(this.termo)) {
+                this.dados = undefined;
+                this.menu = undefined;
+                this.erroConsulta = '';
+                this.buscaIncompleta = digitada && !this.buscaValida(this.termo);
+                this.carregando = !this.buscaIncompleta;
+                this.cdr.markForCheck();
+                if (this.buscaIncompleta) {
                     this.carregando = false;
                     this.cdr.markForCheck();
                     return EMPTY;
@@ -126,6 +133,7 @@ export class Pacientes implements OnInit, OnDestroy {
         this.busca$.next(false);
     }
     private falharConsulta(erro: unknown): void {
+        this.dados = undefined;
         this.carregando = false;
         this.erroConsulta = interpretarErroHttp(erro, { padrao: 'Não foi possível consultar a lista de pacientes.' }).mensagem;
         this.cdr.markForCheck();

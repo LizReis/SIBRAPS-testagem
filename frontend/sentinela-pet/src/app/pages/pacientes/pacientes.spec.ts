@@ -49,6 +49,7 @@ describe('Pacientes', () => {
     expect(alerta.textContent).not.toContain('SQL');
     expect(component.termo).toBe('Paciente sintético');
     expect(component.carregando).toBe(false);
+    expect(component.dados).toBeUndefined();
   });
 
   it('aplica o resultado digitado e descarta a consulta anterior assim que o termo muda', async () => {
@@ -66,5 +67,17 @@ describe('Pacientes', () => {
     pesquisar.mockReturnValueOnce(of({ resumo, pacientes: [], totalRegistros: 1, totalPaginas: 1, paginaAtual: 0, tamanhoPagina: 10 }));
     await vi.waitFor(() => expect(component.dados?.totalRegistros).toBe(1));
     expect(pesquisar).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'Nome sintético', page: 0 }));
+  });
+
+  it('remove resultados ao digitar uma busca incompleta', () => {
+    const fixture = TestBed.createComponent(Pacientes);
+    fixture.detectChanges();
+    const component = fixture.componentInstance;
+    expect(component.dados).toBeDefined();
+    component.termo = 'A';
+    component.pesquisar();
+    expect(component.dados).toBeUndefined();
+    expect(component.buscaIncompleta).toBe(true);
+    expect(pesquisar).toHaveBeenCalledOnce();
   });
 });

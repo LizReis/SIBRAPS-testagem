@@ -26,7 +26,7 @@
     <div><small>CLASSIFICAÇÃO ATUAL</small><b
         [class]="(d.classificacaoRisco?.toLowerCase() ?? 'unknown')">{{label(d.classificacaoRisco)}}</b></div>
     <div><small>FALTAS</small><b>{{p?.countFaltas ?? 'Não confirmado'}}</b></div>
-    <div><small>ÚLTIMA PRESENÇA</small><b>{{p?.indicadoresLocais?.ultimaPresencaConclusiva === false ? 'Não confirmada' : data(p?.dataUltimaPresenca)}}</b></div>
+    <div><small>ÚLTIMA PRESENÇA</small><b>{{p?.indicadoresLocais?.ultimaPresencaConclusiva === false ? 'Não confirmada' : (p?.indicadoresLocais?.ultimaPresencaConclusiva === true && !p?.dataUltimaPresenca ? 'Nenhuma presença comprovada' : data(p?.dataUltimaPresenca))}}</b></div>
     <div><small>PRÓXIMO ATENDIMENTO</small><b>{{d.proximoAgendamento ? (d.proximoAgendamento.data|date:'dd/MM')+' •
         '+d.proximoAgendamento.hora.slice(0,5) : 'Nenhum agendamento'}}</b></div>
     <div><small>ATENÇÃO NECESSÁRIA</small><b>{{d.atencaoNecessaria}}</b></div>
@@ -133,10 +133,10 @@
           <div><dt>Profissional de referência</dt><dd>{{ d.referenciaInconclusiva ? 'Referência não confirmada' : (p?.profissionalReferencia?.nome || 'Não informado') }}</dd></div>
         </dl>
         <p *ngIf="p?.indicadoresLocais?.revisaoNecessaria">Indicadores requerem conferência.</p>
-        <h3 [class.regular]="ativo && d.classificacaoRisco === 'VERDE'"
-          [class.alerta]="!(ativo && d.classificacaoRisco === 'VERDE')">{{d.atencaoNecessaria}}</h3>
+        <h3 [class.regular]="ativo && d.classificacaoRisco === 'VERDE' && !p?.indicadoresLocais?.revisaoNecessaria"
+          [class.alerta]="!(ativo && d.classificacaoRisco === 'VERDE' && !p?.indicadoresLocais?.revisaoNecessaria)">{{d.atencaoNecessaria}}</h3>
         <p>{{d.classificacaoRisco==='VERMELHO'?'Faltas recorrentes ou ausência conforme critérios do
-          sistema.':d.classificacaoRisco==='AMARELO'?'Acompanhe presença e próximos atendimentos.':d.classificacaoRisco === null ? 'Classificação inconclusiva.' : 'Sem alerta de busca ativa no momento.'}}</p><button *ngIf="ativo&&d.classificacaoRisco==='VERMELHO'&&podeGerenciar"
+          sistema.':d.classificacaoRisco==='AMARELO'?'Acompanhe presença e próximos atendimentos.':!d.classificacaoRisco ? 'Classificação inconclusiva.' : (ativo && d.classificacaoRisco === 'VERDE' && !p?.indicadoresLocais?.revisaoNecessaria ? 'Sem alerta de busca ativa no momento.' : 'Consulte a situação do acompanhamento e os indicadores locais.')}}</p><button *ngIf="ativo&&d.classificacaoRisco==='VERMELHO'&&podeGerenciar"
           class="primary" (click)="abrirBuscaAtiva()">
           Registrar busca ativa
         </button>

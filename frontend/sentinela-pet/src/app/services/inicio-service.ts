@@ -5,6 +5,7 @@ import { Observable } from 'rxjs';
 
 export interface PacientePrioritarioPayload {
   idPublico: string;
+  vinculo?: string;
   nome: string;
   classificacaoRisco: 'VERDE' | 'AMARELO' | 'VERMELHO' | null;
   quantidadeFaltas: number | null;

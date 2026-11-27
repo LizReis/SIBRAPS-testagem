@@ -73,7 +73,7 @@ export interface UsuarioReferencia {
 }
 
 export type PacienteSelecao = Pick<PacientePayload, 'idPublico' | 'nome' | 'cpf' | 'cns' | 'dataNascimento' | 'statusPaciente' | 'tipoAcompanhamento'>;
-export interface PacienteLista extends Pick<PacientePayload, 'idPublico'|'nome'|'cpf'|'cns'|'dataNascimento'|'countFaltas'|'dataUltimaPresenca'|'statusPaciente'|'tipoAcompanhamento'> { unidade?: string; classificacaoRisco: string | null; }
+export interface PacienteLista extends Pick<PacientePayload, 'idPublico'|'nome'|'cpf'|'cns'|'dataNascimento'|'countFaltas'|'dataUltimaPresenca'|'statusPaciente'|'tipoAcompanhamento'> { unidade?: string; vinculo?: string; ultimaPresencaConclusiva?: boolean; revisaoNecessaria?: boolean; classificacaoRisco: string | null; }
 export interface PacientePesquisa { resumo: { pacientesAtivos:number; emAtencao:number; buscaAtiva:number; semPresencaRecente:number; estadoNaoConfirmado?:number; semPresencaIndeterminada?:number }; pacientes:PacienteLista[]; paginaAtual:number; tamanhoPagina:number; totalRegistros:number; totalPaginas:number; }
 export interface ProximoAgendamento { id:number; data:string; hora:string; situacao:string }
 export interface PacienteDetalhe { paciente:PacientePayload; referenciaInconclusiva?: boolean; classificacaoRisco:string|null; proximoAgendamento?:ProximoAgendamento; atencaoNecessaria:string }
@@ -144,13 +144,14 @@ interface PesquisaLocal extends Omit<PacientePesquisa, 'pacientes' | 'resumo'> {
 function linhaLocal(paciente: PacienteLocal): PacienteLista {
   return {
     ...paciente.indicadores,
+    vinculo: paciente.vinculo,
     idPublico: paciente.idPublico,
     nome: paciente.nome,
     cpf: paciente.cpf ?? '',
     cns: paciente.cns ?? '',
     dataNascimento: paciente.dataNascimento,
     unidade: paciente.unidade,
-    dataUltimaPresenca: paciente.indicadores.dataUltimaPresenca ?? undefined,
+    dataUltimaPresenca: paciente.indicadores.ultimaPresencaConclusiva ? paciente.indicadores.dataUltimaPresenca ?? undefined : undefined,
   };
 }
 

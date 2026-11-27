@@ -6,7 +6,7 @@ import { Observable } from 'rxjs';
 export type ClassificacaoRisco = 'VERDE' | 'AMARELO' | 'VERMELHO';
 export interface DistribuicaoPainel { naoConfirmados?: number; percentualNaoConfirmados?: number; verdes:number; amarelos:number; vermelhos:number; percentualVerdes:number; percentualAmarelos:number; percentualVermelhos:number }
 export interface EvolucaoPainel { mes:string; rotulo:string; verdes:number|null; amarelos:number|null; vermelhos:number|null; disponivel:boolean; situacao?: 'SEM_COBERTURA' | 'INDISPONIVEL' | 'COMPROVADO' }
-export interface PacientePainel { idPublico:string; nome:string; idade:number|null; classificacaoRisco:ClassificacaoRisco|null; quantidadeFaltas:number|null; acaoNecessaria:string }
+export interface PacientePainel { idPublico:string; vinculo?:string; nome:string; idade:number|null; classificacaoRisco:ClassificacaoRisco|null; quantidadeFaltas:number|null; acaoNecessaria:string }
 export interface UnidadePainel { valor:string; nome:string }
 export interface PainelPayload { estadoNaoConfirmado?: number; totalPacientesAtivos:number; distribuicaoClassificacao:DistribuicaoPainel; evolucao:EvolucaoPainel[]; pacientesPrioritarios:PacientePainel[]; unidadesDisponiveis:UnidadePainel[]; historicoDisponivel:boolean }
 export interface FiltrosPainel { periodoMeses:number; unidade?:string; tipoAcompanhamento?:string; situacaoRua?:boolean }

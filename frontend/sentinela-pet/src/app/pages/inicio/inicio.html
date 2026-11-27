@@ -40,7 +40,7 @@
       @if (carregando) {
         <div class="table-state">Carregando pacientes prioritários...</div>
       } @else if (!erro && resumo?.pacientesPrioritarios?.length === 0) {
-        <div class="table-state">Nenhum paciente prioritário encontrado.</div>
+        <div class="table-state">Nenhum paciente prioritário encontrado. @if (contratoExperimental) { Registros inconclusivos podem exigir conferência. }</div>
       } @else if (!erro) {
         <div class="table-wrapper">
           <table>
@@ -59,9 +59,9 @@
                   <td>{{ paciente.nome }}</td>
                   <td><span class="risk-badge" [class]="'risk-badge risk-' + (paciente.classificacaoRisco?.toLowerCase() ?? 'unknown')">{{ paciente.classificacaoRisco ?? 'Não confirmado' }}</span></td>
                   <td>{{ paciente.quantidadeFaltas ?? 'Não confirmado' }}</td>
-                  <td>{{ paciente.dataUltimaPresenca ? (paciente.dataUltimaPresenca | date: 'dd/MM/yyyy') : 'Sem presença registrada' }}</td>
+                  <td>{{ contratoExperimental ? 'Consultar vínculo' : (paciente.dataUltimaPresenca ? (paciente.dataUltimaPresenca | date: 'dd/MM/yyyy') : 'Sem presença registrada') }}</td>
                   <td>
-                    <a class="view-button" [routerLink]="['/pacientes/detalhes', paciente.idPublico]" [attr.aria-label]="'Visualizar paciente ' + paciente.nome">
+                    <a class="view-button" [routerLink]="['/pacientes/detalhes', paciente.idPublico]" [queryParams]="paciente.vinculo ? { vinculo: paciente.vinculo } : null" [attr.aria-label]="'Visualizar paciente ' + paciente.nome">
                       <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
                     </a>
                   </td>

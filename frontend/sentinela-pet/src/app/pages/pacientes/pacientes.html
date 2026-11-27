@@ -28,7 +28,8 @@
         <option value="AMBOS">Ambos</option>
       </select></label><button (click)="limpar()">Limpar</button></section>
   <section class="metrics" *ngIf="dados">
-    <article><small>PACIENTES ATIVOS</small><strong>{{dados.resumo.pacientesAtivos}}</strong></article>
+    <article><small>PACIENTES ATIVOS</small><strong>{{dados.resumo.pacientesAtivos}}</strong>
+      <small *ngIf="dados.resumo.estadoNaoConfirmado !== undefined">{{dados.resumo.estadoNaoConfirmado}} vínculo(s) com estado não confirmado, fora dos ativos confirmados</small></article>
     <article><small>EM ATENÇÃO</small><strong class="yellow">{{dados.resumo.emAtencao}}</strong></article>
     <article><small>BUSCA ATIVA</small><strong class="red">{{dados.resumo.buscaAtiva}}</strong></article>
     <article><small>SEM PRESENÇA RECENTE</small><strong>{{dados.resumo.semPresencaRecente}}</strong>
@@ -36,10 +37,11 @@
     </article>
   </section>
   <section class="list">
-    <h2>Lista de pacientes <small>{{dados?.totalRegistros || 0}} registros</small></h2>
+    <h2>Lista de pacientes <small>{{dados ? dados.totalRegistros + ' registros' : '—'}}</small></h2>
     <div aria-live="polite" class="state" *ngIf="carregando">Carregando pacientes…</div>
     <p class="state" role="alert" *ngIf="erroConsulta">{{ erroConsulta }}</p>
-    <div class="table-wrap" *ngIf="!carregando && !erroConsulta">
+    <p class="state" *ngIf="buscaIncompleta">Informe pelo menos três letras ou um CPF/CNS completo.</p>
+    <div class="table-wrap" *ngIf="dados && !carregando && !erroConsulta && !buscaIncompleta">
       <table>
         <thead>
           <tr>
@@ -63,14 +65,13 @@
             <td data-label="Unidade">{{p.unidade || 'Não informada'}}</td>
             <td data-label="Faltas">{{p.countFaltas ?? 'Não confirmado'}}</td>
             <td data-label="Classificação"><span class="badge"
-                [class]="'badge '+(p.classificacaoRisco?.toLowerCase() ?? 'unknown')">{{label(p.classificacaoRisco)}}</span></td>
-            <td data-label="Última presença">{{p.dataUltimaPresenca ? (p.dataUltimaPresenca|date:'dd/MM/yyyy') : 'Sem
-              presença registrada'}}</td>
+                [class]="'badge '+(p.classificacaoRisco?.toLowerCase() ?? 'unknown')">{{label(p.classificacaoRisco)}}</span><small *ngIf="p.revisaoNecessaria">Requer conferência</small></td>
+            <td data-label="Última presença">{{p.ultimaPresencaConclusiva === false ? 'Não confirmada' : (p.dataUltimaPresenca ? (p.dataUltimaPresenca|date:'dd/MM/yyyy') : (p.ultimaPresencaConclusiva === true ? 'Nenhuma presença comprovada' : 'Sem presença registrada'))}}</td>
             <td data-label="Ações" class="actions"><button
                 aria-label="Mais ações" aria-haspopup="menu" [attr.aria-expanded]="menu===p.idPublico"
                 (click)="$event.stopPropagation();menu=menu===p.idPublico?undefined:p.idPublico">•••</button>
               <div class="menu" role="menu" *ngIf="menu===p.idPublico"><a role="menuitem"
-                  [routerLink]="['/pacientes/detalhes',p.idPublico]">Ver</a><a role="menuitem"
+                  [routerLink]="['/pacientes/detalhes',p.idPublico]" [queryParams]="p.vinculo ? { vinculo: p.vinculo } : null">Ver</a><a role="menuitem"
                   *ngIf="podeEditar" [routerLink]="['/pacientes/editar',p.idPublico]">Editar</a><a role="menuitem"
                   [routerLink]="['/pacientes/detalhes',p.idPublico,'historico']">Ver histórico</a></div>
             </td>
