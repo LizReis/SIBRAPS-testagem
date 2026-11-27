@@ -20,11 +20,11 @@ describe('DetalhePaciente', () => {
     atencaoNecessaria: '',
   };
   const buscarDetalhe = vi.fn(() => of(detalhe));
-  const registrarBuscaAtiva = vi.fn(() => of(void 0));
+  const registrarBuscaAtiva = vi.fn(() => of<void>(undefined));
 
   beforeEach(async () => {
     buscarDetalhe.mockClear();
-    registrarBuscaAtiva.mockReset().mockReturnValue(of(void 0));
+    registrarBuscaAtiva.mockReset().mockReturnValue(of<void>(undefined));
     await TestBed.configureTestingModule({
       imports: [DetalhePaciente],
       providers: [
