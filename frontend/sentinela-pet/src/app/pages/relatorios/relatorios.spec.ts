@@ -12,6 +12,7 @@ describe('Relatorios', () => {
   let component: Relatorios;
   let relatorioService: {
     consultarBusca: ReturnType<typeof vi.fn>;
+    consultarGrupos: ReturnType<typeof vi.fn>;
     baixarBuscaAtivaPdf: ReturnType<typeof vi.fn>;
     baixarFrequenciaGruposPdf: ReturnType<typeof vi.fn>;
     baixarBuscaAtivaExcel: ReturnType<typeof vi.fn>;
@@ -33,6 +34,7 @@ describe('Relatorios', () => {
   beforeEach(async () => {
     relatorioService = {
       consultarBusca: vi.fn().mockReturnValue(of({ dados: [], revisaoOuSelecaoInconclusiva: 0 })),
+      consultarGrupos: vi.fn().mockReturnValue(of({ dados: [], sessoesPendentes: 0, media: null, participacoesDesconsideradas: 0 })),
       baixarBuscaAtivaPdf: vi.fn().mockReturnValue(of(respostaPdf)),
       baixarFrequenciaGruposPdf: vi.fn().mockReturnValue(of(respostaPdf)),
       baixarBuscaAtivaExcel: vi.fn().mockReturnValue(of(respostaExcel)),
@@ -77,9 +79,9 @@ describe('Relatorios', () => {
 
   it('monta filtro de grupo, omitindo Todos os grupos', () => {
     component.periodoFrequencia = 'Todo o período';
-    expect(component.filtrosFrequencia()).toEqual({});
+    expect(component.filtrosFrequencia()).toEqual(converterPeriodo('Últimos 6 meses'));
     component.grupoSelecionado = 7;
-    expect(component.filtrosFrequencia()).toEqual({ grupoId: 7 });
+    expect(component.filtrosFrequencia()).toEqual({ ...converterPeriodo('Últimos 6 meses'), grupoId: 7 });
   });
 
   it('exporta pela API correspondente à aba e usa Content-Disposition no download', () => {
@@ -134,5 +136,23 @@ describe('Relatorios', () => {
     component.abaAtiva = 'frequenciaGrupo';
     component.selecionarFormato('Excel');
     expect(relatorioService.baixarFrequenciaGruposExcel).toHaveBeenCalledOnce();
+  });
+
+  it('ajusta final de mês ao converter períodos sem transbordar para o mês seguinte',()=>{
+    expect(converterPeriodo('Últimos 3 meses',new Date(2026,4,31))).toEqual({dataInicio:'2026-02-28',dataFim:'2026-05-31'});
+  });
+  it('não exporta relatório coletivo incompleto e informa participações desconsideradas',()=>{
+    relatorioService.consultarGrupos.mockReturnValue(of({dados:[],sessoesPendentes:2,media:null,participacoesDesconsideradas:3,periodo:'Período sintético'}));
+    component.selecionarAba('frequenciaGrupo');fixture.detectChanges();
+    expect(component.exportacaoBloqueada).toBe(true);
+    component.exportarPdf();component.exportarExcel();
+    expect(relatorioService.baixarFrequenciaGruposPdf).not.toHaveBeenCalled();
+    expect(relatorioService.baixarFrequenciaGruposExcel).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain('3 participação(ões) desconsiderada(s)');
+  });
+  it('recusa arquivo vazio e não inicia download',()=>{
+    relatorioService.baixarBuscaAtivaPdf.mockReturnValue(of(new HttpResponse({body:new Blob([],{type:'application/pdf'})})));
+    component.exportarPdf();expect(HTMLAnchorElement.prototype.click).not.toHaveBeenCalled();
+    expect(component.erroExportacao).toContain('Não foi possível');
   });
 });

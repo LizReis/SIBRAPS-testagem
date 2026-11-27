@@ -1,7 +1,8 @@
 import { interpretarErroHttp } from '../../services/erro-http';
 import { CommonModule } from '@angular/common';
 import { HttpResponse } from '@angular/common/http';
-import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, DestroyRef, OnInit, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 
 import { finalize, Subscription } from 'rxjs';
@@ -33,14 +34,24 @@ interface SessaoFrequenciaRelatorio {
   taxaLocal?: number | null;
 }
 
-export function converterPeriodo(periodo: string, hoje = new Date()): FiltroPeriodo {
+function hojeOficial(): Date {
+  const partes = new Intl.DateTimeFormat('en-CA', {timeZone:'America/Bahia', year:'numeric', month:'2-digit', day:'2-digit'}).formatToParts(new Date());
+  const valor = (tipo:string) => Number(partes.find(p=>p.type===tipo)?.value);
+  return new Date(valor('year'), valor('month')-1, valor('day'));
+}
+export function converterPeriodo(periodo: string, hoje = hojeOficial()): FiltroPeriodo {
   if (periodo === 'Todo o período') return {};
   const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
   if (periodo === 'Últimos 30 dias') inicio.setDate(inicio.getDate() - 30);
-  else if (periodo === 'Últimos 3 meses') inicio.setMonth(inicio.getMonth() - 3);
-  else if (periodo === 'Últimos 6 meses') inicio.setMonth(inicio.getMonth() - 6);
-  else if (periodo === 'Últimos 12 meses') inicio.setMonth(inicio.getMonth() - 12);
-  else return {};
+  else {
+    const meses = periodo === 'Últimos 3 meses' ? 3 : periodo === 'Últimos 6 meses' ? 6 : periodo === 'Últimos 12 meses' ? 12 : 0;
+    if (!meses) return {};
+    const dia = inicio.getDate();
+    inicio.setDate(1);
+    inicio.setMonth(inicio.getMonth() - meses);
+    const ultimoDia = new Date(inicio.getFullYear(), inicio.getMonth()+1, 0).getDate();
+    inicio.setDate(Math.min(dia, ultimoDia));
+  }
   return { dataInicio: formatarDataLocal(inicio), dataFim: formatarDataLocal(hoje) };
 }
 
@@ -71,6 +82,13 @@ export class Relatorios implements OnInit {
 
   readonly contratoExperimental = contratoExperimental;
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly destroy = inject(DestroyRef);
+  participacoesDesconsideradas?: number;
+  periodoConfirmado = '';
+  get exportacaoBloqueada(): boolean {
+    return this.exportandoPdf || this.buscandoRelatorio || !!this.erroConsulta ||
+      (this.abaAtiva === 'frequenciaGrupo' && (this.quantidadeEmConferencia ?? 0) > 0);
+  }
   buscandoRelatorio = false;
   erroConsulta = '';
   private consulta?: Subscription;
@@ -103,6 +121,7 @@ export class Relatorios implements OnInit {
     'Últimos 12 meses',
     'Todo o período',
   ];
+  readonly periodosFrequencia = this.periodos.filter(p => p !== 'Todo o período');
   readonly tiposAcompanhamento = ['Individual e grupo', 'Individual', 'Grupo terapêutico'];
 
 
@@ -156,6 +175,7 @@ export class Relatorios implements OnInit {
   }
 
   selecionarAba(aba: TipoRelatorio): void {
+    if (this.exportandoPdf) return;
     this.abaAtiva = aba;
     this.carregarPrevia();
   }
@@ -166,11 +186,14 @@ export class Relatorios implements OnInit {
     this.buscandoRelatorio = true;
     this.erroConsulta = '';
     this.quantidadeEmConferencia = undefined;
+    this.participacoesDesconsideradas = undefined;
+    this.periodoConfirmado = '';
+    this.erroExportacao = '';
     this.buscaLocal = [];
     this.frequenciaLocal = [];
     this.mediaLocal = null;
     if (this.abaAtiva === 'buscaAtiva') {
-      this.consulta = this.relatorioService.consultarBusca(this.filtrosBuscaAtiva()).pipe(finalize(() => this.buscandoRelatorio = false)).subscribe({
+      this.consulta = this.relatorioService.consultarBusca(this.filtrosBuscaAtiva()).pipe(takeUntilDestroyed(this.destroy), finalize(() => { this.buscandoRelatorio = false; this.cdr.markForCheck(); })).subscribe({
         next: resposta => {
           this.buscaLocal = resposta.dados.map(p => ({
             nome: p.nomeCompleto, documento: p.cnsCpf, dataUltimoAtendimento: p.dataUltimoAtendimentoFormatada,
@@ -178,11 +201,12 @@ export class Relatorios implements OnInit {
             telefone: p.telefone, profissional: p.profissionalReferencia,
           }));
           this.quantidadeEmConferencia = resposta.revisaoOuSelecaoInconclusiva;
+          this.periodoConfirmado = resposta.periodo ?? '';
         },
-        error: () => this.erroConsulta = 'Não foi possível consultar a busca ativa da unidade.',
+        error: e => this.erroConsulta = interpretarErroHttp(e,{padrao:'Não foi possível consultar a busca ativa da unidade.'}).mensagem,
       });
     } else {
-      this.consulta = this.relatorioService.consultarGrupos(this.filtrosFrequencia()).pipe(finalize(() => this.buscandoRelatorio = false)).subscribe({
+      this.consulta = this.relatorioService.consultarGrupos(this.filtrosFrequencia()).pipe(takeUntilDestroyed(this.destroy), finalize(() => { this.buscandoRelatorio = false; this.cdr.markForCheck(); })).subscribe({
         next: resposta => {
           this.frequenciaLocal = resposta.dados.map((s, indice) => ({
             id: indice, data: s.dataFormatada, grupo: s.grupo, profissionalResponsavel: s.coordenador,
@@ -190,8 +214,10 @@ export class Relatorios implements OnInit {
           }));
           this.mediaLocal = resposta.media;
           this.quantidadeEmConferencia = resposta.sessoesPendentes;
+          this.participacoesDesconsideradas = resposta.participacoesDesconsideradas;
+          this.periodoConfirmado = resposta.periodo ?? '';
         },
-        error: () => this.erroConsulta = 'Não foi possível consultar a frequência dos grupos da unidade.',
+        error: e => this.erroConsulta = interpretarErroHttp(e,{padrao:'Não foi possível consultar a frequência dos grupos da unidade.'}).mensagem,
       });
     }
   }
@@ -204,14 +230,14 @@ export class Relatorios implements OnInit {
   }
 
   exportarPdf(): void {
-    if (this.exportandoPdf) return;
+    if (this.exportacaoBloqueada) return;
     this.exportandoPdf = true;
     this.erroExportacao = '';
     const requisicao = this.abaAtiva === 'buscaAtiva'
       ? this.relatorioService.baixarBuscaAtivaPdf(this.filtrosBuscaAtiva())
       : this.relatorioService.baixarFrequenciaGruposPdf(this.filtrosFrequencia());
     const prefixo = this.abaAtiva === 'buscaAtiva' ? 'relatorio-busca-ativa' : 'relatorio-frequencia-grupos';
-    requisicao.pipe(finalize(() => this.exportandoPdf = false)).subscribe({
+    requisicao.pipe(takeUntilDestroyed(this.destroy), finalize(() => { this.exportandoPdf = false; this.cdr.markForCheck(); })).subscribe({
       next: (resposta) => this.baixarResposta(resposta, `${prefixo}-${formatarDataLocal(new Date())}.pdf`, 'application/pdf', 'PDF'),
       error: e => {
         this.erroExportacao = interpretarErroHttp(e, { padrao: 'Não foi possível gerar o relatório em PDF. Tente novamente.' }).mensagem;
@@ -221,14 +247,14 @@ export class Relatorios implements OnInit {
   }
 
   exportarExcel(): void {
-    if (this.exportandoPdf) return;
+    if (this.exportacaoBloqueada) return;
     this.exportandoPdf = true;
     this.erroExportacao = '';
     const requisicao = this.abaAtiva === 'buscaAtiva'
       ? this.relatorioService.baixarBuscaAtivaExcel(this.filtrosBuscaAtiva())
       : this.relatorioService.baixarFrequenciaGruposExcel(this.filtrosFrequencia());
     const prefixo = this.abaAtiva === 'buscaAtiva' ? 'relatorio-busca-ativa' : 'relatorio-frequencia-grupos';
-    requisicao.pipe(finalize(() => this.exportandoPdf = false)).subscribe({
+    requisicao.pipe(takeUntilDestroyed(this.destroy), finalize(() => { this.exportandoPdf = false; this.cdr.markForCheck(); })).subscribe({
       next: (resposta) => this.baixarResposta(resposta, `${prefixo}-${formatarDataLocal(new Date())}.xlsx`,
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Excel'),
       error: e => {
@@ -247,7 +273,8 @@ export class Relatorios implements OnInit {
   }
 
   filtrosFrequencia(): FiltrosFrequenciaGrupos {
-    const filtros: FiltrosFrequenciaGrupos = { ...converterPeriodo(this.periodoFrequencia) };
+    const periodo = this.periodoFrequencia === 'Todo o período' ? 'Últimos 6 meses' : this.periodoFrequencia;
+    const filtros: FiltrosFrequenciaGrupos = { ...converterPeriodo(periodo) };
     if (this.grupoSelecionado !== null) filtros.grupoId = this.grupoSelecionado;
     return filtros;
   }
@@ -255,7 +282,7 @@ export class Relatorios implements OnInit {
   private baixarResposta(resposta: HttpResponse<Blob>, fallback: string, tipoEsperado: string, formato: string): void {
     const blob = resposta.body;
     const contentType = resposta.headers.get('Content-Type') || blob?.type;
-    if (!blob || !contentType?.toLowerCase().includes(tipoEsperado)) {
+    if (!blob || blob.size === 0 || contentType?.split(';')[0].trim().toLowerCase() !== tipoEsperado) {
       this.erroExportacao = `Não foi possível gerar o relatório em ${formato}. Tente novamente.`;
       return;
     }

@@ -52,12 +52,12 @@ export class RelatorioService {
   }
 
   consultarBusca(filtros: FiltrosBuscaAtiva) {
-    return this.http.get<{dados: PacienteRelatorioLocal[]; revisaoOuSelecaoInconclusiva: number}>(
+    return this.http.get<{dados: PacienteRelatorioLocal[]; revisaoOuSelecaoInconclusiva: number; periodo?: string}>(
       `${this.apiUrl}/busca-ativa`, {params: this.parametros(filtros)});
   }
 
   consultarGrupos(filtros: FiltrosFrequenciaGrupos) {
-    return this.http.get<{dados: SessaoRelatorioLocal[]; sessoesPendentes: number; media: number | null}>(
+    return this.http.get<{dados: SessaoRelatorioLocal[]; sessoesPendentes: number; media: number | null; participacoesDesconsideradas?: number; periodo?: string}>(
       `${this.apiUrl}/frequencia-grupos`, {params: this.parametros(filtros)});
   }
 

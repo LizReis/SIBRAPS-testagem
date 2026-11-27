@@ -1,7 +1,8 @@
 import { interpretarErroHttp } from '../../services/erro-http';
 import { DatePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, DestroyRef, inject, OnInit } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { finalize } from 'rxjs';
@@ -15,6 +16,11 @@ interface EventoAuditoria {
   ocorridoEm: string;
   perfil: string;
   destino: string | null;
+  descricao?: string | null;
+  pacienteId?: string | null;
+  usuarioId?: string;
+  situacao?: string;
+  quantidade?: number;
 }
 
 @Component({
@@ -32,6 +38,7 @@ interface EventoAuditoria {
 })
 export class BuscaAtivaLocal implements OnInit {
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly destroy = inject(DestroyRef);
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
   private readonly usuario = inject(UsuarioLogadoService);
@@ -50,30 +57,46 @@ export class BuscaAtivaLocal implements OnInit {
   auditoria?: {content: EventoAuditoria[]; totalPages: number};
   pagina = 0;
   private requisicaoLista?: string;
-  private readonly requisicoes = new Map<string, string>();
+  exigeConsulta = false;
+  consultandoAuditoria = false;
+  erroAuditoria = '';
+  pendente?: {alerta:AlertaLocal; acao:'visualizacao'|'encaminhamento'; dados:object; requisicao:string; sucesso:()=>void};
+  get bloqueado(): boolean { return this.registrando || this.consultando || this.exigeConsulta || !!this.pendente; }
+  get encaminhamentoValido(): boolean {
+    return this.podeEncaminhar && !!this.selecionado && this.selecionado.acao !== 'REVISAO_HISTORICA' &&
+      this.destino.trim().length > 0 && this.destino.trim().length <= 200 &&
+      this.descricao.trim().length >= 10 && this.descricao.trim().length <= 1000 && !this.bloqueado;
+  }
 
   ngOnInit() {
-    this.usuario.obterUsuarioLogado().subscribe({
+    this.usuario.obterUsuarioLogado().pipe(takeUntilDestroyed(this.destroy)).subscribe({
       next: u => {
         this.podeEncaminhar = ['ADMINISTRADOR', 'PROFISSIONAL'].includes(u.tipoUsuario);
         this.podeAuditar = u.tipoUsuario === 'ADMINISTRADOR';
+        this.cdr.markForCheck();
       },
       error: () => {
         this.podeEncaminhar = this.podeAuditar = false;
+        this.auditoria = undefined;
+        this.cdr.markForCheck();
       },
     });
     this.carregar();
   }
 
   carregar() {
+    if (this.registrando || this.consultando || this.pendente) return;
     this.consultando = true;
     this.erro = '';
     this.busca = undefined;
+    this.selecionado = undefined;
+    this.destino = this.descricao = '';
+    this.exigeConsulta = true;
     this.requisicaoLista ??= crypto.randomUUID();
     this.http.get<BuscaLocal>(`${raizClinica}/pacientes/busca-ativa`, {params: {requisicao: this.requisicaoLista}})
-      .pipe(finalize(() => this.consultando = false)).subscribe({
-        next: busca => { this.busca = busca; this.requisicaoLista = undefined; },
-        error: () => this.erro = 'Não foi possível consultar a busca ativa.',
+      .pipe(takeUntilDestroyed(this.destroy), finalize(() => { this.consultando = false; this.cdr.markForCheck(); })).subscribe({
+        next: busca => { this.busca = busca; this.requisicaoLista = undefined; this.exigeConsulta = false; },
+        error: e => this.erro = interpretarErroHttp(e,{padrao:'Não foi possível consultar a busca ativa.'}).mensagem,
       });
   }
 
@@ -84,6 +107,7 @@ export class BuscaAtivaLocal implements OnInit {
   }
 
   preparar(alerta: AlertaLocal) {
+    if (this.bloqueado || !this.podeEncaminhar || alerta.acao === 'REVISAO_HISTORICA' || !this.busca?.alertas.includes(alerta)) return;
     this.selecionado = alerta;
     this.destino = '';
     this.descricao = '';
@@ -91,7 +115,7 @@ export class BuscaAtivaLocal implements OnInit {
   }
 
   encaminhar() {
-    if (!this.selecionado || !this.destino.trim() || this.descricao.trim().length < 10) return;
+    if (!this.selecionado || !this.encaminhamentoValido) return;
     this.registrar(this.selecionado, 'encaminhamento',
       {destino: this.destino.trim(), descricao: this.descricao.trim()}, () => {
         this.selecionado = undefined;
@@ -100,30 +124,49 @@ export class BuscaAtivaLocal implements OnInit {
   }
 
   carregarAuditoria(pagina: number) {
-    if (!this.podeAuditar || pagina < 0) return;
+    if (!this.podeAuditar || pagina < 0 || this.consultandoAuditoria) return;
+    this.consultandoAuditoria = true;
+    this.auditoria = undefined;
+    this.erroAuditoria = '';
     this.http.get<{content: EventoAuditoria[]; totalPages: number}>(`${raizClinica}/auditoria/busca-ativa`,
-      {params: {pagina}}).subscribe({
-      next: dados => { this.auditoria = dados; this.pagina = pagina; },
-      error: () => this.erro = 'Não foi possível consultar a auditoria da unidade.',
+      {params: {pagina}}).pipe(takeUntilDestroyed(this.destroy),finalize(()=>{
+        this.consultandoAuditoria=false;this.cdr.markForCheck();
+      })).subscribe({
+      next: dados => { if(this.podeAuditar){this.auditoria = dados; this.pagina = pagina;} },
+      error: e => this.erroAuditoria = interpretarErroHttp(e,{padrao:'Não foi possível consultar a auditoria da unidade.'}).mensagem,
     });
   }
 
-  private registrar(alerta: AlertaLocal, acao: string, dados: object, sucesso: () => void) {
-    if (this.registrando) return;
-    this.registrando = true;
-    this.erro = '';
-    const chave = JSON.stringify([alerta.vinculo, alerta.versao, acao, dados]);
-    const requisicao = this.requisicoes.get(chave) ?? crypto.randomUUID();
-    this.requisicoes.set(chave, requisicao);
+  private registrar(alerta: AlertaLocal, acao: 'visualizacao'|'encaminhamento', dados: object, sucesso: () => void) {
+    if (this.bloqueado || !this.busca?.alertas.includes(alerta) ||
+        (acao==='encaminhamento' && (!this.podeEncaminhar || alerta.acao==='REVISAO_HISTORICA'))) return;
+    this.pendente={alerta,acao,dados,requisicao:crypto.randomUUID(),sucesso};
+    this.enviarPendente();
+  }
+
+  /** Recuperação explicitamente solicitada da MESMA operação, com mesma chave RNF17. */
+  confirmarResultado():void {
+    if(this.pendente && !this.registrando &&
+      (this.pendente.acao==='visualizacao' || this.podeEncaminhar)) this.enviarPendente();
+  }
+
+  private enviarPendente():void {
+    const p=this.pendente;
+    if(!p||this.registrando)return;
+    this.registrando=true;this.erro='';
     this.http.post(
-      `${raizClinica}/pacientes/${alerta.idPublico}/vinculos/${alerta.vinculo}/busca-ativa/${acao}`,
-      {...dados, version: alerta.versao, requisicao})
-      .pipe(finalize(() => this.registrando = false)).subscribe({
-        next: () => { this.requisicoes.delete(chave); sucesso(); },
-        error: e => {
-          if (e.status >= 400 && e.status < 500) this.requisicoes.delete(chave);
-          this.erro = interpretarErroHttp(e, { escrita: true, padrao: 'Não foi possível registrar esta ação.' }).mensagem;
-          this.cdr.markForCheck();
+      `${raizClinica}/pacientes/${p.alerta.idPublico}/vinculos/${p.alerta.vinculo}/busca-ativa/${p.acao}`,
+      {...p.dados,version:p.alerta.versao,requisicao:p.requisicao})
+      .pipe(takeUntilDestroyed(this.destroy),finalize(()=>{this.registrando=false;this.cdr.markForCheck();})).subscribe({
+        next:()=>{
+          this.pendente=undefined;this.exigeConsulta=true;this.auditoria=undefined;
+          p.sucesso();
+        },
+        error:e=>{
+          this.exigeConsulta=true;
+          const status=e?.status;
+          if(typeof status==='number'&&status>=400&&status<500&&status!==408&&status!==429)this.pendente=undefined;
+          this.erro=interpretarErroHttp(e,{escrita:true,padra:'Não foi possível registrar esta ação.'}).mensagem;
         },
       });
   }

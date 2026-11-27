@@ -5,10 +5,10 @@
   </header>
 
   <div class="report-tabs" role="tablist" aria-label="Tipos de relatório">
-    <button id="tab-busca-ativa" type="button" role="tab" [attr.aria-selected]="abaAtiva === 'buscaAtiva'" aria-controls="painel-busca-ativa" [class.active]="abaAtiva === 'buscaAtiva'" (click)="selecionarAba('buscaAtiva')">
+    <button id="tab-busca-ativa" type="button" role="tab" [attr.aria-selected]="abaAtiva === 'buscaAtiva'" aria-controls="painel-busca-ativa" [class.active]="abaAtiva === 'buscaAtiva'" [disabled]="exportandoPdf" (click)="selecionarAba('buscaAtiva')">
       <span class="material-symbols-outlined" aria-hidden="true">groups</span>Lista de busca ativa
     </button>
-    <button id="tab-frequencia" type="button" role="tab" [attr.aria-selected]="abaAtiva === 'frequenciaGrupo'" aria-controls="painel-frequencia" [class.active]="abaAtiva === 'frequenciaGrupo'" (click)="selecionarAba('frequenciaGrupo')">
+    <button id="tab-frequencia" type="button" role="tab" [attr.aria-selected]="abaAtiva === 'frequenciaGrupo'" aria-controls="painel-frequencia" [class.active]="abaAtiva === 'frequenciaGrupo'" [disabled]="exportandoPdf" (click)="selecionarAba('frequenciaGrupo')">
       <span class="material-symbols-outlined" aria-hidden="true">calendar_month</span>Frequência de grupo
     </button>
 
@@ -21,8 +21,8 @@
     <section class="card filter-card" aria-labelledby="filtros-busca-title">
       <h2 id="filtros-busca-title" class="filter-title"><span class="material-symbols-outlined" aria-hidden="true">filter_alt</span>Filtros</h2>
       <div class="filter-grid three-columns">
-        <label class="field"><span>Período</span><select [(ngModel)]="periodoBusca" (change)="carregarPrevia()"><option *ngFor="let periodo of periodos" [value]="periodo">{{ periodo }}</option></select></label>
-        <label class="field"><span>Profissional</span><select [(ngModel)]="profissionalSelecionado" (change)="carregarPrevia()"><option value="">Todos os profissionais</option><option *ngFor="let profissional of profissionais" [value]="profissional.idPublico">{{ profissional.nome }}</option></select></label>        <label class="field"><span>Tipo de acompanhamento</span><select [(ngModel)]="tipoAcompanhamentoSelecionado" (change)="carregarPrevia()"><option *ngFor="let tipo of tiposAcompanhamento" [value]="tipo">{{ tipo }}</option></select></label>
+        <label class="field"><span>Período da última presença</span><select [(ngModel)]="periodoBusca" [disabled]="exportandoPdf" (change)="carregarPrevia()"><option *ngFor="let periodo of periodos" [value]="periodo">{{ periodo }}</option></select></label>
+        <label class="field"><span>Profissional</span><select [(ngModel)]="profissionalSelecionado" [disabled]="exportandoPdf" (change)="carregarPrevia()"><option value="">Todos os profissionais</option><option *ngFor="let profissional of profissionais" [value]="profissional.idPublico">{{ profissional.nome }}</option></select></label>        <label class="field"><span>Tipo de acompanhamento</span><select [(ngModel)]="tipoAcompanhamentoSelecionado" [disabled]="exportandoPdf" (change)="carregarPrevia()"><option *ngFor="let tipo of tiposAcompanhamento" [value]="tipo">{{ tipo }}</option></select></label>
       </div>
       <div class="export-row"><span>Exportar como:</span><div class="export-actions"><ng-container *ngTemplateOutlet="exportButtons"></ng-container></div></div>
 
@@ -31,14 +31,15 @@
     </section>
 
     <section class="card table-card" aria-labelledby="busca-title">
-      <header class="card-header"><div><h2 id="busca-title">Pacientes em busca ativa</h2><p>{{ contratoExperimental ? "Alertas comprovados da unidade." : "Somente pacientes com classificação vermelha." }}</p></div><span class="count-badge">{{ pacientesFiltrados.length }} paciente(s)</span></header>
-      <p *ngIf="quantidadeEmConferencia" role="status">{{ quantidadeEmConferencia }} registro(s) requerem conferência.</p>
+      <header class="card-header"><div><h2 id="busca-title">Pacientes em busca ativa</h2><p>{{ contratoExperimental ? "Alertas comprovados da unidade." : "Somente pacientes com classificação vermelha." }}</p></div><span class="count-badge">{{ buscandoRelatorio || erroConsulta ? "Não disponível" : pacientesFiltrados.length + " paciente(s)" }}</span></header>
+      <p *ngIf="periodoConfirmado">Período consultado: {{ periodoConfirmado }}</p>
+      <p *ngIf="quantidadeEmConferencia" role="status">{{ quantidadeEmConferencia }} registro(s) requerem conferência e não integram a lista exportada.</p>
       <div class="table-wrapper">
         <table>
-          <thead><tr><th>Nome completo</th><th>CNS/CPF</th><th>Data do último atendimento</th><th>Faltas consecutivas</th><th>Tipo de acompanhamento</th><th>Contato telefônico</th></tr></thead>
+          <thead><tr><th>Nome completo</th><th>CNS/CPF</th><th>Última presença</th><th>Faltas consecutivas</th><th>Tipo de acompanhamento</th><th>Contato telefônico</th></tr></thead>
           <tbody>
             <tr *ngFor="let paciente of pacientesFiltrados"><td class="primary-cell">{{ paciente.nome }}</td><td>{{ paciente.documento }}</td><td>{{ paciente.dataUltimoAtendimento }}</td><td><span class="absence-badge">{{ paciente.faltasConsecutivas ?? "Não confirmado" }}</span></td><td>{{ paciente.tipoAcompanhamento }}</td><td>{{ paciente.telefone }}</td></tr>
-            <tr *ngIf="!buscandoRelatorio && !erroConsulta && pacientesFiltrados.length === 0"><td colspan="6" class="empty-state">Nenhum paciente encontrado com os filtros selecionados.</td></tr>
+            <tr *ngIf="!buscandoRelatorio && !erroConsulta && pacientesFiltrados.length === 0"><td colspan="6" class="empty-state">Nenhum paciente com critérios comprovados nestes filtros.</td></tr>
           </tbody>
         </table>
       </div>
@@ -49,18 +50,20 @@
     <section class="card filter-card" aria-labelledby="filtros-frequencia-title">
       <h2 id="filtros-frequencia-title" class="filter-title"><span class="material-symbols-outlined" aria-hidden="true">filter_alt</span>Filtros</h2>
       <div class="filter-grid two-columns">
-        <label class="field"><span>Grupo terapêutico</span><select [(ngModel)]="grupoSelecionado" (change)="carregarPrevia()"><option [ngValue]="null">Todos os grupos</option><option *ngFor="let grupo of grupos" [ngValue]="grupo.id">{{ grupo.tema }}</option></select></label>        <label class="field"><span>Período</span><select [(ngModel)]="periodoFrequencia" (change)="carregarPrevia()"><option *ngFor="let periodo of periodos" [value]="periodo">{{ periodo }}</option></select></label>
+        <label class="field"><span>Grupo terapêutico</span><select [(ngModel)]="grupoSelecionado" [disabled]="exportandoPdf" (change)="carregarPrevia()"><option [ngValue]="null">Todos os grupos</option><option *ngFor="let grupo of grupos" [ngValue]="grupo.id">{{ grupo.tema }}</option></select></label>        <label class="field"><span>Período</span><select [(ngModel)]="periodoFrequencia" [disabled]="exportandoPdf" (change)="carregarPrevia()"><option *ngFor="let periodo of periodosFrequencia" [value]="periodo">{{ periodo }}</option></select></label>
       </div>
       <div class="export-row"><span>Exportar como:</span><div class="export-actions"><ng-container *ngTemplateOutlet="exportButtons"></ng-container></div></div>
       <p *ngIf="erroExportacao" class="export-error" role="alert">{{ erroExportacao }}</p>
     </section>
 
     <section class="card table-card" aria-labelledby="frequencia-title">
-      <header class="card-header"><div><h2 id="frequencia-title">Frequência por sessão</h2><p>{{ sessoesFiltradas.length }} sessão(ões) · presença média {{ formatarPercentual(mediaPresenca) }}</p></div></header>
-      <p *ngIf="quantidadeEmConferencia" role="status">{{ quantidadeEmConferencia }} registro(s) requerem conferência.</p>
+      <header class="card-header"><div><h2 id="frequencia-title">Frequência por sessão</h2><p>{{ buscandoRelatorio || erroConsulta ? 'Dados indisponíveis' : sessoesFiltradas.length + ' sessão(ões) comprovada(s) · presença média ' + formatarPercentual(mediaPresenca) }}</p></div></header>
+      <p *ngIf="periodoConfirmado">Período consultado: {{ periodoConfirmado }}</p>
+      <p *ngIf="quantidadeEmConferencia" role="status">{{ quantidadeEmConferencia }} sessão(ões) requerem conferência. Exportação integral indisponível enquanto houver pendência.</p>
+      <p *ngIf="participacoesDesconsideradas" role="status">{{ participacoesDesconsideradas }} participação(ões) desconsiderada(s) nos cálculos por resolução; registros originais preservados.</p>
       <div class="table-wrapper">
         <table class="frequency-table">
-          <thead><tr><th>Grupo</th><th>Data</th><th>Profissional / Coordenador</th><th>Presentes</th><th>Ausentes</th><th>Taxa de presença</th></tr></thead>
+          <thead><tr><th>Grupo</th><th>Data</th><th>Responsável histórico pela sessão</th><th>Presentes</th><th>Ausentes</th><th>Taxa de presença</th></tr></thead>
           <tbody>
             <tr *ngFor="let sessao of sessoesFiltradas">
               <td class="primary-cell">{{ sessao.grupo }}</td><td>{{ sessao.data }}</td><td>{{ sessao.profissionalResponsavel }}</td>
@@ -68,7 +71,7 @@
               <td><strong class="absent-count"><span class="sr-only">Ausentes: </span>{{ sessao.ausentes.length }}</strong><small>{{ resumirNomes(sessao.ausentes) }}</small></td>
               <td><div class="attendance-rate"><div class="rate-track"><span class="rate-fill" [class.low]="(calcularTaxa(sessao) ?? 100) < 75" [style.width.%]="calcularTaxa(sessao)"></span></div><strong>{{ formatarPercentual(calcularTaxa(sessao)) }}</strong></div></td>
             </tr>
-            <tr *ngIf="!buscandoRelatorio && !erroConsulta && sessoesFiltradas.length === 0"><td colspan="6" class="empty-state">Nenhuma sessão encontrada com os filtros selecionados.</td></tr>
+            <tr *ngIf="!buscandoRelatorio && !erroConsulta && sessoesFiltradas.length === 0"><td colspan="6" class="empty-state">Nenhuma sessão comprovada disponível nestes filtros.</td></tr>
           </tbody>
         </table>
       </div>
@@ -76,7 +79,7 @@
   </section>
 
   <ng-template #exportButtons>
-    <button type="button" class="export-button" [class.active]="formatoSelecionado === 'PDF'" [attr.aria-pressed]="formatoSelecionado === 'PDF'" [disabled]="exportandoPdf" (click)="selecionarFormato('PDF')"><span class="material-symbols-outlined" aria-hidden="true">picture_as_pdf</span>{{ exportandoPdf && formatoSelecionado === 'PDF' ? 'Gerando PDF...' : 'PDF' }}</button>    <button type="button" class="export-button" [class.active]="formatoSelecionado === 'Excel'" [attr.aria-pressed]="formatoSelecionado === 'Excel'" [disabled]="exportandoPdf" (click)="selecionarFormato('Excel')"><span class="material-symbols-outlined" aria-hidden="true">table_view</span>{{ exportandoPdf && formatoSelecionado === 'Excel' ? 'Gerando Excel...' : 'Excel' }}</button>
+    <button type="button" class="export-button" [class.active]="formatoSelecionado === 'PDF'" [attr.aria-pressed]="formatoSelecionado === 'PDF'" [disabled]="exportacaoBloqueada" (click)="selecionarFormato('PDF')"><span class="material-symbols-outlined" aria-hidden="true">picture_as_pdf</span>{{ exportandoPdf && formatoSelecionado === 'PDF' ? 'Gerando PDF...' : 'PDF' }}</button>    <button type="button" class="export-button" [class.active]="formatoSelecionado === 'Excel'" [attr.aria-pressed]="formatoSelecionado === 'Excel'" [disabled]="exportacaoBloqueada" (click)="selecionarFormato('Excel')"><span class="material-symbols-outlined" aria-hidden="true">table_view</span>{{ exportandoPdf && formatoSelecionado === 'Excel' ? 'Gerando Excel...' : 'Excel' }}</button>
     <button *ngIf="!contratoExperimental" type="button" class="export-button" [class.active]="formatoSelecionado === 'CSV'" [attr.aria-pressed]="formatoSelecionado === 'CSV'" (click)="selecionarFormato('CSV')"><span class="material-symbols-outlined" aria-hidden="true">download</span>CSV</button>
   </ng-template>
 </main>
