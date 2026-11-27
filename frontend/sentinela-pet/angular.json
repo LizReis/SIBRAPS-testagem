@@ -47,6 +47,10 @@
               ],
               "outputHashing": "all",
               "optimization": {
+                "styles": {
+                  "minify": true,
+                  "inlineCritical": false
+                },
                 "fonts": {
                   "inline": false
                 }

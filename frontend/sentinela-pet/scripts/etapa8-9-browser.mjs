@@ -58,9 +58,22 @@ async function layout(page) {
   }
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1 || document.documentElement.scrollHeight>innerHeight+2);
   assert(!overflow,'A página autenticada não deve rolar como um todo; apenas suas áreas internas');
-  await page.evaluate(()=>document.fonts.ready);
-  const icon=await page.locator('.menu-button .bi').evaluate(e=>({content:getComputedStyle(e,'::before').content,font:getComputedStyle(e,'::before').fontFamily,loaded:document.fonts.check('16px bootstrap-icons'),text:e.textContent.trim()}));
-  assert(icon.loaded && icon.font.includes('bootstrap-icons') && !['none','normal','""'].includes(icon.content) && !icon.text,'Ícone local deve aparecer sem texto de ligadura');
+  await page.waitForFunction(()=>{
+    const links=Array.from(document.querySelectorAll('link[rel="stylesheet"]')).filter(l=>new URL(l.href).origin===location.origin && /\/styles[^/]*\.css$/.test(new URL(l.href).pathname));
+    return links.length>0 && links.every(l=>l.sheet && !l.disabled && (!l.media||matchMedia(l.media).matches));
+  });
+  const icon=await page.locator('.menu-button .bi').evaluate(async e=>{
+    const pseudo=getComputedStyle(e,'::before');
+    const content=pseudo.content, font=pseudo.fontFamily;
+    const glyph=content.startsWith('"')&&content.endsWith('"')?content.slice(1,-1):'';
+    let faces=[], error='';
+    try { faces=await document.fonts.load('16px "bootstrap-icons"',glyph||'a'); }
+    catch(err){error=String(err);}
+    await document.fonts.ready;
+    return {content,font,loaded:faces.some(f=>f.status==='loaded'&&f.family.includes('bootstrap-icons')),text:e.textContent.trim(),error,
+      links:Array.from(document.querySelectorAll('link[rel="stylesheet"]')).filter(l=>new URL(l.href).origin===location.origin).map(l=>({path:new URL(l.href).pathname,media:l.media,hasSheet:!!l.sheet}))};
+  });
+  assert(icon.loaded && icon.font.includes('bootstrap-icons') && !['none','normal','""'].includes(icon.content) && !icon.text,'Ícone local deve aparecer sem texto de ligadura: '+JSON.stringify(icon));
 }
 async function shot(page, name) {
   await page.screenshot({path:resolve(output,name+'.png'),animations:'disabled',timeout:10000});
@@ -69,7 +82,9 @@ async function scenario(name, viewport, perfil, run) {
   const context = await browser.newContext({viewport,locale:'pt-BR',timezoneId:'America/Bahia',reducedMotion:'reduce'});
   const page = await context.newPage();
   page.setDefaultTimeout(10000);
-  const errors = [], unexpected = [], writes = [];
+  const errors = [], unexpected = [], writes = [], assets = [];
+  page.on('response', r=>{const u=new URL(r.url());if(u.origin===base&&/\.(css|woff2?|ttf)$/.test(u.pathname))assets.push({path:u.pathname,status:r.status()});});
+  page.on('requestfailed', r=>{const u=new URL(r.url());if(u.origin===base&&/\.(css|woff2?|ttf)$/.test(u.pathname))assets.push({path:u.pathname,error:r.failure()?.errorText});});
   let filaFalha = false;
   page.on('pageerror', e => errors.push(e.message));
   await context.route('**/*', async route => {
@@ -94,7 +109,7 @@ async function scenario(name, viewport, perfil, run) {
     assert.deepEqual(errors,[],'Erros JavaScript não tratados');
     results.push({name,viewport,perfil,status:'PASS'});
   } catch (e) {
-    results.push({name,viewport,perfil,status:'FAIL',message:String(e),stack:e instanceof Error ? e.stack : undefined,errors,unexpected});
+    results.push({name,viewport,perfil,status:'FAIL',message:String(e),stack:e instanceof Error ? e.stack : undefined,errors,unexpected,assets});
     await shot(page,name+'-failure').catch(()=>{});
   } finally { await context.close(); }
 }
