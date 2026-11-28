@@ -44,9 +44,9 @@
       <span>Página {{ c.pagina+1 }}</span><button type="button" class="export-button" [disabled]="salvando||carregando||(c.pagina+1)*c.tamanho>=c.total" (click)="carregar(c.pagina+1,paginaA)">Próxima</button></div>
     <div *ngIf="grupo as g" class="card filter-card">
       <h3>Selecionar registros distintos</h3>
-      <label class="field">Fato válido<select [(ngModel)]="valido" (ngModelChange)="confirmou=false" [disabled]="bloqueado"><option [ngValue]="undefined">Selecione</option>
+      <label class="field">Fato válido<select aria-label="Fato válido" [(ngModel)]="valido" (ngModelChange)="confirmou=false" [disabled]="bloqueado"><option [ngValue]="undefined">Selecione</option>
         <option *ngFor="let f of g.fatos" [ngValue]="f">{{ f.referencia.fonte }} · {{ f.referencia.id }} — {{ f.presente?'Presente':'Faltou' }}</option></select></label>
-      <label class="field">Fato a desconsiderar<select [(ngModel)]="desconsiderado" (ngModelChange)="confirmou=false" [disabled]="bloqueado"><option [ngValue]="undefined">Selecione</option>
+      <label class="field">Fato a desconsiderar<select aria-label="Fato a desconsiderar" [(ngModel)]="desconsiderado" (ngModelChange)="confirmou=false" [disabled]="bloqueado"><option [ngValue]="undefined">Selecione</option>
         <option *ngFor="let f of g.fatos" [ngValue]="f" [disabled]="!f.podeDesconsiderar">{{ f.referencia.fonte }} · {{ f.referencia.id }} — {{ f.presente?'Presente':'Faltou' }}</option></select></label>
       <label><input type="checkbox" [(ngModel)]="confirmou" [disabled]="bloqueado"> Conferi as evidências e confirmo a duplicidade; somente a contribuição indevida será desconsiderada.</label>
       <p *ngIf="ticket">O servidor exige que o fato desconsiderado corresponda à solicitação aprovada.</p>

@@ -25,6 +25,17 @@ describe('ReconciliacaoPaciente',()=>{
       {provide:RevisaoClinicaService,useValue:api}]}).compileComponents();
   });
   function iniciar(){const f=TestBed.createComponent(ReconciliacaoPaciente);f.detectChanges();return f.componentInstance;}
+  it('nomeia os seletores de fatos de forma inequívoca e mantém opções protegidas indisponíveis',async()=>{
+    const f=TestBed.createComponent(ReconciliacaoPaciente);f.detectChanges();
+    f.componentInstance.selecionar(g);f.detectChanges();await f.whenStable();
+    const valido=f.nativeElement.querySelector('select[aria-label="Fato válido"]') as HTMLSelectElement;
+    const desconsiderado=f.nativeElement.querySelector('select[aria-label="Fato a desconsiderar"]') as HTMLSelectElement;
+    expect(valido).not.toBeNull();expect(desconsiderado).not.toBeNull();
+    expect(valido.options.length).toBe(3);expect(desconsiderado.options.length).toBe(3);
+    expect(valido.options[1].disabled).toBe(false);
+    expect(desconsiderado.options[1].disabled).toBe(true);
+    expect(desconsiderado.options[2].disabled).toBe(false);
+  });
   it('exige dois fatos distintos, confirmação, justificativa e proteção do fato válido',()=>{
     const c=iniciar();c.selecionar(g);c.valido=g.fatos[0];c.desconsiderado=g.fatos[0];c.justificativa='Justificativa sintética suficiente';c.confirmou=true;
     c.resolver();expect(api.resolverFrequencia).not.toHaveBeenCalled();

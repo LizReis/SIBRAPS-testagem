@@ -836,9 +836,19 @@ try {
     await p.getByRole('link',{name:'Conferir fatos para resolução vinculada à decisão'}).click();
     await p.getByRole('heading',{name:'Resoluções de frequência',exact:true}).waitFor();
     await p.getByRole('button',{name:'Conferir fatos',exact:true}).click();
+    await p.getByRole('heading',{name:'Selecionar registros distintos',exact:true}).waitFor();
     const label=r=>r.fonte+' · '+r.id+' — Faltou';
-    await p.getByLabel('Fato válido',{exact:true}).selectOption({label:label(refsDup[0])});
-    await p.getByLabel('Fato a desconsiderar',{exact:true}).selectOption({label:label(refsDup[1])});
+    const valido=p.getByRole('combobox',{name:'Fato válido',exact:true});
+    const desconsiderado=p.getByRole('combobox',{name:'Fato a desconsiderar',exact:true});
+    for(const campo of [valido,desconsiderado]){
+      await campo.waitFor();
+      assert.equal(await campo.count(),1,'Seletor deve possuir nome acessível inequívoco');
+      assert.equal(await campo.locator('option').count(),3,'Seleção inicial e dois fatos');
+    }
+    await valido.selectOption({label:label(refsDup[0])});
+    await desconsiderado.selectOption({label:label(refsDup[1])});
+    assert.equal(await valido.locator('option:checked').innerText(),label(refsDup[0]));
+    assert.equal(await desconsiderado.locator('option:checked').innerText(),label(refsDup[1]));
     const enviar=p.getByRole('button',{name:'Registrar resolução',exact:true});
     await p.getByLabel('Justificativa da operação (10 a 2.000 caracteres)').fill(justificativaResolucao);
     assert(await enviar.isDisabled(),'Confirmação explícita de duplicidade obrigatória');
@@ -916,6 +926,10 @@ try {
         dataNavegador:new Date().toISOString()
       })).catch(()=>null);
       groupForms.push({...estado,submit:await p.locator('form button[type="submit"]').ariaSnapshot({timeout:2000}).catch(e=>String(e))});
+    }
+    if(/\/revisoes\/[^/]+\/resolucoes(?:\/|$)/.test(new URL(p.url()).pathname)){
+      const arvore=await p.locator('app-reconciliacao-paciente').ariaSnapshot({timeout:2000}).catch(e=>String(e));
+      await writeFile(resolve(output,'reconciliacao-acessibilidade-'+i+'.txt'),arvore,'utf8').catch(()=>{});
     }
     await shot(p,'falha-'+i).catch(()=>{});
   }
