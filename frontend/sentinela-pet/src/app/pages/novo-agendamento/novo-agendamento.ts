@@ -106,8 +106,9 @@ export class NovoAgendamento implements OnInit, OnDestroy {
           this.pacienteSelecionado = paciente;
           this.termoPesquisaPaciente = paciente.nome;
           this.resultadosPacientes = [paciente];
+          this.cdr.markForCheck();
         },
-        error: () => this.erroGeral = 'Não foi possível pré-selecionar o paciente informado.',
+        error: () => { this.erroGeral = 'Não foi possível pré-selecionar o paciente informado.'; this.cdr.markForCheck(); },
       });
     }
 
@@ -163,6 +164,7 @@ export class NovoAgendamento implements OnInit, OnDestroy {
             finalize(() => {
               this.buscandoPaciente = false;
               this.pesquisaRealizada = true;
+              this.cdr.markForCheck();
             }),
           );
         }),
@@ -170,6 +172,7 @@ export class NovoAgendamento implements OnInit, OnDestroy {
       )
       .subscribe((pacientes) => {
         this.resultadosPacientes = pacientes;
+        this.cdr.markForCheck();
       });
   }
 
@@ -195,6 +198,7 @@ export class NovoAgendamento implements OnInit, OnDestroy {
               }),
               finalize(() => {
                 this.consultandoHorarios = false;
+                this.cdr.markForCheck();
               }),
             );
         }),
@@ -203,6 +207,7 @@ export class NovoAgendamento implements OnInit, OnDestroy {
       .subscribe((payload) => {
         this.horariosPayload = payload;
         this.horarios = payload?.horarios ?? [];
+        this.cdr.markForCheck();
       });
   }
 
@@ -229,6 +234,7 @@ export class NovoAgendamento implements OnInit, OnDestroy {
     this.profissionalService.listarParaSelecao().subscribe({
       next: (profissionais) => {
         this.profissionais = profissionais;
+        this.cdr.markForCheck();
       },
       error: (erro) => {
         this.erroGeral = interpretarErroHttp(erro, { padrao: 'Não foi possível carregar a lista de profissionais.' }).mensagem;
@@ -293,9 +299,11 @@ export class NovoAgendamento implements OnInit, OnDestroy {
         this.agendamentoService.sugerirDatasRemarcacao(id).subscribe({
           next: (datas) => {
             this.sugestoesRemarcacao = datas;
+            this.cdr.markForCheck();
           },
           error: () => {
             this.sugestoesRemarcacao = [];
+            this.cdr.markForCheck();
           },
         });
       },
@@ -324,11 +332,13 @@ export class NovoAgendamento implements OnInit, OnDestroy {
       .pipe(
         finalize(() => {
           this.consultandoVagas = false;
+          this.cdr.markForCheck();
         }),
       )
       .subscribe({
         next: (vagas) => {
           this.vagas = vagas;
+          this.cdr.markForCheck();
         },
         error: (erro) => {
           this.erroGeral = interpretarErroHttp(erro, { padrao: 'Não foi possível consultar as vagas disponíveis.' }).mensagem;

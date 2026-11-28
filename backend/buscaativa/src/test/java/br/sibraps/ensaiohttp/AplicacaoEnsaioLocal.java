@@ -49,6 +49,13 @@ public class AplicacaoEnsaioLocal {
         app.run();
     }
 
+    // Relógio clínico exclusivo deste servidor de ensaio; JWT mantém seu relógio real.
+    @Bean
+    @org.springframework.context.annotation.Primary
+    java.time.Clock relogioJornada() {
+        return java.time.Clock.fixed(java.time.Instant.parse("2026-11-24T22:00:00Z"), java.time.ZoneId.of("America/Bahia"));
+    }
+
     @Bean
     ApplicationRunner criarAtoresSinteticos(EntityManager em, TransactionTemplate tx, PasswordEncoder encoder) {
         return args -> {
@@ -68,6 +75,16 @@ public class AplicacaoEnsaioLocal {
                         u.setUnidadeAtuacao(UnidadeAtuacao.USF);
                         u.setUsfAtuacao(usf);
                         em.persist(u);
+                        if (perfil == TipoUsuario.PROFISSIONAL) {
+                            for (int dia = 24; dia <= 25; dia++) {
+                                var oferta = new com.pet.buscaativa.entities.DisponibilidadeExcecao();
+                                oferta.setUsuario(u);
+                                oferta.setData(java.time.LocalDate.of(2026, 11, dia));
+                                oferta.setTurno(com.pet.buscaativa.entities.enums.TurnoEnum.MANHA);
+                                oferta.setCapacidade(10);
+                                em.persist(oferta);
+                            }
+                        }
                     }
                 }
             });

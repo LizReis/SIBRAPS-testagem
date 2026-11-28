@@ -193,9 +193,11 @@ export class Agenda implements OnInit, OnDestroy {
             next: (profissionais) => {
                 this.profissionais = profissionais;
                 this.carregandoProfissionais = false;
+                this.cdr.markForCheck();
             },
             error: () => {
                 this.carregandoProfissionais = false;
+                this.cdr.markForCheck();
             },
         });
     }
@@ -522,6 +524,7 @@ export class Agenda implements OnInit, OnDestroy {
                 const i = this.agendamentos.findIndex((x) => x.id === atualizado.id);
                 if (i !== -1) this.agendamentos[i] = atualizado;
                 this.atualizandoId = null;
+                this.cdr.markForCheck();
             },
             error: (erro: HttpErrorResponse) => {
                 this.atualizandoId = null;
