@@ -923,6 +923,19 @@ try {
   };
   const auditoriaO=ticket=>get(adminB,revOrigem+'/'+ticket+'/origem/auditoria');
   const prontuarioO=()=>get(adminB,api+'/pacientes/'+po+'/prontuario');
+  async function conferirFilaOrigem(ticket,estado,aplicacaoOrigem,registroAplicacaoOrigem=null,registroReversaoOrigem=null){
+    const pagina=await get(adminB,fila+'?estado='+estado);
+    const item=pagina.itens.find(x=>x.ticket===ticket);
+    assert(item,'Solicitação deve constar na fila local: '+ticket);
+    assert.equal(item.paciente,po);assert.equal(item.vinculo,vo);assert.equal(item.registro,histOrigem);
+    assert.equal(item.revisaoOrigem,true);assert.equal(item.estado,estado);
+    assert.equal(item.aplicacao,'SEM_APLICACAO','Reconhecer origem não aplica resolução de duplicidade');
+    assert.equal(item.resolucaoAtiva,null);
+    assert.equal(item.aplicacaoOrigem,aplicacaoOrigem,'Estado específico de origem na fila');
+    assert.equal(item.registroAplicacaoOrigem,registroAplicacaoOrigem);
+    assert.equal(item.registroReversaoOrigem,registroReversaoOrigem);
+    return item;
+  }
   async function conferirFonteOrigem(){
     const atual=await get(adminB,agendaPath+'/'+fonteOrigem.id);
     assert.deepEqual(atual,fonteOrigem,'Reconhecimento não modifica o atendimento fonte');
@@ -1007,6 +1020,8 @@ try {
     assert.equal(audit.prova.versaoFonte,fonteOrigem.version);assert.equal(audit.prova.frequencia,'FALTOU');
     assert.equal(audit.estadoAplicacao,'SEM_APLICACAO');assert.equal(audit.integridadeEventos,true);
     assert.deepEqual(await prontuarioO(),antesOrigem);
+    const item=await conferirFilaOrigem(ticketOrigem,'APROVADA','SEM_APLICACAO');
+    assert.equal(item.decisao,decOrigem);
     const q=await abrirFilaOrigem('APROVADA');
     await q.getByRole('link',{name:'Consultar prova, aplicação e auditoria de origem',exact:true}).click();
     await q.getByRole('heading',{name:'Prova registrada na aprovação',exact:true}).waitFor();
@@ -1031,8 +1046,8 @@ try {
     assert.equal(pr.historico.filter(x=>x.id===histOrigem).length,1);
     await get(admin,revOrigem+'/'+ticketOrigem+'/origem/auditoria',404);
     await get(profB,revOrigem+'/'+ticketOrigem+'/origem/auditoria',403);
-    const filaO=(await get(adminB,fila+'?estado=APROVADA')).itens.find(x=>x.ticket===ticketOrigem);
-    assert.equal(filaO.aplicacao,'ORIGEM_RECONHECIDA');
+    const filaO=await conferirFilaOrigem(ticketOrigem,'APROVADA','ORIGEM_RECONHECIDA',apOrigem);
+    assert.equal(filaO.decisao,decOrigem);
     await shot(p,'origem-reconhecida');
   });
   await step('reversão e reabertura preservam trilha e exigem nova decisão',async()=>{
@@ -1044,6 +1059,7 @@ try {
     assert.equal(revertida.reversao.id,revEvento);assert.equal(revertida.reversao.justificativa,motivosOrigem.desfazer);
     assert.deepEqual(revertida.aplicacao,original.aplicacao);assert.deepEqual(revertida.decisao,original.decisao);
     assert(!(await conferirFonteOrigem()).historico.some(x=>x.id===histOrigem));
+    await conferirFilaOrigem(ticketOrigem,'APROVADA','REVERTIDA',apOrigem,revEvento);
     await shot(p,'origem-revertida');
     novoTicket=await comandoO(p,revOrigem+'/'+ticketOrigem+'/origem/reabrir','Reabrir revisão',motivosOrigem.reabrir);
     assert.notEqual(novoTicket,ticketOrigem);
@@ -1054,6 +1070,10 @@ try {
     assert.equal(nova.solicitacao.justificativa,motivosOrigem.reabrir);
     assert.deepEqual(anterior.reversao,revertida.reversao);
     assert.equal(anterior.integridadeEventos,true);assert.equal(nova.integridadeEventos,true);
+    const anteriorFila=await conferirFilaOrigem(ticketOrigem,'APROVADA','REVERTIDA',apOrigem,revEvento);
+    const novaFila=await conferirFilaOrigem(novoTicket,'PENDENTE','SEM_APLICACAO');
+    assert.equal(anteriorFila.novaSolicitacao,novoTicket);assert.equal(novaFila.solicitacaoAnterior,ticketOrigem);
+    assert.equal(novaFila.decisao,null);
     await p.getByRole('link',{name:novoTicket,exact:true}).click();
     await p.getByText('Aplicação: SEM APLICACAO',{exact:true}).waitFor();
     assert(await p.getByRole('button',{name:'Aplicar reconhecimento de origem',exact:true}).isDisabled());
@@ -1071,7 +1091,18 @@ try {
     assert.equal((await auditoriaO(ticketOrigem)).estadoAplicacao,'REVERTIDA');
     assert.deepEqual((await auditoriaO(ticketOrigem)).reversao,revertida.reversao);
     assert((await conferirFonteOrigem()).historico.some(x=>x.id===histOrigem&&x.origemCorrigida));
+    const antigaFila=await conferirFilaOrigem(ticketOrigem,'APROVADA','REVERTIDA',apOrigem,revEvento);
+    const atualFila=await conferirFilaOrigem(novoTicket,'APROVADA','ORIGEM_RECONHECIDA',novoReconhecimento);
+    assert.equal(antigaFila.decisao,decOrigem);assert.equal(atualFila.decisao,novaDec);
+    assert.equal(antigaFila.novaSolicitacao,novoTicket);assert.equal(atualFila.solicitacaoAnterior,ticketOrigem);
     await shot(q,'origem-nova-aplicacao');
+    await q.goto(base+'/pendencias-clinicas');
+    await q.getByLabel('Situação da decisão').selectOption('APROVADA');
+    const linhas=q.getByRole('row').filter({has:q.getByRole('cell',{name:nomeOrigem,exact:true})});
+    await linhas.getByRole('cell',{name:'Origem reconhecida',exact:true}).waitFor();
+    await linhas.getByRole('cell',{name:'Revertida',exact:true}).waitFor();
+    assert.equal(await linhas.count(),2,'As duas solicitações permanecem na fila');
+    await shot(q,'origem-fila-final');
   });
   assert.deepEqual(pageErrors,[],'Erros JavaScript não tratados');
   assert(!http.some(r=>r.status>=500),'Não deve haver erro técnico nas chamadas da interface');
