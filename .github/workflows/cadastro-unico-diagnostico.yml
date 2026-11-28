@@ -68,6 +68,10 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/sentinela-pet/package-lock.json
       - run: npm install --global npm@11.6.2
+      - name: Verificar sintaxe dos scripts de navegador
+        run: |
+          node --check scripts/etapa8-9-browser.mjs
+          node --check scripts/etapa8-10-integracao.mjs
       - run: npm ci
       - name: Compilacao de producao
         run: npm run build
