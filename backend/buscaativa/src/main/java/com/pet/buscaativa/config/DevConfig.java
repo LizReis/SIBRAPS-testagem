@@ -7,7 +7,9 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -96,10 +98,14 @@ public class DevConfig implements CommandLineRunner {
     private final Clock clock;
     private final PasswordEncoder passwordEncoder;
 
+    @Value("${SIBRAPS_DEV_FIXTURE_PASSWORD:}")
+    private String senhaDemonstracao;
+
     @Override
     @Transactional
     public void run(String... args) {
         LocalDate hoje = LocalDate.now(clock);
+        String senha = senhaDemonstracao.isBlank() ? UUID.randomUUID().toString() : senhaDemonstracao;
 
         // ---------------------------------------------------------------------
         // 1) USUÁRIOS / PROFISSIONAIS
@@ -107,6 +113,7 @@ public class DevConfig implements CommandLineRunner {
         Usuario admin = usuario(
                 "Administrador",
                 "admin@pet.com",
+                senha,
                 TipoUsuario.ADMINISTRADOR,
                 UnidadeAtuacao.USF
         );
@@ -114,6 +121,7 @@ public class DevConfig implements CommandLineRunner {
         Usuario joao = usuario(
                 "João Ferreira",
                 "profissional@pet.com",
+                senha,
                 TipoUsuario.PROFISSIONAL,
                 UnidadeAtuacao.CAPS_AD
         );
@@ -121,6 +129,7 @@ public class DevConfig implements CommandLineRunner {
         Usuario recepcao = usuario(
                 "Ana de Jesus",
                 "recepcao@pet.com",
+                senha,
                 TipoUsuario.RECEPCAO,
                 UnidadeAtuacao.CAPS_II
         );
@@ -128,6 +137,7 @@ public class DevConfig implements CommandLineRunner {
         Usuario maria = usuario(
                 "Maria Santos",
                 "maria.santos@pet.com",
+                senha,
                 TipoUsuario.PROFISSIONAL,
                 UnidadeAtuacao.CAPS_II
         );
@@ -135,6 +145,7 @@ public class DevConfig implements CommandLineRunner {
         Usuario pedro = usuario(
                 "Pedro Lima",
                 "pedro.lima@pet.com",
+                senha,
                 TipoUsuario.PROFISSIONAL,
                 UnidadeAtuacao.CAPS_I
         );
@@ -142,6 +153,7 @@ public class DevConfig implements CommandLineRunner {
         Usuario carla = usuario(
                 "Carla Souza",
                 "carla.souza@pet.com",
+                senha,
                 TipoUsuario.PROFISSIONAL,
                 UnidadeAtuacao.USF
         );
@@ -846,13 +858,14 @@ public class DevConfig implements CommandLineRunner {
     private Usuario usuario(
             String nome,
             String email,
+            String senha,
             TipoUsuario tipo,
             UnidadeAtuacao unidade) {
 
         Usuario usuario = new Usuario();
         usuario.setNome(nome);
         usuario.setEmail(email);
-        usuario.setSenha(passwordEncoder.encode("123456"));
+        usuario.setSenha(passwordEncoder.encode(senha));
         usuario.setTipoUsuario(tipo);
         usuario.setUnidadeAtuacao(unidade);
         return usuario;

@@ -5,7 +5,7 @@
 #
 # COMO EXECUTAR
 # 1) Inicie o backend em backend/buscaativa com o perfil dev.
-# 2) Execute os três logins da seção 02.
+# 2) Configure SIBRAPS_DEV_FIXTURE_PASSWORD no backend e no ambiente do REST Client; execute os três logins da seção 02.
 # 3) Execute /me para capturar os UUIDs dos perfis.
 # 4) Execute a listagem de unidades e confirme que existe pelo menos uma USF.
 # 5) Execute as requisições na ordem indicada dentro de cada cenário.
@@ -24,16 +24,16 @@
 
 # Credenciais criadas automaticamente por DevConfig no perfil dev
 @adminEmail = admin@pet.com
-@adminSenha = 123456
+@adminSenha = {{$processEnv SIBRAPS_DEV_FIXTURE_PASSWORD}}
 @profissionalEmail = profissional@pet.com
-@profissionalSenha = 123456
+@profissionalSenha = {{$processEnv SIBRAPS_DEV_FIXTURE_PASSWORD}}
 @recepcaoEmail = recepcao@pet.com
-@recepcaoSenha = 123456
+@recepcaoSenha = {{$processEnv SIBRAPS_DEV_FIXTURE_PASSWORD}}
 
 # Tokens: execute primeiro as requisições nomeadas loginAdmin, loginProfissional e loginRecepcao
-@adminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJidXNjYWF0aXZhLWFwaSIsInN1YiI6ImFkbWluQHBldC5jb20iLCJleHAiOjE3ODQ3NTUzNTF9.4pJwYBzfQydNzuxm7AdKxSCEuQ3QFGcxjOCV5wYXqMU
-@profissionalToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJidXNjYWF0aXZhLWFwaSIsInN1YiI6InByb2Zpc3Npb25hbEBwZXQuY29tIiwiZXhwIjoxNzg0NzU1OTExfQ.6mzXJ7HxOU8o-Fkhh2V6-wIFDI0mkyWTm0C88JWka40
-@recepcaoToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJidXNjYWF0aXZhLWFwaSIsInN1YiI6InJlY2VwY2FvQHBldC5jb20iLCJleHAiOjE3ODQ3NTU5NDB9.xFGOjibTgVC1UThIyx6MD9dmJRz76CqsqC1r5skjRAM
+@adminToken = {{loginAdmin.response.body.$.token}}
+@profissionalToken = {{loginProfissional.response.body.$.token}}
+@recepcaoToken = {{loginRecepcao.response.body.$.token}}
 
 # IDs públicos: execute /me de cada perfil ou a listagem de usuários
 @adminIdPublico = {{meAdmin.response.body.$.idPublico}}

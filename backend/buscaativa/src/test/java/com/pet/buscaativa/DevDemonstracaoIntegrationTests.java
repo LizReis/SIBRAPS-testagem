@@ -22,6 +22,7 @@ import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.context.ApplicationContext;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.pet.buscaativa.config.DevConfig;
@@ -68,6 +69,7 @@ class DevDemonstracaoIntegrationTests {
 
     @Test
     void inicializacaoLimpaProduzOrigensComprovadasERf22SemForcarGatilho() {
+        String senhaDemonstracao = UUID.randomUUID().toString();
         new WebApplicationContextRunner()
                 .withInitializer(context -> {
                     TestEnvironmentIsolation.apply(context.getEnvironment());
@@ -80,12 +82,17 @@ class DevDemonstracaoIntegrationTests {
                         "spring.profiles.active=test,dev,diagnostico-migracao",
                         "spring.datasource.url=jdbc:h2:mem:demo-" + UUID.randomUUID(),
                         "JWT_SECRET_BASE64=" + Base64.getEncoder().encodeToString(SecurityTestSupport.randomBytes()),
-                        "DEV_DB_PASSWORD=" + UUID.randomUUID(), "logging.level.root=ERROR")
+                        "DEV_DB_PASSWORD=" + UUID.randomUUID(), "logging.level.root=ERROR",
+                        "SIBRAPS_DEV_FIXTURE_PASSWORD=" + senhaDemonstracao)
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context.getBean(Clock.class).instant()).isEqualTo(relogioDemonstracao().instant());
                     // O runner de contexto não executa CommandLineRunner automaticamente.
                     context.getBean(DevConfig.class).run();
+                    var profissional = context.getBean(UsuarioRepository.class)
+                            .findByEmail("profissional@pet.com").orElseThrow();
+                    assertThat(context.getBean(PasswordEncoder.class)
+                            .matches(senhaDemonstracao, profissional.getSenha())).isTrue();
                     conferirInventario(context);
                     var fatos = context.getBean(TransactionTemplate.class).execute(tx ->
                             conferirFatos(context, context.getBean(EntityManager.class)));
