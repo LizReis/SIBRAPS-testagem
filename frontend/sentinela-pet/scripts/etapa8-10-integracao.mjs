@@ -401,6 +401,12 @@ try {
     }
     assert.equal(await p.locator('#data').getAttribute('min'),dataGrupo,'Data mínima do formulário deve acompanhar o relógio clínico');
     await form.and(p.locator('.ng-valid')).waitFor({timeout:5000});
+    const botaoSubmit=form.locator('button[type="submit"]');
+    assert.equal(await botaoSubmit.count(),1,'Formulário deve possuir exatamente um botão de envio');
+    assert.equal((await botaoSubmit.innerText()).trim(),'Agendar grupo','Rótulo visível do envio');
+    assert.equal(await botaoSubmit.locator('i').getAttribute('aria-hidden'),'true','Ícone decorativo não deve compor o nome acessível');
+    const nomeAcessivel=await botaoSubmit.ariaSnapshot();
+    assert.equal(await form.getByRole('button',{name:'Agendar grupo',exact:true}).count(),1,'Nome acessível esperado; árvore: '+nomeAcessivel);
     const enviar=form.getByRole('button',{name:'Agendar grupo',exact:true});
     await enviar.scrollIntoViewIfNeeded();
     await enviar.click({trial:true,timeout:5000});
@@ -499,7 +505,7 @@ try {
         erros:[...document.querySelectorAll('form small, .submit-error')].map(el=>el.textContent.trim()),
         dataNavegador:new Date().toISOString()
       })).catch(()=>null);
-      groupForms.push(estado);
+      groupForms.push({...estado,submit:await p.locator('form button[type="submit"]').ariaSnapshot({timeout:2000}).catch(e=>String(e))});
     }
     await shot(p,'falha-'+i).catch(()=>{});
   }
@@ -509,4 +515,4 @@ try {
   await writeFile(resolve(output,'resultados.json'),JSON.stringify({mode:'Spring Boot real, H2 em memória, sem mocks HTTP',results,http,pageErrors,groupRequests,groupForms},null,2));
 }
 console.log(JSON.stringify({results,http,pageErrors,groupRequests,groupForms},null,2));
-assert.equal(results.filter(r=>r.status==='PASS').length,14,'Todas as quatorze fases devem passar');
+if(!process.exitCode) assert.equal(results.filter(r=>r.status==='PASS').length,14,'Todas as quatorze fases devem passar');

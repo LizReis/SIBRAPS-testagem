@@ -41,6 +41,10 @@ describe('AgendarGrupoTerapeutico', () => {
     }
     await fixture.whenStable();
     expect(component.form.valid).toBe(true);
+    const botao = fixture.nativeElement.querySelector('form button[type="submit"]') as HTMLButtonElement;
+    expect(botao.textContent?.trim()).toBe('Agendar grupo');
+    expect(botao.querySelector('i')?.getAttribute('aria-hidden')).toBe('true');
+    expect(botao.disabled).toBe(false);
     fixture.nativeElement.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     expect(criar).toHaveBeenCalledExactlyOnceWith({
       tema: 'Grupo sintético', coordenadorId: 'prof-sintetico', recorrencia: 'UNICA',

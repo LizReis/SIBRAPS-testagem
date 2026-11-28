@@ -16,9 +16,9 @@
     <section class="toolbar card">
         <div class="date-control"><label for="dataReferencia">Data de referência</label>
             <div><button type="button" (click)="mudarDia(-1)" aria-label="Dia anterior"><i
-                        class="bi bi-chevron-left"></i></button><input id="dataReferencia" type="date"
+                        class="bi bi-chevron-left" aria-hidden="true"></i></button><input id="dataReferencia" type="date"
                     [(ngModel)]="dataSelecionada" (change)="carregar()"><button type="button" (click)="mudarDia(1)"
-                    aria-label="Próximo dia"><i class="bi bi-chevron-right"></i></button><button type="button"
+                    aria-label="Próximo dia"><i class="bi bi-chevron-right" aria-hidden="true"></i></button><button type="button"
                     class="today" (click)="irParaHoje()">Hoje</button></div>
         </div>
         <div class="filters"><label><span>Status</span><select [(ngModel)]="filtroStatus">
@@ -31,7 +31,7 @@
                     <option value="">Todos os coordenadores</option>@for (nome of coordenadores; track nome) { <option
                         [value]="nome">{{ nome }}</option> }
                 </select></label><label><span>Tema</span>
-                <div class="search"><i class="bi bi-search"></i><input type="search" [(ngModel)]="buscaTema"
+                <div class="search"><i class="bi bi-search" aria-hidden="true"></i><input type="search" [(ngModel)]="buscaTema"
                         placeholder="Buscar tema..."></div>
             </label></div>
     </section>

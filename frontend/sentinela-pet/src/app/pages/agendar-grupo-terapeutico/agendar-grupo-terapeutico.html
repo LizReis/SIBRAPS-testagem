@@ -146,7 +146,7 @@
                         <div class="autocomplete">
                             <label for="paciente">Buscar paciente por nome, CPF ou CNS</label>
                             <div class="search-input">
-                                <i class="bi bi-search"></i>
+                                <i class="bi bi-search" aria-hidden="true"></i>
                                 <input
                                     id="paciente"
                                     type="search"
@@ -220,7 +220,7 @@
                                     (click)="removerPaciente(p.idPublico)"
                                     [attr.aria-label]="'Remover ' + p.nome"
                                 >
-                                    <i class="bi bi-x-lg"></i>
+                                    <i class="bi bi-x-lg" aria-hidden="true"></i>
                                     <span>Remover</span>
                                 </button>
                             </li>
@@ -268,7 +268,7 @@
                     </dl>
 
                     @if (!modoEdicao) { <p class="info">
-                        <i class="bi bi-info-circle"></i>
+                        <i class="bi bi-info-circle" aria-hidden="true"></i>
                         {{ recorrenciaEhUnica
                             ? 'Os participantes selecionados serão inscritos nesta sessão.'
                             : 'O sistema criará automaticamente a série até a data informada e replicará os participantes selecionados para todas as sessões.' }}
@@ -276,12 +276,12 @@
                 </section>
 
                 <section class="card guidance">
-                    <h2><i class="bi bi-info-circle"></i> Orientações</h2>
+                    <h2><i class="bi bi-info-circle" aria-hidden="true"></i> Orientações</h2>
                     <ul>
-                        <li><i class="bi bi-check-circle"></i>Revise os dados antes de confirmar.</li>
-                        <li><i class="bi bi-person-check"></i>Somente pacientes ativos podem ser incluídos.</li>
-                        <li><i class="bi bi-clock-history"></i>Pacientes com conflito no mesmo horário não poderão ser inscritos.</li>
-                        <li><i class="bi bi-calendar-range"></i>Em grupos recorrentes, “Repetir até” define o limite da série.</li>
+                        <li><i class="bi bi-check-circle" aria-hidden="true"></i>Revise os dados antes de confirmar.</li>
+                        <li><i class="bi bi-person-check" aria-hidden="true"></i>Somente pacientes ativos podem ser incluídos.</li>
+                        <li><i class="bi bi-clock-history" aria-hidden="true"></i>Pacientes com conflito no mesmo horário não poderão ser inscritos.</li>
+                        <li><i class="bi bi-calendar-range" aria-hidden="true"></i>Em grupos recorrentes, “Repetir até” define o limite da série.</li>
                     </ul>
                 </section>
             </aside>
@@ -302,7 +302,7 @@
         <footer>
             <a routerLink="/grupos-terapeuticos" class="cancel">Cancelar</a>
             <button type="submit" class="primary" [disabled]="enviando || (modoEdicao && (!grupoCarregado || grupoDesatualizado))">
-                <i class="bi bi-calendar-plus"></i>
+                <i class="bi bi-calendar-plus" aria-hidden="true"></i>
                 {{ enviando ? 'Salvando...' : modoEdicao ? 'Salvar alterações' : 'Agendar grupo' }}
             </button>
         </footer>
