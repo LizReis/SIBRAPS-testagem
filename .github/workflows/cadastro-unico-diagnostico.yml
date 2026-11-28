@@ -101,12 +101,14 @@ jobs:
           mkdir -p integracao-evidence
           export SIBRAPS_ENSAIO_SENHA="$(openssl rand -hex 24)"
           echo "::add-mask::$SIBRAPS_ENSAIO_SENHA"
+          export SIBRAPS_ENSAIO_RELOGIO="$(mktemp "$RUNNER_TEMP/sibraps-clock.XXXXXX")"
+          printf '%s\n' '2026-11-24T22:00:00Z' > "$SIBRAPS_ENSAIO_RELOGIO"
           (
             cd ../../backend/buscaativa
             exec java -cp "target/test-classes:target/classes:$(cat target/ensaio-classpath.txt)" br.sibraps.ensaiohttp.AplicacaoEnsaioLocal
           ) > integracao-evidence/backend.log 2>&1 &
           pid=$!
-          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
+          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; rm -f "$SIBRAPS_ENSAIO_RELOGIO" "$SIBRAPS_ENSAIO_RELOGIO.next"' EXIT
           ready=0
           for i in $(seq 1 90); do
             kill -0 "$pid" || { echo "Servidor isolado encerrou antes do ensaio"; exit 1; }

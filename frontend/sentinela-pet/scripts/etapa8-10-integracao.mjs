@@ -1,7 +1,7 @@
 // Browser + actual Spring Boot HTTP + isolated in-memory H2. No API fixtures.
 import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
-import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { readFile, mkdir, writeFile, rename } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import { createRequire } from 'node:module';
 import { once } from 'node:events';
@@ -155,7 +155,7 @@ try {
   async function abrirAgenda(actor,data=hoje){
     const p=actor.page;
     await p.goto(base+'/agenda');
-    if(data!==hoje) await p.getByRole('button',{name:'Selecionar '+data,exact:true}).click();
+    const dia=p.getByRole('button',{name:new RegExp('^(Selecionar|Data selecionada) '+data+'
     return p;
   }
   function cartao(p,hora){
@@ -259,6 +259,213 @@ try {
     await abrirAgenda(recepcaoA,amanha);
     await cartao(p,'09:30').getByText('Frequência: Não registrada',{exact:true}).waitFor();
     await shot(p,'agenda-remarcacao');
+  });
+  assert.deepEqual(pageErrors,[],'Erros JavaScript não tratados');
+  assert(!http.some(r=>r.status>=500),'Não deve haver erro técnico nas chamadas da interface');
+} catch(e){
+  results.push({name:phase,status:'FAIL',message:String(e),stack:e instanceof Error?e.stack:undefined});
+  for(const [i,c] of contexts.entries())for(const p of c.pages())await shot(p,'falha-'+i).catch(()=>{});
+  process.exitCode=1;
+} finally {
+  await browser?.close();server.close();
+  await writeFile(resolve(output,'resultados.json'),JSON.stringify({mode:'Spring Boot real, H2 em memória, sem mocks HTTP',results,http,pageErrors},null,2));
+}
+console.log(JSON.stringify({results,http,pageErrors},null,2));
+assert.equal(results.filter(r=>r.status==='PASS').length,11,'Todas as onze fases devem passar');
+)});
+    await dia.waitFor();
+    if((await dia.getAttribute('aria-label'))==='Selecionar '+data) await dia.click();
+    return p;
+  }
+  function cartao(p,hora){
+    return p.locator('.appointment-card').filter({has:p.locator('.appointment-time').filter({hasText:hora})}).filter({hasText:nome});
+  }
+  async function escolherHorario(p,data,hora){
+    const vagas=expectResponse(p,'GET',agendaPath+'/vagas',200,u=>u.searchParams.get('data')===data);
+    await p.locator('#data').fill(data);
+    assert((await (await vagas).json()).MANHA>0,'Oferta sintética deve ter vagas pela manhã');
+    const horarios=expectResponse(p,'GET',agendaPath+'/horarios-disponiveis',200,u=>u.searchParams.get('data')===data&&u.searchParams.get('turno')==='MANHA');
+    await p.locator('.turns button').filter({hasText:/Manhã|Manha/i}).click();
+    const disponiveis=await (await horarios).json();
+    assert(disponiveis.horarios.some(h=>h.hora.slice(0,5)===hora&&h.disponivel),'API deve ofertar o horário escolhido: '+hora);
+    await p.getByRole('button',{name:hora+' disponível',exact:true}).click();
+  }
+  async function criar(hora){
+    const p=recepcaoA.page;
+    await p.goto(base+'/agenda/novo');
+    await p.getByRole('heading',{name:'Novo Agendamento',exact:true}).waitFor();
+    const inicioRelogio=await p.evaluate(()=>Date.now());
+    await p.waitForFunction(inicio=>Date.now()>inicio,inicioRelogio);
+    const pesquisa=expectResponse(p,'GET',api+'/pacientes/pesquisa',200,u=>u.searchParams.get('q')===cpf);
+    await p.locator('#busca').fill(cpf);
+    const resultado=await (await pesquisa).json();
+    assert(resultado.pacientes.some(x=>x.idPublico===pessoa&&x.vinculo===localA),'Pesquisa da recepção A deve retornar o paciente e o vínculo local correto');
+    await p.getByRole('option').filter({hasText:nome}).click();
+    const profissional=(await get(a,'/api/usuarios/me')).idPublico;
+    await p.locator('#prof').selectOption(profissional);
+    await escolherHorario(p,hoje,hora);
+    const resp=expectResponse(p,'POST',agendaPath,201);
+    await p.getByRole('button',{name:'Confirmar agendamento',exact:true}).click();
+    const dados=await (await resp).json();
+    await p.waitForURL('**/agenda?*');
+    assert.equal(dados.situacaoReserva,'AGENDADA');
+    assert.equal(dados.frequenciaAssistencial,'NAO_REGISTRADA');
+    return dados;
+  }
+  async function falta(ag,hora){
+    const p=await abrirAgenda(recepcaoA);
+    const card=cartao(p,hora);
+    await card.getByText('Frequência: Não registrada',{exact:true}).waitFor();
+    const resp=expectResponse(p,'PATCH',agendaPath+'/'+ag.id+'/status',200,u=>u.searchParams.get('novoStatus')==='FALTOU');
+    await card.getByRole('button',{name:'Registrar falta de '+nome,exact:true}).click();
+    const dados=await (await resp).json();
+    assert.equal(dados.situacaoReserva,'AGENDADA');
+    assert.equal(dados.frequenciaAssistencial,'FALTOU');
+    await card.getByText('Frequência: Faltou',{exact:true}).waitFor();
+    assert.equal(await card.getByRole('button',{name:'Corrigir para Presente'}).count(),0);
+    return dados;
+  }
+  await step('recepção cria reserva individual e registra primeira falta',async()=>{
+    recepcaoA=await login('RECEPCAO','a');
+    primeiro=await criar('09:00');
+    primeiro=await falta(primeiro,'09:00');
+    const fora=await get(b,agendaPath+'/agenda/'+hoje);
+    assert(!fora.some(x=>x.id===primeiro.id),'USF B não enxerga reserva A mesmo com identidade compartilhada');
+    await get(b,agendaPath+'/'+primeiro.id,404);
+    const d=await detail(a,pessoa);assert.equal(d.paciente.indicadores.countFaltas,1);
+  });
+  await step('recepção não corrige e profissional responsável corrige com justificativa',async()=>{
+    const rota=agendaPath+'/'+primeiro.id+'/frequencia/correcao';
+    const motivo='Correção de frequência comprovada no ensaio sintético.';
+    const payload={novaFrequencia:'PRESENTE',version:primeiro.version,justificativa:motivo};
+    const denied=await recepcaoA.page.request.patch(base+rota,{headers:{Authorization:'Bearer '+recepcaoA.token},data:payload});
+    assert.equal(denied.status(),403);
+    const p=await abrirAgenda(a);
+    await cartao(p,'09:00').getByRole('button',{name:'Corrigir para Presente'}).click();
+    const confirmar=p.getByRole('button',{name:'Confirmar operação'});
+    assert(await confirmar.isDisabled());
+    await p.getByLabel('Justificativa').fill(motivo);
+    const resp=expectResponse(p,'PATCH',rota,200);
+    await confirmar.click();const corrigido=await (await resp).json();
+    assert.equal(corrigido.frequenciaAssistencial,'PRESENTE');
+    assert.equal(corrigido.situacaoReserva,'AGENDADA');
+    await cartao(p,'09:00').getByText('Frequência: Presente',{exact:true}).waitFor();
+    assert.equal((await detail(a,pessoa)).paciente.indicadores.countFaltas,0);
+    assert.equal((await detail(b,pessoa)).paciente.indicadores.countFaltas,0);
+    await shot(p,'agenda-correcao');
+  });
+  await step('remarcação mantém falta original e sucessor sem frequência registrada',async()=>{
+    segundo=await criar('09:30');
+    segundo=await falta(segundo,'09:30');
+    const p=recepcaoA.page;
+    await cartao(p,'09:30').getByRole('button',{name:'Remarcar atendimento de '+nome}).click();
+    await p.waitForURL('**/agenda/novo?*');
+    await p.getByRole('heading',{name:'Remarcar Atendimento'}).waitFor();
+    await p.locator('.selected').filter({hasText:nome}).waitFor();
+    await escolherHorario(p,amanha,'09:30');
+    const resp=expectResponse(p,'POST',agendaPath,201);
+    await p.getByRole('button',{name:'Confirmar remarcação',exact:true}).click();
+    sucessor=await (await resp).json();
+    assert.equal(sucessor.agendamentoOriginalId,segundo.id);
+    assert.equal(sucessor.situacaoReserva,'REMARCADA');
+    assert.equal(sucessor.frequenciaAssistencial,'NAO_REGISTRADA');
+    const original=await get(a,agendaPath+'/'+segundo.id);
+    assert.equal(original.situacaoReserva,'SUBSTITUIDA');
+    assert.equal(original.frequenciaAssistencial,'FALTOU');
+    assert.equal((await detail(a,pessoa)).paciente.indicadores.countFaltas,1);
+    assert.equal((await detail(b,pessoa)).paciente.indicadores.countFaltas,0);
+    await p.waitForURL('**/agenda?*');
+    await abrirAgenda(recepcaoA,amanha);
+    await cartao(p,'09:30').getByText('Frequência: Não registrada',{exact:true}).waitFor();
+    await shot(p,'agenda-remarcacao');
+  });
+  let alertaConfirmado;
+  const buscaPath=api+'/pacientes/busca-ativa';
+  async function buscarAlertas(actor){
+    return get(actor,buscaPath+'?requisicao='+crypto.randomUUID());
+  }
+  async function avancarDia(){
+    const arquivo=process.env.SIBRAPS_ENSAIO_RELOGIO;
+    assert(arquivo,'Arquivo temporário de relógio obrigatório');
+    assert.equal((await readFile(arquivo,'utf8')).trim(),'2026-11-24T22:00:00Z');
+    const instante='2026-11-25T22:00:00Z';
+    await writeFile(arquivo+'.next',instante+'\n',{mode:0o600});
+    await rename(arquivo+'.next',arquivo);
+    for(const c of contexts) for(const p of c.pages()) await p.clock.setSystemTime(new Date(instante));
+  }
+  await step('falta na remarcação aciona RF22 apenas no vínculo local',async()=>{
+    assert.equal((await detail(a,pessoa)).paciente.indicadores.gatilhoVisitaAcionado,false);
+    await avancarDia();
+    const p=await abrirAgenda(recepcaoA,amanha);
+    const card=cartao(p,'09:30');
+    await card.getByText('Frequência: Não registrada',{exact:true}).waitFor();
+    const resp=expectResponse(p,'PATCH',agendaPath+'/'+sucessor.id+'/status',200,u=>u.searchParams.get('novoStatus')==='FALTOU');
+    await card.getByRole('button',{name:'Registrar falta de '+nome,exact:true}).click();
+    const faltaSucessor=await (await resp).json();
+    assert.equal(faltaSucessor.situacaoReserva,'REMARCADA');
+    assert.equal(faltaSucessor.frequenciaAssistencial,'FALTOU');
+    await card.getByText('Frequência: Faltou',{exact:true}).waitFor();
+    const da=await detail(a,pessoa),db=await detail(b,pessoa);
+    assert.equal(da.paciente.indicadores.countFaltas,2);
+    assert.equal(da.paciente.indicadores.gatilhoVisitaAcionado,true);
+    assert.equal(db.paciente.indicadores.countFaltas,0);
+    assert.equal(db.paciente.indicadores.gatilhoVisitaAcionado,false);
+    alertaConfirmado=(await buscarAlertas(a)).alertas.find(x=>x.vinculo===localA&&x.idPublico===pessoa);
+    assert(alertaConfirmado,'Paciente deve estar na busca ativa A');
+    assert.equal(alertaConfirmado.gatilhoVisitaAcionado,true);
+    assert.equal(alertaConfirmado.acao,'CONFERIR_REFERENCIA');
+    assert.equal(alertaConfirmado.alerta,'Busca em ponto de referência necessária');
+    assert.equal(alertaConfirmado.avisoAdicional,'Nenhum ponto de referência cadastrado — verificar com a equipe antes de acionar a busca.');
+    assert(!(await buscarAlertas(b)).alertas.some(x=>x.idPublico===pessoa),'Unidade B não recebe alerta A');
+    await shot(p,'agenda-segunda-falta');
+  });
+  await step('busca ativa exibe RF22 e registra visualização auditável RNF17',async()=>{
+    const p=a.page;
+    await p.goto(base+'/painel');
+    const item=p.locator('app-busca-ativa-local li').filter({has:p.getByText(nome,{exact:true})});
+    await item.getByText(alertaConfirmado.alerta,{exact:true}).waitFor();
+    await item.getByText(alertaConfirmado.avisoAdicional,{exact:true}).waitFor();
+    await shot(p,'busca-ativa-rf22');
+    const resp=expectResponse(p,'POST',api+'/pacientes/'+pessoa+'/vinculos/'+localA+'/busca-ativa/visualizacao',200);
+    await item.getByRole('button',{name:'Ver paciente',exact:true}).click();
+    const registro=await (await resp).json();
+    assert.equal(registro.evento.tipoEvento,'VISUALIZACAO_ALERTA');
+    assert.equal(registro.evento.pacienteId,pessoa);
+    assert.equal(registro.evento.gatilhoConfirmado,true);
+    await p.waitForURL(u=>u.pathname==='/pacientes/detalhes/'+pessoa&&u.searchParams.get('vinculo')===localA);
+    const audit=await get(admin,api+'/auditoria/busca-ativa');
+    assert(audit.content.some(x=>x.id===registro.evento.id),'Visualização deve persistir na auditoria local');
+    await get(recepcaoA,api+'/auditoria/busca-ativa',403);
+  });
+  await step('correção de dia anterior desativa gatilho sem apagar sucessor nem auditoria',async()=>{
+    const p=await abrirAgenda(a,hoje);
+    const card=cartao(p,'09:30');
+    await card.getByText('Frequência: Faltou',{exact:true}).waitFor();
+    await card.getByRole('button',{name:'Corrigir para Presente'}).click();
+    const confirmar=p.getByRole('button',{name:'Confirmar operação'});
+    assert(await confirmar.isDisabled());
+    await p.getByLabel('Justificativa').fill('Correção retroativa comprovada em ensaio sintético.');
+    const resp=expectResponse(p,'PATCH',agendaPath+'/'+segundo.id+'/frequencia/correcao',200);
+    await confirmar.click();
+    const corrigido=await (await resp).json();
+    assert.equal(corrigido.situacaoReserva,'SUBSTITUIDA');
+    assert.equal(corrigido.frequenciaAssistencial,'PRESENTE');
+    await card.getByText('Frequência: Presente',{exact:true}).waitFor();
+    const mantido=await get(a,agendaPath+'/'+sucessor.id);
+    assert.equal(mantido.agendamentoOriginalId,segundo.id);
+    assert.equal(mantido.situacaoReserva,'REMARCADA');
+    assert.equal(mantido.frequenciaAssistencial,'FALTOU');
+    const da=await detail(a,pessoa),db=await detail(b,pessoa);
+    assert.equal(da.paciente.indicadores.countFaltas,1);
+    assert.equal(da.paciente.indicadores.gatilhoVisitaAcionado,false);
+    assert.equal(db.paciente.indicadores.countFaltas,0);
+    assert.equal(db.paciente.indicadores.gatilhoVisitaAcionado,false);
+    assert(!(await buscarAlertas(a)).alertas.some(x=>x.idPublico===pessoa),'Alerta deixa a lista quando não atende mais os critérios');
+    const audit=await get(admin,api+'/auditoria/busca-ativa');
+    assert(audit.content.some(x=>x.pacienteId===pessoa&&x.tipoEvento==='VISUALIZACAO_ALERTA'&&x.gatilhoConfirmado),'Auditoria preserva contexto histórico');
+    await p.goto(base+'/painel');
+    await p.locator('app-busca-ativa-local').getByText('Nenhum alerta confirmado.',{exact:true}).waitFor();
+    await shot(p,'busca-ativa-apos-correcao');
   });
   assert.deepEqual(pageErrors,[],'Erros JavaScript não tratados');
   assert(!http.some(r=>r.status>=500),'Não deve haver erro técnico nas chamadas da interface');

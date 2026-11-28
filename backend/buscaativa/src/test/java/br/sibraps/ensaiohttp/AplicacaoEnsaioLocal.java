@@ -53,7 +53,30 @@ public class AplicacaoEnsaioLocal {
     @Bean
     @org.springframework.context.annotation.Primary
     java.time.Clock relogioJornada() {
-        return java.time.Clock.fixed(java.time.Instant.parse("2026-11-24T22:00:00Z"), java.time.ZoneId.of("America/Bahia"));
+        String arquivo = System.getenv("SIBRAPS_ENSAIO_RELOGIO");
+        var zona = java.time.ZoneId.of("America/Bahia");
+        return arquivo == null ? java.time.Clock.fixed(java.time.Instant.parse("2026-11-24T22:00:00Z"), zona)
+                : new RelogioJornada(java.nio.file.Path.of(arquivo), zona);
+    }
+
+    private static final class RelogioJornada extends java.time.Clock {
+        private final java.nio.file.Path arquivo;
+        private final java.time.ZoneId zona;
+        private RelogioJornada(java.nio.file.Path arquivo, java.time.ZoneId zona) {
+            this.arquivo = arquivo; this.zona = zona;
+        }
+        @Override public java.time.ZoneId getZone() { return zona; }
+        @Override public java.time.Clock withZone(java.time.ZoneId zona) { return new RelogioJornada(arquivo, zona); }
+        @Override public java.time.Instant instant() {
+            try {
+                String instante = java.nio.file.Files.readString(arquivo).trim();
+                if (!java.util.Set.of("2026-11-24T22:00:00Z", "2026-11-25T22:00:00Z").contains(instante))
+                    throw new IllegalStateException("Instante fora das fases previstas do ensaio.");
+                return java.time.Instant.parse(instante);
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException("Relógio do ensaio indisponível.", e);
+            }
+        }
     }
 
     @Bean
