@@ -1,12 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { Validators } from '@angular/forms';
 
 import { PacienteService } from '../../services/paciente/paciente-service';
 import { CadastroUnicoService } from '../../services/paciente/cadastro-unico-service';
-import { UnidadeSaudeService } from '../../services/unidade-saude-service';
-import { ProfissionalService } from '../../services/profissional/profissional-service';
+import { UnidadeSaude, UnidadeSaudeService } from '../../services/unidade-saude-service';
+import { ProfissionalService, UsuarioReferencia } from '../../services/profissional/profissional-service';
 import { CadastroPaciente } from './cadastro-paciente';
 
 describe('CadastroPaciente', () => {
@@ -160,6 +160,40 @@ describe('CadastroPaciente', () => {
     expect(opcoes).toEqual([
       'Nenhum profissional de referência', 'Administrador', 'Profissional',
     ]);
+  });
+
+  it('renderiza opções após respostas assíncronas sem forçar a detecção no teste', async () => {
+    const unidades = new Subject<UnidadeSaude[]>();
+    const referencias = new Subject<UsuarioReferencia[]>();
+    vi.spyOn(TestBed.inject(UnidadeSaudeService), 'listarUnidades').mockReturnValue(unidades.asObservable());
+    vi.spyOn(TestBed.inject(ProfissionalService), 'listarElegiveisParaReferencia').mockReturnValue(referencias.asObservable());
+    component.carregarUnidadesSaude();
+    component.carregarReferencias();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Carregando unidades');
+    expect(fixture.nativeElement.textContent).toContain('Carregando profissionais');
+    unidades.next([{ ...unidade, id: 2, nomeUsf: 'USF assíncrona' }]); unidades.complete();
+    referencias.next([{ idPublico: 'ref-2', nome: 'Referência assíncrona' }]); referencias.complete();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('#usfReferencia').textContent).toContain('USF assíncrona');
+    expect(fixture.nativeElement.querySelector('#profissionalReferenciaId').textContent).toContain('Referência assíncrona');
+    expect(fixture.nativeElement.textContent).not.toContain('Carregando unidades');
+    expect(fixture.nativeElement.textContent).not.toContain('Carregando profissionais');
+  });
+
+  it('renderiza falhas assíncronas de carregamento dos seletores', async () => {
+    const unidades = new Subject<UnidadeSaude[]>();
+    const referencias = new Subject<UsuarioReferencia[]>();
+    vi.spyOn(TestBed.inject(UnidadeSaudeService), 'listarUnidades').mockReturnValue(unidades.asObservable());
+    vi.spyOn(TestBed.inject(ProfissionalService), 'listarElegiveisParaReferencia').mockReturnValue(referencias.asObservable());
+    component.carregarUnidadesSaude(); component.carregarReferencias();
+    await fixture.whenStable();
+    unidades.error(new Error('falha sintética')); referencias.error(new Error('falha sintética'));
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Não foi possível carregar as unidades.');
+    expect(fixture.nativeElement.textContent).toContain('Não foi possível carregar os profissionais de referência.');
+    expect(fixture.nativeElement.textContent).not.toContain('Carregando unidades');
+    expect(fixture.nativeElement.textContent).not.toContain('Carregando profissionais');
   });
 
   it('remove e restaura os validadores obrigatórios de endereço', () => {

@@ -34,8 +34,8 @@ const base='http://127.0.0.1:'+server.address().port;
 const cpf='52998224725',cns='700000000000005',nome='Paciente Sintético Integração';
 const results=[],http=[],pageErrors=[],contexts=[];
 let browser,phase='inicialização';
-function expectResponse(page,method,path,status){
-  return page.waitForResponse(r=>new URL(r.url()).pathname===path&&r.request().method()===method).then(r=>{
+function expectResponse(page,method,path,status,filter=()=>true){
+  return page.waitForResponse(r=>new URL(r.url()).pathname===path&&r.request().method()===method&&filter(new URL(r.url()))).then(r=>{
     assert.equal(r.status(),status,method+' '+path+' deve retornar '+status);return r;
   });
 }
@@ -70,7 +70,10 @@ async function detail(actor,paciente){
 }
 async function shot(page,name){await page.screenshot({path:resolve(output,name+'.png'),animations:'disabled'});}
 async function openForm(page){
+  const unidades=expectResponse(page,'GET','/api/unidades-saude',200);
   await page.goto(base+'/pacientes/novo');await page.getByRole('heading',{name:'Cadastrar paciente',exact:true}).waitFor();
+  const dados=await (await unidades).json();
+  assert(Array.isArray(dados)&&dados.some(u=>u.nomeUsf==='USF sintética A'),'API deve retornar a USF sintética A');
   await page.locator('#usfReferencia option').filter({hasText:'USF sintética A'}).waitFor({state:'attached'});
 }
 try {
@@ -100,7 +103,7 @@ try {
   await step('unidade B não consulta prontuário antes de possuir vínculo',async()=>{
     await get(b,api+'/pacientes/'+pessoa+'/detalhe',404);
     const p=b.page;await p.goto(base+'/pacientes');await p.getByRole('heading',{name:'Pacientes',exact:true}).waitFor();
-    const consulta=expectResponse(p,'GET',api+'/pacientes/pesquisa',200);
+    const consulta=expectResponse(p,'GET',api+'/pacientes/pesquisa',200,u=>u.searchParams.get('q')===cpf);
     await p.getByPlaceholder('Nome, CPF ou CNS').fill(cpf);
     const r=await consulta;assert.equal((await r.json()).pacientes.length,0,'Sem paciente local na USF B');
     await p.getByText('Nenhum paciente encontrado.',{exact:true}).waitFor();
@@ -154,5 +157,5 @@ try {
   await browser?.close();server.close();
   await writeFile(resolve(output,'resultados.json'),JSON.stringify({mode:'Spring Boot real, H2 em memória, sem mocks HTTP',results,http,pageErrors},null,2));
 }
-console.log(JSON.stringify(results,null,2));
+console.log(JSON.stringify({results,http,pageErrors},null,2));
 assert.equal(results.filter(r=>r.status==='PASS').length,5,'Todas as cinco fases devem passar');

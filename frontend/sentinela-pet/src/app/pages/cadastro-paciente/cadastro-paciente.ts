@@ -176,14 +176,17 @@ export class CadastroPaciente implements OnInit {
   carregarReferencias(): void {
     this.carregandoReferencias = true;
     this.erroReferencias = false;
+    this.cdr.markForCheck();
     this.profissionalService.listarElegiveisParaReferencia().subscribe({
       next: usuarios => {
         this.usuariosReferencia = usuarios;
         this.carregandoReferencias = false;
+        this.cdr.markForCheck();
       },
       error: () => {
         this.erroReferencias = true;
         this.carregandoReferencias = false;
+        this.cdr.markForCheck();
       },
     });
   }
@@ -191,11 +194,13 @@ export class CadastroPaciente implements OnInit {
   carregarUnidadesSaude(): void {
     this.carregandoUnidades = true;
     this.erroUnidades = false;
+    this.cdr.markForCheck();
 
     this.unidadeSaudeService.listarUnidades().subscribe({
       next: (unidades) => {
         this.unidadesSaude = unidades;
         this.carregandoUnidades = false;
+        this.cdr.markForCheck();
 
         // Só carrega os dados do paciente depois que as unidades estiverem
         // disponíveis, para conseguir casar o objeto certo no select.
@@ -207,6 +212,7 @@ export class CadastroPaciente implements OnInit {
       error: () => {
         this.erroUnidades = true;
         this.carregandoUnidades = false;
+        this.cdr.markForCheck();
       },
     });
   }
@@ -214,6 +220,7 @@ export class CadastroPaciente implements OnInit {
   carregarPaciente(idPublico: string): void {
     this.carregandoPaciente = true;
     this.erroGeral = null;
+    this.cdr.markForCheck();
 
     this.pacienteService.buscarPorId(idPublico).subscribe({
       next: (paciente) => {
@@ -258,8 +265,8 @@ export class CadastroPaciente implements OnInit {
 
       error: (erro) => {
         this.erroGeral = interpretarErroHttp(erro, { padrao: 'Não foi possível carregar os dados do paciente.' }).mensagem;
-        this.cdr.markForCheck();
         this.carregandoPaciente = false;
+        this.cdr.markForCheck();
       },
     });
   }
