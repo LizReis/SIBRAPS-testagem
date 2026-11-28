@@ -47,7 +47,8 @@ async function login(perfil,unidade){
   contexts.push(ctx);
   await ctx.route('**/*',r=>new URL(r.request().url()).origin===base?r.continue():r.abort());
   const page=await ctx.newPage();page.setDefaultTimeout(15000);
-  await page.clock.setFixedTime(new Date('2026-11-24T22:00:00Z'));
+  // Keep the clinical date deterministic without freezing Date.now(): RxJS debounceTime uses it.
+  await page.clock.install({time:new Date('2026-11-24T22:00:00Z')});
   page.on('pageerror',e=>pageErrors.push(e.message));
   page.on('response',r=>{const u=new URL(r.url());if(u.pathname.startsWith('/api/'))http.push({perfil,unidade,method:r.request().method(),path:u.pathname,status:r.status()});});
   await page.goto(base+'/login');
@@ -161,14 +162,25 @@ try {
     return p.locator('.appointment-card').filter({has:p.locator('.appointment-time').filter({hasText:hora})}).filter({hasText:nome});
   }
   async function escolherHorario(p,data,hora){
+    const vagas=expectResponse(p,'GET',agendaPath+'/vagas',200,u=>u.searchParams.get('data')===data);
     await p.locator('#data').fill(data);
+    assert((await (await vagas).json()).MANHA>0,'Oferta sintética deve ter vagas pela manhã');
+    const horarios=expectResponse(p,'GET',agendaPath+'/horarios-disponiveis',200,u=>u.searchParams.get('data')===data&&u.searchParams.get('turno')==='MANHA');
     await p.locator('.turns button').filter({hasText:/Manhã|Manha/i}).click();
+    const disponiveis=await (await horarios).json();
+    assert(disponiveis.horarios.some(h=>h.hora.slice(0,5)===hora&&h.disponivel),'API deve ofertar o horário escolhido: '+hora);
     await p.getByRole('button',{name:hora+' disponível',exact:true}).click();
   }
   async function criar(hora){
     const p=recepcaoA.page;
     await p.goto(base+'/agenda/novo');
+    await p.getByRole('heading',{name:'Novo Agendamento',exact:true}).waitFor();
+    const inicioRelogio=await p.evaluate(()=>Date.now());
+    await p.waitForFunction(inicio=>Date.now()>inicio,inicioRelogio);
+    const pesquisa=expectResponse(p,'GET',api+'/pacientes/pesquisa',200,u=>u.searchParams.get('q')===cpf);
     await p.locator('#busca').fill(cpf);
+    const resultado=await (await pesquisa).json();
+    assert(resultado.pacientes.some(x=>x.idPublico===pessoa&&x.vinculo===localA),'Pesquisa da recepção A deve retornar o paciente e o vínculo local correto');
     await p.getByRole('option').filter({hasText:nome}).click();
     const profissional=(await get(a,'/api/usuarios/me')).idPublico;
     await p.locator('#prof').selectOption(profissional);
