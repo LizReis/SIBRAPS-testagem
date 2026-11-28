@@ -146,6 +146,7 @@ public class AplicacaoEnsaioLocal {
                 throw new IllegalStateException("Estrutura de origem ausente no ensaio.");
             com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.prepararDuplicidadeNavegador(app);
             com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.prepararOrigemNavegador(app);
+            com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.prepararBuscaAtivaNavegador(app);
         };
     }
 

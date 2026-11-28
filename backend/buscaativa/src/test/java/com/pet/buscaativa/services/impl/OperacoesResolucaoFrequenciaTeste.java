@@ -79,6 +79,42 @@ public final class OperacoesResolucaoFrequenciaTeste {
             falta(app,email,pessoa,(Long)ids[0],LocalDate.of(2026,11,23),9);
         }
     }
+    /** Dois casos sintéticos de risco vermelho, sem remarcação ou alteração artificial de indicadores. */
+    public static void prepararBuscaAtivaNavegador(ApplicationContext app) {
+        final String email="profissional.b@test.local";
+        var ids=tx(app).execute(t->{
+            var em=EntityManagerFactoryUtils.getTransactionalEntityManager(app.getBean(jakarta.persistence.EntityManagerFactory.class));
+            var u=em.createQuery("select u from Usuario u where u.email=:email",Usuario.class)
+                    .setParameter("email",email).getSingleResult();
+            var usf=new com.pet.buscaativa.entities.UsfReferencia();
+            usf.setId(u.getUsfAtuacao().getId());
+            return new Object[]{u.getId(),usf};
+        });
+        for (boolean rua : new boolean[]{false,true}) {
+            var endereco=rua
+                    ?new com.pet.buscaativa.entities.Endereco(null,null,null,null,null,null,"Ponto sintético da equipe",null)
+                    :new com.pet.buscaativa.entities.Endereco(null,"Cidade sintética","BA","Bairro sintético","Rua sintética","10",null,"00000000");
+            var dados=new com.pet.buscaativa.entities.dto.PacienteDTO(null,
+                    rua?"Caso Sintético Referência":"Caso Sintético Domicílio",
+                    rua?"Responsável Sintética Referência":"Responsável Sintética Domicílio",
+                    rua?LocalDate.of(1982,3,16):LocalDate.of(1986,5,20),null,
+                    com.pet.buscaativa.entities.enums.SexoEnum.FEMININO,com.pet.buscaativa.entities.enums.RacaCorEnum.PARDA,
+                    rua?"700000000000056":"700000000000048",rua?"68429315764":"48372615900",
+                    rua?"81999990008":"81999990007",endereco,rua,
+                    com.pet.buscaativa.entities.enums.TipoAcompanhamento.INDIVIDUAL,null,null,
+                    (com.pet.buscaativa.entities.UsfReferencia)ids[1],com.pet.buscaativa.entities.enums.CapsEnum.CAPS_AD,null,null);
+            var cadastro=como(email,()->app.getBean(CadastroAcompanhamentoLocalEnsaioService.class)
+                    .cadastrarNovoComIdentificadores(dados,false));
+            Long pessoa=tx(app).execute(t->{
+                var em=EntityManagerFactoryUtils.getTransactionalEntityManager(app.getBean(jakarta.persistence.EntityManagerFactory.class));
+                return em.createQuery("select p.id from Paciente p where p.idPublico=:id",Long.class)
+                        .setParameter("id",cadastro.paciente()).getSingleResult();
+            });
+            // Frequências comprovadas em três datas distintas, sem cadeia de remarcação.
+            for(int dia=20;dia<=22;dia++)
+                falta(app,email,pessoa,(Long)ids[0],LocalDate.of(2026,11,dia),rua?12:11);
+        }
+    }
     public record Reserva(Long id,Integer versao) {}
     public static Reserva falta(ApplicationContext app,String email,Long paciente,Long profissional,LocalDate data,int hora) {
         // Apenas fixture: reproduz compromissos antigos coincidentes sem

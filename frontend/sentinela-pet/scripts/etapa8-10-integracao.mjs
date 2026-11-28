@@ -1104,6 +1104,152 @@ try {
     assert.equal(await linhas.count(),2,'As duas solicitações permanecem na fila');
     await shot(q,'origem-fila-final');
   });
+  const casosBusca=[
+    {nome:'Caso Sintético Domicílio',cpf:'48372615900',rua:false,acao:'VISITA_DOMICILIAR',texto:'Visita domiciliar recomendada',local:'Rua sintética, 10, Bairro sintético, Cidade sintética, BA'},
+    {nome:'Caso Sintético Referência',cpf:'68429315764',rua:true,acao:'PONTO_REFERENCIA',texto:'Busca em ponto de referência recomendada',local:'Ponto sintético da equipe'}
+  ];
+  const trilhaBusca=api+'/auditoria/busca-ativa';
+  const encaminhamentos=[];
+  const secBusca=p=>p.locator('app-busca-ativa-local');
+  const itemBusca=(p,n)=>secBusca(p).locator('li').filter({has:p.getByText(n,{exact:true})});
+  const rotaEnc=c=>api+'/pacientes/'+c.id+'/vinculos/'+c.vinculo+'/busca-ativa/encaminhamento';
+  const auditoriaBusca=actor=>get(actor,trilhaBusca+'?tamanho=100');
+  const estadoCaso=actor=>Promise.all(casosBusca.map(c=>get(actor,api+'/pacientes/'+c.id+'/prontuario')));
+  let estadoCasosAntes,estadoAantes;
+  await step('risco vermelho com três faltas apresenta ação adequada à moradia e isolamento',async()=>{
+    const lista=await buscarAlertas(profB);
+    const externa=await buscarAlertas(a);
+    for(const c of casosBusca){
+      const pesquisa=await get(profB,api+'/pacientes/pesquisa?q='+c.cpf);
+      assert.equal(pesquisa.pacientes.length,1);
+      c.id=pesquisa.pacientes[0].idPublico;c.vinculo=pesquisa.pacientes[0].vinculo;
+      const d=await detail(profB,c.id);
+      assert.equal(d.paciente.indicadores.countFaltas,3);
+      assert.equal(d.paciente.indicadores.classificacaoRisco,'VERMELHO');
+      assert.equal(d.paciente.indicadores.gatilhoVisitaAcionado,false,'Três faltas independentes não são gatilho de remarcação');
+      const alerta=lista.alertas.find(x=>x.idPublico===c.id&&x.vinculo===c.vinculo);
+      assert(alerta,'Risco vermelho deve integrar a busca ativa');
+      assert.equal(alerta.classificacaoRisco,'VERMELHO');assert.equal(alerta.faltasConsecutivas,3);
+      assert.equal(alerta.acao,c.acao);assert.equal(alerta.alerta,c.texto);
+      assert.equal(alerta.localBusca,c.local);assert.equal(alerta.avisoAdicional,null);
+      assert.equal(alerta.gatilhoVisitaAcionado,false);
+      assert(!externa.alertas.some(x=>x.idPublico===c.id));
+      await get(a,api+'/pacientes/'+c.id+'/detalhe',404);
+    }
+    estadoCasosAntes=await estadoCaso(profB);estadoAantes=await estadoClinico();
+    const painel=await get(adminB,api+'/painel/resumo');
+    assert(painel.distribuicaoClassificacao.vermelhos>=2);
+    for(const c of casosBusca)assert(painel.pacientesPrioritarios.some(x=>x.idPublico===c.id&&x.vinculo===c.vinculo));
+    const p=profB.page;await p.goto(base+'/painel');
+    for(const c of casosBusca){
+      const item=itemBusca(p,c.nome);
+      await item.getByText(c.texto,{exact:true}).waitFor();
+      await item.getByText(c.local,{exact:true}).waitFor();
+      await item.getByRole('button',{name:'Registrar encaminhamento',exact:true}).waitFor();
+    }
+    await shot(p,'busca-ativa-risco-vermelho');
+    const recep=b.page;await recep.goto(base+'/painel');
+    await itemBusca(recep,casosBusca[0].nome).getByText(casosBusca[0].texto,{exact:true}).waitFor();
+    assert.equal(await secBusca(recep).getByRole('button',{name:'Registrar encaminhamento',exact:true}).count(),0);
+    assert.equal(await secBusca(recep).getByRole('button',{name:'Consultar auditoria',exact:true}).count(),0);
+  });
+  await step('encaminhamentos RNF17 são auditados sem alterar fatos clínicos',async()=>{
+    const p=profB.page;
+    for(const c of casosBusca){
+      await p.goto(base+'/painel');
+      const item=itemBusca(p,c.nome);
+      await item.getByRole('button',{name:'Registrar encaminhamento',exact:true}).click();
+      const form=secBusca(p).locator('form');
+      await form.getByRole('heading',{name:'Encaminhamento de '+c.nome,exact:true}).waitFor();
+      const salvar=form.getByRole('button',{name:'Salvar encaminhamento',exact:true});
+      assert(await salvar.isDisabled());
+      const destino=c.rua?'Equipe sintética de busca em referência':'Equipe sintética de visita domiciliar';
+      const descricao=c.rua?'Conferir ponto de referência com a equipe local.':'Organizar avaliação domiciliar com a equipe local.';
+      await form.getByLabel('Destino',{exact:true}).fill(destino);
+      await form.getByLabel('Descrição',{exact:true}).fill('curta');
+      assert(await salvar.isDisabled());
+      await form.getByLabel('Descrição',{exact:true}).fill(descricao);
+      const resp=expectResponse(p,'POST',rotaEnc(c),200);
+      await salvar.click();const resposta=await resp;
+      const payload=resposta.request().postDataJSON(),registro=await resposta.json();
+      assert.equal(registro.criado,true);
+      const e=registro.evento;
+      assert.equal(e.tipoEvento,'ENCAMINHAMENTO_ALERTA');assert.equal(e.pacienteId,c.id);
+      assert.equal(e.usuarioId,(await get(profB,'/api/usuarios/me')).idPublico);
+      assert.equal(e.perfil,'PROFISSIONAL');assert.equal(e.risco,'VERMELHO');
+      assert.equal(e.gatilhoConfirmado,false);assert.equal(e.indicadoresPendentes,false);
+      assert.equal(e.situacao,'RISCO_VERMELHO');assert.equal(e.situacaoRua,c.rua);
+      assert.equal(e.destino,destino);assert.equal(e.descricao,descricao);
+      assert.equal(e.idRequisicao,payload.requisicao);
+      encaminhamentos.push({c,payload,e});
+      await secBusca(p).getByText('Encaminhamento registrado na auditoria da unidade.',{exact:true}).waitFor();
+      assert(await item.getByRole('button',{name:'Registrar encaminhamento',exact:true}).isDisabled(),'Atualizar alertas antes de nova ação');
+      await shot(p,'busca-encaminhamento-'+(c.rua?'referencia':'domicilio'));
+    }
+    assert.deepEqual(await estadoCaso(profB),estadoCasosAntes);
+    assert.deepEqual(await estadoClinico(),estadoAantes);
+    const audit=await auditoriaBusca(adminB),fora=await auditoriaBusca(admin);
+    for(const {e} of encaminhamentos){
+      assert(audit.content.some(x=>x.id===e.id));
+      assert(!fora.content.some(x=>x.pacienteId===e.pacienteId));
+    }
+    await get(b,trilhaBusca,403);await get(profB,trilhaBusca,403);
+    const q=adminB.page;await q.goto(base+'/painel');
+    await secBusca(q).getByRole('button',{name:'Consultar auditoria',exact:true}).click();
+    for(const {e} of encaminhamentos)await secBusca(q).getByText(e.descricao,{exact:true}).waitFor();
+    await shot(q,'busca-auditoria-encaminhamentos');
+  });
+  await step('RNF17 deduplica solicitações e recusa operações indevidas sem perder trilha',async()=>{
+    const {c,payload,e}=encaminhamentos[0];
+    async function postEnc(actor,dados){
+      return actor.page.request.post(base+rotaEnc(c),{headers:{Authorization:'Bearer '+actor.token},data:dados});
+    }
+    const repetida=await postEnc(profB,payload);
+    assert.equal(repetida.status(),200);
+    const confirmada=await repetida.json();
+    assert.equal(confirmada.criado,false);assert.deepEqual(confirmada.evento,e);
+    const alterada=await postEnc(profB,{...payload,descricao:'Tentativa sintética de alteração da solicitação original.'});
+    assert.equal(alterada.status(),409);
+    assert.equal((await postEnc(b,{...payload,requisicao:crypto.randomUUID()})).status(),403);
+    assert.equal((await postEnc(admin,{...payload,requisicao:crypto.randomUUID()})).status(),404);
+    const chaveLista=crypto.randomUUID();
+    const lista1=await get(profB,buscaPath+'?requisicao='+chaveLista);
+    const lista2=await get(profB,buscaPath+'?requisicao='+chaveLista);
+    assert.deepEqual(lista2,lista1);
+    const antes=await auditoriaBusca(adminB);
+    const consultas=antes.content.filter(x=>x.idRequisicao===chaveLista);
+    assert.equal(consultas.length,1);
+    assert.equal(consultas[0].tipoEvento,'CONSULTA_LISTA_BUSCA_ATIVA');
+    assert.equal(consultas[0].quantidade,lista1.alertas.length);
+    assert.equal(consultas[0].pacienteId,null);
+    const clinico=await get(profB,api+'/pacientes/'+c.id+'/prontuario');
+    const fatos=clinico.atendimentos;
+    assert.equal(fatos.length,3);
+    const ultimo=[...fatos].sort((x,y)=>x.dataAgendamento.localeCompare(y.dataAgendamento)).at(-1);
+    const reserva=await get(profB,agendaPath+'/'+ultimo.id);
+    const correcao=await profB.page.request.patch(base+agendaPath+'/'+reserva.id+'/frequencia/correcao',{
+      headers:{Authorization:'Bearer '+profB.token},data:{novaFrequencia:'PRESENTE',version:reserva.version,justificativa:'Correção sintética após conferência da frequência mais recente.'}
+    });
+    assert.equal(correcao.status(),200);
+    const apos=await detail(profB,c.id);
+    assert.equal(apos.paciente.indicadores.countFaltas,0);
+    assert.notEqual(apos.paciente.indicadores.classificacaoRisco,'VERMELHO');
+    assert(!(await buscarAlertas(profB)).alertas.some(x=>x.idPublico===c.id));
+    const outro=casosBusca[1];
+    assert((await buscarAlertas(profB)).alertas.some(x=>x.idPublico===outro.id));
+    const semAlerta=await postEnc(profB,{...payload,version:apos.paciente.versao,requisicao:crypto.randomUUID()});
+    assert.equal(semAlerta.status(),409,'Não registrar novo encaminhamento quando alerta não existe');
+    const depois=await auditoriaBusca(adminB);
+    for(const {e} of encaminhamentos){
+      assert.deepEqual(depois.content.filter(x=>x.tipoEvento==='ENCAMINHAMENTO_ALERTA'&&x.pacienteId===e.pacienteId),[e]);
+    }
+    assert.deepEqual(await get(profB,api+'/pacientes/'+outro.id+'/prontuario'),estadoCasosAntes[1]);
+    assert.deepEqual(await estadoClinico(),estadoAantes);
+    const p=profB.page;await p.goto(base+'/painel');
+    await itemBusca(p,outro.nome).getByText(outro.texto,{exact:true}).waitFor();
+    assert.equal(await itemBusca(p,c.nome).count(),0);
+    await shot(p,'busca-ativa-apos-recalculo');
+  });
   assert.deepEqual(pageErrors,[],'Erros JavaScript não tratados');
   assert(!http.some(r=>r.status>=500),'Não deve haver erro técnico nas chamadas da interface');
 } catch(e){
@@ -1133,4 +1279,4 @@ try {
   await writeFile(resolve(output,'resultados.json'),JSON.stringify({mode:'Spring Boot real, H2 em memória, sem mocks HTTP',results,http,pageErrors,groupRequests,groupForms},null,2));
 }
 console.log(JSON.stringify({results,http,pageErrors,groupRequests,groupForms},null,2));
-if(!process.exitCode) assert.equal(results.filter(r=>r.status==='PASS').length,26,'Todas as vinte e seis fases devem passar');
+if(!process.exitCode) assert.equal(results.filter(r=>r.status==='PASS').length,29,'Todas as vinte e nove fases devem passar');
