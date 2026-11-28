@@ -6,6 +6,8 @@ on:
       - '.github/workflows/etapa9-candidato-dependencias.yml'
       - '.github/scripts/etapa9-candidato-npm.mjs'
       - '.github/scripts/etapa9-auditoria-maven.py'
+      - '.github/scripts/etapa9-detalhes-maven.py'
+      - '.github/scripts/etapa9-maven-baseline.json'
   workflow_dispatch:
 permissions:
   contents: read
@@ -35,8 +37,8 @@ jobs:
           path: frontend/sentinela-pet/candidato-etapa9/
           retention-days: 30
           if-no-files-found: error
-  maven-inventario:
-    name: Inventario Maven resolvido e consulta OSV
+  maven-detalhes:
+    name: Detalhar avisos Maven ja identificados
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
@@ -46,24 +48,13 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: maven
-          cache-dependency-path: backend/buscaativa/pom.xml
-      - name: Resolver arvore Maven sem executar testes
-        shell: bash
-        run: |
-          mkdir -p auditoria-etapa9
-          bash ./mvnw -B -ntp org.apache.maven.plugins:maven-dependency-plugin:3.9.0:tree -DoutputType=json -DoutputFile=auditoria-etapa9/dependency-tree.json
-      - name: Consultar avisos OSV por coordenada e versao
-        run: python3 ../../.github/scripts/etapa9-auditoria-maven.py
+      - name: Consultar detalhes dos avisos OSV da base aprovada
+        run: python3 ../../.github/scripts/etapa9-detalhes-maven.py
       - name: Evidencias Maven
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: etapa9-auditoria-maven
+          name: etapa9-detalhes-maven
           path: backend/buscaativa/auditoria-etapa9/
           retention-days: 30
           if-no-files-found: error
