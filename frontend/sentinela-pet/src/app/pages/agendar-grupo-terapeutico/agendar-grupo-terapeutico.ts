@@ -228,7 +228,7 @@ export class AgendarGrupoTerapeutico implements OnInit, OnDestroy {
       horario: payload.horario, version: this.grupoVersion,
     }) : this.grupos.criar(payload);
     request$
-      .pipe(finalize(() => (this.enviando = false)))
+      .pipe(finalize(() => { this.enviando = false; this.cdr.markForCheck(); }))
       .subscribe({
         next: () => {
           const sessao = this.route.snapshot.queryParamMap.get('sessao');
@@ -323,9 +323,8 @@ export class AgendarGrupoTerapeutico implements OnInit, OnDestroy {
 
   private carregarProfissionais(): void {
     this.profissionaisService.listarParaSelecao().subscribe({
-      next: (p) => (this.profissionais = p),
-      error: () =>
-        (this.erroGeral = "Não foi possível carregar os coordenadores."),
+      next: (p) => { this.profissionais = p; this.cdr.markForCheck(); },
+      error: () => { this.erroGeral = "Não foi possível carregar os coordenadores."; this.cdr.markForCheck(); },
     });
   }
 
@@ -358,12 +357,13 @@ export class AgendarGrupoTerapeutico implements OnInit, OnDestroy {
             finalize(() => {
               this.buscando = false;
               this.pesquisaRealizada = true;
+              this.cdr.markForCheck();
             })
           );
         }),
         takeUntil(this.destroy$)
       )
-      .subscribe((r) => (this.resultados = r));
+      .subscribe((r) => { this.resultados = r; this.cdr.markForCheck(); });
   }
 
   private tratarErro(e: HttpErrorResponse, escrita = true): void {
