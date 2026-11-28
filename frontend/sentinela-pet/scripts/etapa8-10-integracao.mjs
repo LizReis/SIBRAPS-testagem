@@ -762,7 +762,12 @@ try {
     const todas=await get(admin,fila);
     assert.equal(todas.pendentes,0);assert.equal(todas.aprovadas,1);assert.equal(todas.rejeitadas,1);
     const repetida=await admin.page.request.post(base+revisoes+'/'+ticketIndividual+'/decisao?version='+estadoAntes.a.versao,{headers:{Authorization:'Bearer '+admin.token},data:{decisao:'REJEITAR',justificativa:motivoRejeicao}});
-    assert.equal(repetida.status(),404,'Decisão anterior não pode ser sobrescrita');
+    assert.equal(repetida.status(),422,'Decisão anterior não pode ser sobrescrita');
+    const erroRepeticao=await repetida.json();
+    assert.equal(erroRepeticao.code,'VALIDATION_FAILED','Decisão duplicada deve ser recusada por validação de domínio, não por versão obsoleta');
+    assert.equal(erroRepeticao.message,'Ja existe uma decisao para esta pendencia.');
+    const aposRepeticao=await get(admin,fila);
+    assert.deepEqual(aposRepeticao,todas,'A recusa deve preservar integralmente os tickets, decisões, justificativas, totais e aplicações');
     assert.equal((await get(adminB,fila)).total,0);
     assert.deepEqual(await estadoClinico(),estadoAntes);
     await p.getByLabel('Situação da decisão').selectOption('REJEITADA');
