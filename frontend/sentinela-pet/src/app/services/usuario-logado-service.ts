@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable, shareReplay } from 'rxjs';
+import { LoginService } from './login/login-service';
 
 export interface UsuarioLogadoDTO {
   idPublico: string;
@@ -18,22 +19,26 @@ export interface UsuarioLogadoDTO {
 export class UsuarioLogadoService {
   private readonly apiUrl = '/api/usuarios/me';
 
-  private http = inject(HttpClient);
-
-  private usuarioLogado$: Observable<UsuarioLogadoDTO> | null = null;
+  private readonly http = inject(HttpClient);
+  private readonly login = inject(LoginService);
+  private cache: { token: string; usuario$: Observable<UsuarioLogadoDTO> } | null = null;
 
   obterUsuarioLogado(): Observable<UsuarioLogadoDTO> {
-    // Cacheia a resposta em memória (shareReplay) para não bater no
-    // endpoint toda vez que um componente diferente perguntar quem está logado.
-    if (!this.usuarioLogado$) {
-      this.usuarioLogado$ = this.http
-        .get<UsuarioLogadoDTO>(this.apiUrl)
-        .pipe(shareReplay(1));
+    const token = this.login.getToken();
+    if (!token) {
+      this.limparCache();
+      return this.http.get<UsuarioLogadoDTO>(this.apiUrl);
     }
-    return this.usuarioLogado$;
+    if (this.cache?.token !== token) {
+      this.cache = {
+        token,
+        usuario$: this.http.get<UsuarioLogadoDTO>(this.apiUrl).pipe(shareReplay(1)),
+      };
+    }
+    return this.cache.usuario$;
   }
 
   limparCache(): void {
-    this.usuarioLogado$ = null;
+    this.cache = null;
   }
 }

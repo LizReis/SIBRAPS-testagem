@@ -4,6 +4,8 @@ on:
     branches: [correcao-cadastro-unico-isolamento]
     paths:
       - '.github/workflows/etapa9-auditoria-dependencias.yml'
+      - '.github/scripts/etapa9-auditoria-maven.py'
+      - 'backend/buscaativa/pom.xml'
       - 'frontend/sentinela-pet/package.json'
       - 'frontend/sentinela-pet/package-lock.json'
   workflow_dispatch:
@@ -93,5 +95,49 @@ jobs:
         with:
           name: etapa9-auditoria-npm
           path: frontend/sentinela-pet/auditoria-etapa9/
+          retention-days: 30
+          if-no-files-found: error
+  maven-audit:
+    name: Inventario Maven resolvido e consulta OSV
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: backend/buscaativa
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: backend/buscaativa/pom.xml
+      - name: Resolver o POM versionado e consultar OSV
+        run: |
+          mkdir -p auditoria-etapa9
+          git rev-parse HEAD > auditoria-etapa9/commit.txt
+          date -u +%FT%TZ > auditoria-etapa9/data-utc.txt
+          bash ./mvnw -B -ntp org.apache.maven.plugins:maven-dependency-plugin:3.9.0:tree \
+            -DoutputType=json -DoutputFile=auditoria-etapa9/dependency-tree.json
+          python3 ../../.github/scripts/etapa9-auditoria-maven.py
+          python3 - <<'PYTHON'
+          import json
+          import os
+          from pathlib import Path
+          report = json.loads(Path("auditoria-etapa9/osv-report.json").read_text())
+          matches = sum(len(p["vulnerabilities"]) for p in report["matches"])
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write(f"### Auditoria Maven / OSV\n\n{report['consultadas']} coordenadas, "
+                            f"{report['packagesWithMatches']} pacotes com "
+                            f"{matches} correspondências.\n")
+          PYTHON
+      - name: Evidencias da auditoria Maven
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: etapa9-auditoria-maven
+          path: backend/buscaativa/auditoria-etapa9/
           retention-days: 30
           if-no-files-found: error

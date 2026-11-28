@@ -3,6 +3,8 @@ package com.pet.buscaativa.services.impl;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
+import java.util.Optional;
+import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -30,7 +32,8 @@ public class TokenServiceImpl implements TokenService {
         byte[] key = policy.decodeKey(encodedSecret);
         try {
             this.algorithm = Algorithm.HMAC256(key);
-            this.verifier = JWT.require(algorithm).withIssuer("buscaativa-api").build();
+            this.verifier = JWT.require(algorithm).withIssuer("buscaativa-api")
+                    .withClaimPresence("exp").withClaimPresence("uid").build();
         } finally {
             Arrays.fill(key, (byte) 0);
         }
@@ -38,18 +41,25 @@ public class TokenServiceImpl implements TokenService {
 
     public String gerarToken(Usuario usuario) {
         try {
-            return JWT.create().withIssuer("buscaativa-api").withSubject(usuario.getEmail()).withExpiresAt(Instant.now().plus(2, ChronoUnit.HOURS)).sign(algorithm);
+            return JWT.create().withIssuer("buscaativa-api").withSubject(usuario.getEmail())
+                    .withClaim("uid", usuario.getIdPublico().toString())
+                    .withExpiresAt(Instant.now().plus(2, ChronoUnit.HOURS)).sign(algorithm);
 
         } catch (JWTCreationException exception) {
             throw new RuntimeException("Erro ao gerar token JWT", exception);
         }
     }
 
-    public String validarToken(String token) {
+    @Override
+    public Optional<Identidade> verificarIdentidade(String token) {
         try {
-            return verifier.verify(token).getSubject();
-        } catch (JWTVerificationException exception) {
-            return "";
+            var decoded = verifier.verify(token);
+            String email = decoded.getSubject();
+            String uid = decoded.getClaim("uid").asString();
+            if (email == null || email.isBlank() || uid == null || decoded.getExpiresAt() == null) return Optional.empty();
+            return Optional.of(new Identidade(email, UUID.fromString(uid)));
+        } catch (JWTVerificationException | IllegalArgumentException ignored) {
+            return Optional.empty();
         }
     }
 }

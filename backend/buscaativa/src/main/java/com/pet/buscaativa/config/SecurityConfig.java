@@ -1,9 +1,14 @@
 package com.pet.buscaativa.config;
 
+import java.net.URI;
 import java.util.Arrays;
+import java.util.List;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.Customizer;
@@ -33,9 +38,12 @@ public class SecurityConfig {
     private final SecurityFilter securityFilter;
     private final RestAuthenticationEntryPoint authenticationEntryPoint;
     private final RestAccessDeniedHandler accessDeniedHandler;
+    private final Environment environment;
 
     @Bean
     public SecurityFilterChain appSecurityFilterChain(HttpSecurity http) throws Exception {
+        boolean documentacaoLocal = environment.matchesProfiles("dev & !test")
+                && environment.getProperty("sibraps.dev.openapi.enabled", Boolean.class, false);
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
@@ -49,18 +57,18 @@ public class SecurityConfig {
                 //Adicione esta linha para desabilitar o filtro anônimo
                 .anonymous(anon -> anon.disable())
                 
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/h2-console", "/h2-console/**").denyAll()
-                        .requestMatchers(
-                                "/v3/api-docs/**",
-                                "/swagger-ui/**",
-                                "/swagger-ui.html").permitAll()
-                        .requestMatchers("/api/auth/login").permitAll()
-                        .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
+                .authorizeHttpRequests(auth -> {
+                    auth.requestMatchers("/h2-console", "/h2-console/**").denyAll();
+                    var documentacao = auth.requestMatchers("/v3/api-docs", "/v3/api-docs/**", "/v3/api-docs.yaml",
+                            "/swagger-ui/**", "/swagger-ui.html");
+                    if (documentacaoLocal) documentacao.permitAll();
+                    else documentacao.denyAll();
+                    auth.requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/error").permitAll()
                         //Qualquer outra requisição DEVE estar autenticada
-                        .anyRequest().authenticated()
-                )
+                        .anyRequest().authenticated();
+                })
                 //SecurityFilter DEVE vir ANTES do UsernamePasswordAuthenticationFilter
                 .addFilterBefore(
                         securityFilter,
@@ -88,16 +96,36 @@ public class SecurityConfig {
     }
 
     @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
+    public CorsConfigurationSource corsConfigurationSource(
+            @Value("${SIBRAPS_CORS_ALLOWED_ORIGINS:}") String origins) {
+        List<String> allowedOrigins = Arrays.stream(origins.split(","))
+                .map(String::trim).filter(origin -> !origin.isEmpty())
+                .map(SecurityConfig::validarOrigem).distinct().toList();
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("*"));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        configuration.setAllowedHeaders(Arrays.asList("*"));
+        configuration.setAllowedOrigins(allowedOrigins);
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
+        configuration.setExposedHeaders(List.of("Content-Disposition", "X-Correlation-ID"));
         configuration.setAllowCredentials(false);
         configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
+    }
+
+    private static String validarOrigem(String origin) {
+        URI uri;
+        try {
+            uri = URI.create(origin);
+        } catch (IllegalArgumentException ignored) {
+            throw new IllegalArgumentException("Configure apenas origens HTTP(S) exatas em SIBRAPS_CORS_ALLOWED_ORIGINS.");
+        }
+        if ((!"https".equals(uri.getScheme()) && !"http".equals(uri.getScheme()))
+                || uri.getHost() == null || uri.getUserInfo() != null || uri.getRawQuery() != null
+                || uri.getRawFragment() != null || !uri.getRawPath().isEmpty()) {
+            throw new IllegalArgumentException("Configure apenas origens HTTP(S) exatas em SIBRAPS_CORS_ALLOWED_ORIGINS.");
+        }
+        return origin;
     }
 }

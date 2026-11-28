@@ -62,7 +62,7 @@ public class SusApiAdapter {
                     offset += limit; 
                 }
             } catch (Exception e) {
-                log.error("Erro ao paginar dados do SUS no offset " + offset, e);
+                log.error("Erro ao paginar dados do SUS no offset {}. Tipo: {}", offset, e.getClass().getSimpleName());
                 temMaisRegistros = false; // Interrompe para evitar loop infinito em caso de erro
             }
         }

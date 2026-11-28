@@ -6,6 +6,7 @@ import { firstValueFrom } from 'rxjs';
 import { interpretarErroHttp } from './erro-http';
 import { meuhttpInterceptor } from './http-interceptor.service';
 import { LoginService } from './login/login-service';
+import { UsuarioLogadoService } from './usuario-logado-service';
 
 describe('Interceptor HTTP da sessão', () => {
   let http: HttpTestingController;
@@ -54,6 +55,25 @@ describe('Interceptor HTTP da sessão', () => {
     expect(sessao.getToken()).toBe('jwt-sintetico');
     expect(navigate).not.toHaveBeenCalled();
     expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  it('descarta o usuário em cache após 401 e autenticação de outra conta', async () => {
+    const usuarios = TestBed.inject(UsuarioLogadoService);
+    const anterior = firstValueFrom(usuarios.obterUsuarioLogado());
+    http.expectOne('/api/usuarios/me').flush({ idPublico: 'conta-anterior' });
+    expect((await anterior).idPublico).toBe('conta-anterior');
+    expect((await firstValueFrom(usuarios.obterUsuarioLogado())).idPublico).toBe('conta-anterior');
+    http.expectNone('/api/usuarios/me');
+
+    client.get('/api/pacientes').subscribe({ error: () => undefined });
+    http.expectOne('/api/pacientes').flush({}, { status: 401, statusText: 'Unauthorized' });
+    sessao.addToken('sessao-nova-sintetica');
+
+    const atual = firstValueFrom(usuarios.obterUsuarioLogado());
+    const req = http.expectOne('/api/usuarios/me');
+    expect(req.request.headers.get('Authorization')).toBe('Bearer sessao-nova-sintetica');
+    req.flush({ idPublico: 'conta-atual' });
+    expect((await atual).idPublico).toBe('conta-atual');
   });
 
   it('preserva autenticação nova quando uma resposta atrasada recusa o token anterior', () => {

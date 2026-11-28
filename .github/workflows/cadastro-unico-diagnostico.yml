@@ -72,7 +72,8 @@ jobs:
         run: |
           node --check scripts/etapa8-9-browser.mjs
           node --check scripts/etapa8-10-integracao.mjs
-      - run: npm ci
+      - run: npm ci --strict-peer-deps
+      - run: npm ls --all > /dev/null
       - name: Compilacao de producao
         run: npm run build
       - name: Preservar build de producao para navegador
@@ -155,7 +156,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/sentinela-pet/package-lock.json
       - run: npm install --global npm@11.6.2
-      - run: npm ci
+      - run: npm ci --strict-peer-deps
       - name: Suite Angular completa (contrato padrao)
         run: npm test -- --watch=false
       - name: Contrato HTTP integrado experimental

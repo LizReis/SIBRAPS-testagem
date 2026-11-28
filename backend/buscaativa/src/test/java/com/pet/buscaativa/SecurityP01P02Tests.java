@@ -30,7 +30,7 @@ import com.pet.buscaativa.services.TokenService;
 import com.pet.buscaativa.services.impl.SusApiAdapter;
 import tools.jackson.databind.ObjectMapper;
 
-@SpringBootTest
+@SpringBootTest(properties = "SIBRAPS_CORS_ALLOWED_ORIGINS=https://ui.test.local")
 @AutoConfigureMockMvc(print = MockMvcPrint.NONE)
 @Transactional
 class SecurityP01P02Tests extends SecurityTestSupport {
@@ -62,6 +62,7 @@ class SecurityP01P02Tests extends SecurityTestSupport {
 
     private String signed(byte[] key, Instant expires, String issuer) {
         return JWT.create().withIssuer(issuer).withSubject(admin.getEmail())
+                .withClaim("uid", admin.getIdPublico().toString())
                 .withExpiresAt(expires).sign(Algorithm.HMAC256(key));
     }
 
@@ -141,6 +142,59 @@ class SecurityP01P02Tests extends SecurityTestSupport {
         users.delete(admin);
         users.flush();
         assertUnauthorized(token);
+    }
+
+    @Test
+    void tokenForRemovedAccountDoesNotAuthenticateReplacementWithSameEmail() throws Exception {
+        String token = tokens.gerarToken(admin);
+        String email = admin.getEmail();
+        users.delete(admin);
+        users.flush();
+        professional.setEmail(email);
+        users.saveAndFlush(professional);
+
+        assertUnauthorized(token);
+        var response = mvc.perform(get("/api/usuarios/me")
+                .header("Authorization", "Bearer " + tokens.gerarToken(professional)))
+                .andReturn().getResponse();
+        assertEquals(200, response.getStatus());
+        assertEquals(professional.getIdPublico().toString(),
+                json.readTree(response.getContentAsString()).get("idPublico").asString());
+    }
+
+    @Test
+    void validSignatureRequiresExpirationAndAccountIdentity() throws Exception {
+        var signer = Algorithm.HMAC256(TEST_KEY);
+        assertUnauthorized(JWT.create().withIssuer("buscaativa-api").withSubject(admin.getEmail())
+                .withClaim("uid", admin.getIdPublico().toString()).sign(signer));
+        assertUnauthorized(JWT.create().withIssuer("buscaativa-api").withSubject(admin.getEmail())
+                .withExpiresAt(Instant.now().plusSeconds(120)).sign(signer));
+    }
+
+    @Test
+    void corsAcceptsOnlyConfiguredOriginWithoutCookies() throws Exception {
+        var allowed = mvc.perform(options("/api/usuarios/me")
+                .header("Origin", "https://ui.test.local")
+                .header("Access-Control-Request-Method", "GET")
+                .header("Access-Control-Request-Headers", "Authorization"))
+                .andReturn().getResponse();
+        assertEquals(200, allowed.getStatus());
+        assertEquals("https://ui.test.local", allowed.getHeader("Access-Control-Allow-Origin"));
+        assertNull(allowed.getHeader("Access-Control-Allow-Credentials"));
+        var denied = mvc.perform(options("/api/usuarios/me")
+                .header("Origin", "https://ui.test.local.example")
+                .header("Access-Control-Request-Method", "GET"))
+                .andReturn().getResponse();
+        assertEquals(403, denied.getStatus());
+        assertNull(denied.getHeader("Access-Control-Allow-Origin"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/v3/api-docs", "/v3/api-docs.yaml", "/swagger-ui.html", "/swagger-ui/index.html"})
+    void openApiIsUnavailableWithOrWithoutAuthentication(String path) throws Exception {
+        assertEquals(403, mvc.perform(get(path)).andReturn().getResponse().getStatus());
+        assertEquals(403, mvc.perform(get(path).header("Authorization", "Bearer " + tokens.gerarToken(admin)))
+                .andReturn().getResponse().getStatus());
     }
 
     @Test

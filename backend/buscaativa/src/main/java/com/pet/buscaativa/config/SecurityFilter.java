@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
+import com.pet.buscaativa.entities.Usuario;
 import com.pet.buscaativa.services.TokenService;
 import com.pet.buscaativa.services.impl.UserDetailsServiceImpl;
 
@@ -55,11 +56,14 @@ public class SecurityFilter extends OncePerRequestFilter {
         String token = recuperarToken(request);
         if (token == null) return;
 
-        String email = tokenService.validarToken(token);
-        if (email == null || email.isBlank()) return;
+        var identidade = tokenService.verificarIdentidade(token);
+        if (identidade.isEmpty()) return;
 
-        var usuario = userDetailsService.loadUserByUsername(email);
-        var authentication = new UsernamePasswordAuthenticationToken(usuario, null, usuario.getAuthorities());
+        var usuario = userDetailsService.loadUserByUsername(identidade.get().email());
+        if (!(usuario instanceof Usuario conta) || !identidade.get().usuario().equals(conta.getIdPublico())
+                || !conta.isEnabled() || !conta.isAccountNonLocked() || !conta.isAccountNonExpired()
+                || !conta.isCredentialsNonExpired()) return;
+        var authentication = new UsernamePasswordAuthenticationToken(conta, null, conta.getAuthorities());
         SecurityContextHolder.getContext().setAuthentication(authentication);
     }
 

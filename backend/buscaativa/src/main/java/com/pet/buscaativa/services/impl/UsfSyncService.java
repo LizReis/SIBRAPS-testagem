@@ -48,7 +48,7 @@ public class UsfSyncService {
             }
 
         } catch (Exception e) {
-            log.error("Falha ao tentar sincronizar dados com o SUS. O sistema continuará usando os dados salvos no BD.", e);
+            log.error("Falha ao sincronizar USFs; registros existentes serão mantidos. Tipo: {}", e.getClass().getSimpleName());
         }
     }
 }

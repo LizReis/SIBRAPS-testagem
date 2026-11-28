@@ -20,7 +20,7 @@ public class AlertaPacientesVermelhosScheduler {
         try {
             service.enviarAlertasDiarios();
         } catch (Exception e) {
-            log.error("RF26: falha inesperada no job de alertas.", e);
+            log.error("RF26: falha inesperada no job de alertas. Tipo: {}", e.getClass().getSimpleName());
         }
     }
 }
