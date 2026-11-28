@@ -1,4 +1,4 @@
-name: SIBRAPS - Etapa 9 candidato npm e inventario Maven
+name: SIBRAPS - Etapa 9 candidatos npm e Maven
 on:
   push:
     branches: [correcao-cadastro-unico-isolamento]
@@ -6,7 +6,7 @@ on:
       - '.github/workflows/etapa9-candidato-dependencias.yml'
       - '.github/scripts/etapa9-candidato-npm.mjs'
       - '.github/scripts/etapa9-auditoria-maven.py'
-      - '.github/scripts/etapa9-detalhes-maven.py'
+      - '.github/scripts/etapa9-candidato-maven.py'
       - '.github/scripts/etapa9-maven-baseline.json'
   workflow_dispatch:
 permissions:
@@ -37,8 +37,8 @@ jobs:
           path: frontend/sentinela-pet/candidato-etapa9/
           retention-days: 30
           if-no-files-found: error
-  maven-detalhes:
-    name: Detalhar avisos Maven ja identificados
+  maven-candidato:
+    name: Resolver candidato Maven e consultar OSV
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
@@ -48,13 +48,19 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Consultar detalhes dos avisos OSV da base aprovada
-        run: python3 ../../.github/scripts/etapa9-detalhes-maven.py
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: backend/buscaativa/pom.xml
+      - name: Resolver candidato Maven sem executar testes
+        run: python3 ../../.github/scripts/etapa9-candidato-maven.py
       - name: Evidencias Maven
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: etapa9-detalhes-maven
+          name: etapa9-candidato-maven
           path: backend/buscaativa/auditoria-etapa9/
           retention-days: 30
           if-no-files-found: error

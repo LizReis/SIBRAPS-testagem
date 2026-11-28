@@ -22,28 +22,60 @@ function run(name,args){
   return {obj,status:result.status};
 }
 try {
-  // npm audit fix alone kept the framework and build at their old patches.
-  // Resolve the declared Angular ranges together before remediating transitives.
-  const angular=Object.keys({...JSON.parse(originalManifest).dependencies,...JSON.parse(originalManifest).devDependencies})
-    .filter(name=>name.startsWith('@angular/'));
-  const update=spawnSync('npm',['update',...angular,'--package-lock-only','--ignore-scripts','--no-save','--no-audit','--no-fund','--strict-peer-deps'],{
+  // Resolve exact, published stable patches in the current 21.2 line.
+  // Keep the manifest candidate explicit rather than rely on npm update heuristics.
+  const manifest=JSON.parse(originalManifest);
+  const framework=['common','compiler','core','forms','platform-browser','router','compiler-cli'].map(n=>'@angular/'+n);
+  const tooling=['@angular/build','@angular/cli'];
+  const catalog={};
+  for(const name of [...framework,...tooling]){
+    const r=spawnSync('npm',['view',name,'versions','--json'],{
+      encoding:'utf8',maxBuffer:16*1024*1024,timeout:45000,env:{...process.env,npm_config_ignore_scripts:'true',npm_config_force:'false'}
+    });
+    if(r.error)throw r.error;
+    assert.equal(r.status,0,'Registry query failed: '+name+' '+r.stderr);
+    catalog[name]=JSON.parse(r.stdout).filter(v=>/^21\.2\.\d+$/.test(v));
+    assert(catalog[name].length,'No stable 21.2 versions: '+name);
+    fs.writeFileSync(dir+'angular-catalog.json',JSON.stringify(catalog,null,2));
+  }
+  function commonPatch(names,min){
+    const candidates=catalog[names[0]].filter(v=>Number(v.split('.')[2])>=min&&names.every(n=>catalog[n].includes(v)));
+    candidates.sort((a,b)=>Number(b.split('.')[2])-Number(a.split('.')[2]));
+    assert(candidates.length,'No common published patch meeting minimum '+min+' for '+names.join(','));
+    return candidates[0];
+  }
+  const chosen={framework:commonPatch(framework,25),tooling:commonPatch(tooling,21)};
+  for(const [names,version] of [[framework,chosen.framework],[tooling,chosen.tooling]]){
+    for(const name of names){
+      const section=Object.hasOwn(manifest.dependencies,name)?'dependencies':'devDependencies';
+      assert(Object.hasOwn(manifest[section],name),'Unexpected direct dependency '+name);
+      manifest[section][name]=version;
+    }
+  }
+  console.log('ANGULAR_PINS '+JSON.stringify(chosen));
+  fs.writeFileSync(dir+'angular-pins.json',JSON.stringify(chosen,null,2));
+  const expectedManifest=Buffer.from(JSON.stringify(manifest,null,2)+'\n');
+  fs.writeFileSync('package.json',expectedManifest);
+  fs.copyFileSync('package.json',dir+'package.json');
+  const install=spawnSync('npm',['install','--package-lock-only','--ignore-scripts','--no-audit','--no-fund','--strict-peer-deps'],{
     encoding:'utf8',maxBuffer:32*1024*1024,timeout:360000,env:{...process.env,npm_config_ignore_scripts:'true',npm_config_force:'false'}
   });
-  fs.writeFileSync(dir+'angular-update.stdout.txt',update.stdout||'');
-  fs.writeFileSync(dir+'angular-update.stderr.txt',update.stderr||'');
-  if(update.error)throw update.error;
-  assert.equal(update.status,0,'Falha na resolução coordenada do Angular');
-  assert(fs.readFileSync('package.json').equals(originalManifest),'Atualização Angular modificou manifesto');
+  fs.writeFileSync(dir+'angular-install.stdout.txt',install.stdout||'');
+  fs.writeFileSync(dir+'angular-install.stderr.txt',install.stderr||'');
+  if(install.error)throw install.error;
+  assert.equal(install.status,0,'Falha na instalação das versões explícitas: '+install.stderr);
+  assert(fs.readFileSync('package.json').equals(expectedManifest),'Resolvedor alterou manifesto candidato');
   fs.copyFileSync('package-lock.json',dir+'angular-update.lock.json');
   const fix=run('fix',['audit','fix','--package-lock-only','--ignore-scripts','--json','--no-fund','--audit-level=low','--strict-peer-deps']);
   const afterBytes=fs.readFileSync('package-lock.json');
   const after=JSON.parse(afterBytes);
   fs.copyFileSync('package-lock.json',dir+'package-lock.json');
   fs.copyFileSync('package.json',dir+'package.json');
-  assert(fs.readFileSync('package.json').equals(originalManifest),'Manifesto alterado: requer análise específica, não publicar');
-  assert.deepEqual(after.packages[''],before.packages[''],'Dependências declaradas não devem mudar');
+  assert(fs.readFileSync('package.json').equals(expectedManifest),'Manifesto candidato sofreu alterações inesperadas');
+  assert.deepEqual(after.packages[''].dependencies,manifest.dependencies);
+  assert.deepEqual(after.packages[''].devDependencies,manifest.devDependencies);
+  for(const [key,val] of Object.entries(before.packages['']))if(!['dependencies','devDependencies'].includes(key))assert.deepEqual(after.packages[''][key],val);
   assert.equal(after.lockfileVersion,before.lockfileVersion);
-  const manifest=JSON.parse(originalManifest);
   const direct=Object.keys({...manifest.dependencies,...manifest.devDependencies});
   const versions={};
   for(const name of direct){
@@ -53,8 +85,8 @@ try {
     assert.equal(updated.split('.')[0],old.split('.')[0],'Mudança de major não autorizada: '+name);
     versions[name]={antes:old,depois:updated};
   }
-  const framework=['common','compiler','core','forms','platform-browser','router','compiler-cli'];
-  assert.equal(new Set(framework.map(n=>versions['@angular/'+n].depois)).size,1,'Framework e compiler-cli devem permanecer alinhados');
+  for(const name of framework)assert.equal(versions[name].depois,chosen.framework,'Framework e compiler-cli devem permanecer alinhados');
+  for(const name of tooling)assert.equal(versions[name].depois,chosen.tooling,'CLI e Build devem manter patches selecionados');
   assert.equal(versions['@angular/build'].depois,versions['@angular/cli'].depois,'Build e CLI devem permanecer alinhados');
   assert(versions['@angular/core'].depois!==versions['@angular/core'].antes,'Framework Angular permaneceu na versão vulnerável original');
   assert(versions['@angular/build'].depois!==versions['@angular/build'].antes,'Angular Build permaneceu na versão vulnerável original');
@@ -77,6 +109,7 @@ try {
   fs.writeFileSync(dir+'delta.json',JSON.stringify(delta));
   console.log('VERSOES_DIRETAS '+JSON.stringify(versions));
   console.log('CANDIDATE_SHA256 '+delta.sha256);
+  console.log('CANDIDATE_MANIFEST_SHA256 '+sha(expectedManifest));
   console.log('CANDIDATE_COUNTS '+JSON.stringify({changed:changed.length,removed:removed.length,fixExit:fix.status}));
   // Emit compact, machine-readable delta to recover the candidate without
   // a write token or automated push. Artifact remains the authoritative copy.
