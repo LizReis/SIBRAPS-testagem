@@ -641,6 +641,136 @@ try {
     await get(b,api+'/pacientes/'+retroId+'/detalhe',404);
     await shot(p,'serie-inscricao-confirmada');
   });
+  const revisoes=api+'/pacientes/'+pessoa+'/vinculos/'+localA+'/revisoes';
+  const fila=api+'/relatorios/pendencias';
+  const motivoIndividual='Solicitação sintética para conferência do atendimento remarcado.';
+  const motivoColetivo='Solicitação sintética para conferência da sessão coletiva.';
+  const motivoAprovacao='Aprovação sintética para análise posterior, sem alterar frequência.';
+  const motivoRejeicao='Rejeição sintética após conferência dos registros da sessão.';
+  let ticketIndividual,ticketColetivo,adminB,estadoAntes;
+  async function estadoClinico(){
+    const pa=await get(a,api+'/pacientes/'+pessoa+'/prontuario');
+    const pb=await get(b,api+'/pacientes/'+pessoa+'/prontuario');
+    const individual=await get(a,agendaPath+'/'+sucessor.id);
+    const coletiva=await sessaoAtual(a);
+    return {
+      a:{versao:pa.paciente.versao,indicadores:pa.paciente.indicadores,atendimentos:pa.atendimentos,sessoes:pa.sessoes,historico:pa.historico,presencas:pa.presencasComprovadas,faltas:pa.faltasComprovadas},
+      b:{versao:pb.paciente.versao,indicadores:pb.paciente.indicadores,atendimentos:pb.atendimentos,sessoes:pb.sessoes,historico:pb.historico,presencas:pb.presencasComprovadas,faltas:pb.faltasComprovadas},
+      individual:{id:individual.id,version:individual.version,reserva:individual.situacaoReserva,frequencia:individual.frequenciaAssistencial},
+      coletiva:{id:coletiva.id,version:coletiva.version,status:coletiva.status,participantes:coletiva.participantes}
+    };
+  }
+  async function abrirRevisoes(){
+    const p=a.page;
+    await p.goto(base+'/pacientes/detalhes/'+pessoa+'?vinculo='+localA);
+    await p.getByRole('link',{name:'Revisões clínicas',exact:true}).click();
+    await p.getByRole('heading',{name:'Revisões clínicas',exact:true}).waitFor();
+    return p;
+  }
+  async function solicitarRevisao(tipo,id,motivo){
+    const p=await abrirRevisoes();
+    const row=p.getByRole('row').filter({has:p.getByRole('cell',{name:tipo.replaceAll('_',' '),exact:true})}).filter({has:p.getByRole('cell',{name:new RegExp('· '+id+'$')})});
+    await row.getByRole('button',{name:'Selecionar',exact:true}).click();
+    const registrar=p.getByRole('button',{name:'Registrar solicitação',exact:true});
+    assert(await registrar.isDisabled(),'Justificativa obrigatória na solicitação');
+    await p.getByLabel('Justificativa (10 a 2.000 caracteres)').fill('curta');
+    assert(await registrar.isDisabled());
+    await p.getByLabel('Justificativa (10 a 2.000 caracteres)').fill(motivo);
+    const resp=expectResponse(p,'POST',revisoes,200,u=>u.searchParams.get('version')===String(estadoAntes.a.versao));
+    await registrar.click();
+    const ticket=await (await resp).json();
+    assert.match(ticket,/^[0-9a-f-]{36}$/i);
+    await p.getByText('Solicitação registrada. O atendimento e sua frequência não foram alterados.',{exact:true}).waitFor();
+    assert.equal(await p.getByRole('button',{name:'Selecionar',exact:true}).first().isDisabled(),true,'Nova solicitação exige consulta atualizada');
+    await shot(p,'revisao-'+tipo.toLowerCase());
+    return ticket;
+  }
+  function linhaFila(p,tipo,id){
+    return p.getByRole('row').filter({has:p.getByRole('cell',{name:nome,exact:true})}).filter({has:p.getByRole('cell',{name:tipo.replaceAll('_',' ')+' · '+id,exact:true})});
+  }
+  await step('solicitações clínicas individuais e coletivas não alteram fatos nem indicadores',async()=>{
+    estadoAntes=await estadoClinico();
+    ticketIndividual=await solicitarRevisao('AGENDAMENTO',sucessor.id,motivoIndividual);
+    ticketColetivo=await solicitarRevisao('SESSAO_GRUPO',sessaoId,motivoColetivo);
+    assert.notEqual(ticketIndividual,ticketColetivo);
+    assert.deepEqual(await estadoClinico(),estadoAntes);
+    const pendentes=await get(admin,fila+'?estado=PENDENTE');
+    assert.equal(pendentes.pendentes,2);
+    for(const [ticket,registro,justificativa] of [[ticketIndividual,sucessor.id,motivoIndividual],[ticketColetivo,sessaoId,motivoColetivo]]){
+      const item=pendentes.itens.find(x=>x.ticket===ticket);
+      assert(item);assert.equal(item.vinculo,localA);assert.equal(item.registro,registro);
+      assert.equal(item.justificativaSolicitacao,justificativa);
+      assert.equal(item.aplicacao,'SEM_APLICACAO');
+    }
+    const payload={tipo:'AGENDAMENTO',registro:sucessor.id,justificativa:motivoIndividual};
+    const negada=await recepcaoA.page.request.post(base+revisoes+'?version='+estadoAntes.a.versao,{headers:{Authorization:'Bearer '+recepcaoA.token},data:payload});
+    assert.equal(negada.status(),403);
+    adminB=await login('ADMINISTRADOR','b');
+    const externa=await adminB.page.request.post(base+api+'/pacientes/'+pessoa+'/vinculos/'+localB+'/revisoes?version='+estadoAntes.b.versao,{headers:{Authorization:'Bearer '+adminB.token},data:payload});
+    assert.equal(externa.status(),404,'Vínculo B não autoriza revisão de fato A');
+    await get(a,fila,403);await get(recepcaoA,fila,403);
+    assert.equal((await get(adminB,fila)).total,0);
+  });
+  await step('administrador aprova solicitação sem executar correção clínica',async()=>{
+    const p=admin.page;await p.goto(base+'/pendencias-clinicas');
+    await p.getByRole('heading',{name:'Pendências clínicas',exact:true}).waitFor();
+    await p.getByLabel('Situação da decisão').selectOption('PENDENTE');
+    await linhaFila(p,'AGENDAMENTO',sucessor.id).getByRole('button',{name:'Detalhes',exact:true}).click();
+    const detalhes=p.getByRole('region',{name:'Detalhes da solicitação'});
+    await detalhes.getByText(motivoIndividual,{exact:true}).waitFor();
+    const aprovar=detalhes.getByRole('button',{name:'Aprovar',exact:true});
+    assert(await aprovar.isDisabled());
+    const caminho=revisoes+'/'+ticketIndividual+'/decisao';
+    const data={decisao:'APROVAR',justificativa:motivoAprovacao};
+    for(const actor of [a,recepcaoA]){
+      const negada=await actor.page.request.post(base+caminho+'?version='+estadoAntes.a.versao,{headers:{Authorization:'Bearer '+actor.token},data});
+      assert.equal(negada.status(),403);
+    }
+    const externa=await adminB.page.request.post(base+api+'/pacientes/'+pessoa+'/vinculos/'+localB+'/revisoes/'+ticketIndividual+'/decisao?version='+estadoAntes.b.versao,{headers:{Authorization:'Bearer '+adminB.token},data});
+    assert.equal(externa.status(),404);
+    await detalhes.getByLabel('Justificativa da decisão (10 a 2.000 caracteres)').fill(motivoAprovacao);
+    const resp=expectResponse(p,'POST',caminho,200);
+    await aprovar.click();const decisao=await (await resp).json();
+    await p.getByText('Decisão registrada. Nenhuma correção clínica foi aplicada por esta ação.',{exact:true}).waitFor();
+    const aprovadas=await get(admin,fila+'?estado=APROVADA');
+    const item=aprovadas.itens.find(x=>x.ticket===ticketIndividual);
+    assert(item);assert.equal(item.decisao,decisao);assert.equal(item.justificativaDecisao,motivoAprovacao);assert.equal(item.aplicacao,'SEM_APLICACAO');
+    assert.deepEqual(await estadoClinico(),estadoAntes);
+    await p.getByLabel('Situação da decisão').selectOption('APROVADA');
+    await linhaFila(p,'AGENDAMENTO',sucessor.id).getByRole('button',{name:'Detalhes',exact:true}).click();
+    await detalhes.getByText(motivoAprovacao,{exact:true}).waitFor();
+    await detalhes.getByRole('link',{name:'Conferir fatos para resolução vinculada à decisão'}).waitFor();
+    assert.equal(await detalhes.getByRole('button',{name:'Aprovar',exact:true}).count(),0);
+    await shot(p,'pendencia-aprovada');
+  });
+  await step('rejeição preserva registros e decisão anterior, com fila isolada',async()=>{
+    const p=admin.page;
+    await p.getByLabel('Situação da decisão').selectOption('PENDENTE');
+    await linhaFila(p,'SESSAO_GRUPO',sessaoId).getByRole('button',{name:'Detalhes',exact:true}).click();
+    const detalhes=p.getByRole('region',{name:'Detalhes da solicitação'});
+    await detalhes.getByText(motivoColetivo,{exact:true}).waitFor();
+    const rejeitar=detalhes.getByRole('button',{name:'Rejeitar',exact:true});
+    assert(await rejeitar.isDisabled());
+    await detalhes.getByLabel('Justificativa da decisão (10 a 2.000 caracteres)').fill(motivoRejeicao);
+    const caminho=revisoes+'/'+ticketColetivo+'/decisao';
+    const resp=expectResponse(p,'POST',caminho,200);
+    await rejeitar.click();const decisao=await (await resp).json();
+    await p.getByText('Nenhuma solicitação nesta página.',{exact:true}).waitFor();
+    const rejeitadas=await get(admin,fila+'?estado=REJEITADA');
+    const item=rejeitadas.itens.find(x=>x.ticket===ticketColetivo);
+    assert(item);assert.equal(item.decisao,decisao);assert.equal(item.justificativaDecisao,motivoRejeicao);assert.equal(item.aplicacao,'SEM_APLICACAO');
+    const todas=await get(admin,fila);
+    assert.equal(todas.pendentes,0);assert.equal(todas.aprovadas,1);assert.equal(todas.rejeitadas,1);
+    const repetida=await admin.page.request.post(base+revisoes+'/'+ticketIndividual+'/decisao?version='+estadoAntes.a.versao,{headers:{Authorization:'Bearer '+admin.token},data:{decisao:'REJEITAR',justificativa:motivoRejeicao}});
+    assert.equal(repetida.status(),404,'Decisão anterior não pode ser sobrescrita');
+    assert.equal((await get(adminB,fila)).total,0);
+    assert.deepEqual(await estadoClinico(),estadoAntes);
+    await p.getByLabel('Situação da decisão').selectOption('REJEITADA');
+    await linhaFila(p,'SESSAO_GRUPO',sessaoId).getByRole('button',{name:'Detalhes',exact:true}).click();
+    await detalhes.getByText(motivoRejeicao,{exact:true}).waitFor();
+    assert.equal(await detalhes.getByRole('link',{name:'Conferir fatos para resolução vinculada à decisão'}).count(),0);
+    await shot(p,'pendencia-rejeitada');
+  });
   assert.deepEqual(pageErrors,[],'Erros JavaScript não tratados');
   assert(!http.some(r=>r.status>=500),'Não deve haver erro técnico nas chamadas da interface');
 } catch(e){
@@ -666,4 +796,4 @@ try {
   await writeFile(resolve(output,'resultados.json'),JSON.stringify({mode:'Spring Boot real, H2 em memória, sem mocks HTTP',results,http,pageErrors,groupRequests,groupForms},null,2));
 }
 console.log(JSON.stringify({results,http,pageErrors,groupRequests,groupForms},null,2));
-if(!process.exitCode) assert.equal(results.filter(r=>r.status==='PASS').length,17,'Todas as dezessete fases devem passar');
+if(!process.exitCode) assert.equal(results.filter(r=>r.status==='PASS').length,20,'Todas as vinte fases devem passar');
