@@ -42,7 +42,8 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain appSecurityFilterChain(HttpSecurity http) throws Exception {
-        boolean documentacaoLocal = environment.matchesProfiles("dev & !test")
+        boolean documentacaoLocal = environment.matchesProfiles("dev & test")
+                && "127.0.0.1".equals(environment.getProperty("server.address"))
                 && environment.getProperty("sibraps.dev.openapi.enabled", Boolean.class, false);
         http
                 .csrf(csrf -> csrf.disable())

@@ -4,7 +4,7 @@
 # Backend analisado: LizReis/SIBRAPS-PET — branch main
 #
 # COMO EXECUTAR
-# 1) Inicie o backend em backend/buscaativa com o perfil dev.
+# 1) Use o ambiente sintético local com os perfis test,dev descrito em docs/etapa9-relatorio-final.md.
 # 2) Configure SIBRAPS_DEV_FIXTURE_PASSWORD no backend e no ambiente do REST Client; execute os três logins da seção 02.
 # 3) Execute /me para capturar os UUIDs dos perfis.
 # 4) Execute a listagem de unidades e confirme que existe pelo menos uma USF.

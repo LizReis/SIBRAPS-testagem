@@ -18,7 +18,7 @@ const server=createServer(async(req,res)=>{
   try {
     const url=new URL(req.url,'http://127.0.0.1');
     if(url.pathname.startsWith('/api/')){
-      const upstream=request({hostname:'127.0.0.1',port:8080,path:url.pathname+url.search,method:req.method,headers:{...req.headers,host:'127.0.0.1:8080'}},r=>{res.writeHead(r.statusCode,r.headers);r.pipe(res);});
+      const upstream=request({hostname:'127.0.0.1',port:8080,path:url.pathname+url.search,method:req.method,headers:req.headers},r=>{res.writeHead(r.statusCode,r.headers);r.pipe(res);});
       upstream.on('error',()=>{if(!res.headersSent)res.writeHead(502);res.end();});
       req.pipe(upstream);return;
     }

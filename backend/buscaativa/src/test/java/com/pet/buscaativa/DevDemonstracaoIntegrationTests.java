@@ -2,6 +2,9 @@ package com.pet.buscaativa;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Clock;
 import java.time.LocalDate;
@@ -23,6 +26,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.pet.buscaativa.config.DevConfig;
@@ -54,6 +58,7 @@ import com.pet.buscaativa.services.impl.DiagnosticoConsolidadoMigracaoClinicaSer
 import com.pet.buscaativa.services.impl.VerificacaoFatoRevisaoProvenienciaService;
 
 import jakarta.persistence.EntityManager;
+import jakarta.servlet.Filter;
 
 class DevDemonstracaoIntegrationTests {
     private static final LocalDate DATA = LocalDate.of(2026, 11, 24);
@@ -83,9 +88,15 @@ class DevDemonstracaoIntegrationTests {
                         "spring.datasource.url=jdbc:h2:mem:demo-" + UUID.randomUUID(),
                         "JWT_SECRET_BASE64=" + Base64.getEncoder().encodeToString(SecurityTestSupport.randomBytes()),
                         "DEV_DB_PASSWORD=" + UUID.randomUUID(), "logging.level.root=ERROR",
-                        "SIBRAPS_DEV_FIXTURE_PASSWORD=" + senhaDemonstracao)
+                        "SIBRAPS_DEV_FIXTURE_PASSWORD=" + senhaDemonstracao,
+                        "SIBRAPS_DEV_OPENAPI_ENABLED=true")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
+                    var mvc = MockMvcBuilders.webAppContextSetup(context.getSourceApplicationContext())
+                            .addFilters(context.getBean("springSecurityFilterChain", Filter.class)).build();
+                    mvc.perform(get("/v3/api-docs"))
+                            .andExpect(status().isOk()).andExpect(jsonPath("$.openapi").isString());
+                    mvc.perform(get("/swagger-ui/index.html")).andExpect(status().isOk());
                     assertThat(context.getBean(Clock.class).instant()).isEqualTo(relogioDemonstracao().instant());
                     // O runner de contexto não executa CommandLineRunner automaticamente.
                     context.getBean(DevConfig.class).run();
