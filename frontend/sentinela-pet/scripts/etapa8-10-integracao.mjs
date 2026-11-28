@@ -910,6 +910,169 @@ try {
     assert.equal(await p.getByRole('button',{name:'Preparar reversão',exact:true}).count(),0);
     await shot(p,'duplicidade-revertida');
   });
+  const nomeOrigem='Caso Sintético Origem',cpfOrigem='12345678909';
+  let po,vo,revOrigem,fonteOrigem,histOrigem,ticketOrigem,decOrigem,apOrigem,revEvento,novoTicket,antesOrigem,estadoOutros;
+  const motivosOrigem={
+    solicitacao:'Solicitação sintética de conferência da fonte histórica local.',
+    decisao:'Aprovação sintética após comprovação da fonte do atendimento.',
+    aplicar:'Reconhecimento sintético da origem comprovada do registro.',
+    desfazer:'Nova análise sintética para retirar o reconhecimento anterior.',
+    reabrir:'Reabertura sintética para nova decisão administrativa independente.',
+    novaDecisao:'Nova aprovação sintética após conferir novamente a fonte.',
+    novaAplicacao:'Novo reconhecimento sintético após nova decisão registrada.'
+  };
+  const auditoriaO=ticket=>get(adminB,revOrigem+'/'+ticket+'/origem/auditoria');
+  const prontuarioO=()=>get(adminB,api+'/pacientes/'+po+'/prontuario');
+  async function conferirFonteOrigem(){
+    const atual=await get(adminB,agendaPath+'/'+fonteOrigem.id);
+    assert.deepEqual(atual,fonteOrigem,'Reconhecimento não modifica o atendimento fonte');
+    const pr=await prontuarioO();
+    assert.deepEqual(pr.atendimentos,antesOrigem.atendimentos);
+    assert.equal(pr.presencasComprovadas,antesOrigem.presencasComprovadas);
+    assert.equal(pr.faltasComprovadas,antesOrigem.faltasComprovadas,'Não criar frequência adicional');
+    assert.deepEqual(await estadoClinico(),estadoOutros);
+    return pr;
+  }
+  async function abrirFilaOrigem(estado){
+    const p=adminB.page;await p.goto(base+'/pendencias-clinicas');
+    await p.getByRole('heading',{name:'Pendências clínicas',exact:true}).waitFor();
+    await p.getByLabel('Situação da decisão').selectOption(estado);
+    const row=p.getByRole('row').filter({has:p.getByRole('cell',{name:nomeOrigem,exact:true})});
+    await row.getByRole('button',{name:'Detalhes',exact:true}).click();
+    return p;
+  }
+  async function aprovarOrigem(ticket,motivo){
+    const p=await abrirFilaOrigem('PENDENTE');
+    const detalhes=p.getByRole('region',{name:'Detalhes da solicitação'});
+    await detalhes.getByText('Revisão de origem histórica',{exact:true}).waitFor();
+    const enviar=detalhes.getByRole('button',{name:'Aprovar',exact:true});
+    assert(await enviar.isDisabled());
+    await detalhes.getByLabel('Justificativa da decisão (10 a 2.000 caracteres)').fill(motivo);
+    const resp=expectResponse(p,'POST',revOrigem+'/'+ticket+'/decisao',200);
+    await enviar.click();const id=await (await resp).json();
+    await p.getByText('Decisão registrada. Nenhuma correção clínica foi aplicada por esta ação.',{exact:true}).waitFor();
+    return id;
+  }
+  async function abrirTrilhaOrigem(ticket){
+    const p=adminB.page;
+    await p.goto(base+'/pacientes/detalhes/'+po+'/revisoes/'+vo+'/origem/'+ticket);
+    await p.getByRole('heading',{name:'Revisão de origem histórica',exact:true}).waitFor();
+    await p.getByRole('heading',{name:'Trilha da origem — histórico '+histOrigem,exact:true}).waitFor();
+    return p;
+  }
+  async function comandoO(p,caminho,rotulo,motivo){
+    const botao=p.getByRole('button',{name:rotulo,exact:true});
+    assert(await botao.isDisabled(),'Justificativa obrigatória: '+rotulo);
+    await p.getByLabel('Justificativa da operação (10 a 2.000 caracteres)').fill(motivo);
+    const resp=expectResponse(p,'POST',caminho,201);
+    await botao.click();const id=(await (await resp).json()).id;
+    await p.getByText('Operação registrada. Atualize a consulta para verificar o estado e a trilha resultantes.',{exact:true}).waitFor();
+    await p.getByRole('button',{name:'Atualizar consulta',exact:true}).click();
+    return id;
+  }
+  await step('origem histórica exige fonte comprovada e aprovação administrativa sem aplicação',async()=>{
+    const busca=await get(adminB,api+'/pacientes/pesquisa?q='+cpfOrigem);
+    assert.equal(busca.pacientes.length,1);po=busca.pacientes[0].idPublico;vo=busca.pacientes[0].vinculo;
+    revOrigem=api+'/pacientes/'+po+'/vinculos/'+vo+'/revisoes';
+    const candidatos=await get(adminB,revOrigem+'/candidatos-origem');
+    assert.equal(candidatos.candidatos.length,1);
+    const candidato=candidatos.candidatos[0];histOrigem=candidato.historico;
+    assert.equal(candidato.fonte,'AGENDAMENTO');assert.equal(candidato.frequencia,'FALTOU');
+    fonteOrigem=await get(adminB,agendaPath+'/'+candidato.registroFonte);
+    assert.equal(fonteOrigem.frequenciaAssistencial,'FALTOU');
+    antesOrigem=await prontuarioO();estadoOutros=await estadoClinico();
+    assert(!antesOrigem.historico.some(x=>x.id===histOrigem),'Histórico sem origem não deve ser exposto no prontuário');
+    await get(admin,revOrigem+'/candidatos-origem',404);
+    await get(profB,revOrigem+'/candidatos-origem',403);
+    await get(b,revOrigem+'/candidatos-origem',403);
+    const p=adminB.page;await p.goto(base+'/pacientes/detalhes/'+po+'?vinculo='+vo);
+    await p.getByRole('link',{name:'Revisões clínicas',exact:true}).click();
+    await p.getByRole('button',{name:'Consultar evidências',exact:true}).click();
+    await p.getByText('Histórico '+histOrigem+' · '+candidato.ocorridoEm,{exact:false}).waitFor();
+    await p.getByRole('button',{name:'Selecionar histórico',exact:true}).click();
+    const registrar=p.getByRole('button',{name:'Registrar solicitação',exact:true});
+    assert(await registrar.isDisabled());
+    await p.getByLabel('Justificativa (10 a 2.000 caracteres)').fill(motivosOrigem.solicitacao);
+    const resp=expectResponse(p,'POST',revOrigem,200);
+    await registrar.click();ticketOrigem=await (await resp).json();
+    await p.getByText('Solicitação registrada. O atendimento e sua frequência não foram alterados.',{exact:true}).waitFor();
+    const pendente=await auditoriaO(ticketOrigem);
+    assert.equal(pendente.decisao,null);assert.equal(pendente.aplicacao,null);
+    const negada=await adminB.page.request.post(base+revOrigem+'/'+ticketOrigem+'/origem/aplicar?version='+pendente.versaoVinculo,{headers:{Authorization:'Bearer '+adminB.token},data:{justificativa:motivosOrigem.aplicar}});
+    assert.equal(negada.status(),409,'Aplicação antes de aprovação deve ser recusada');
+    decOrigem=await aprovarOrigem(ticketOrigem,motivosOrigem.decisao);
+    const audit=await auditoriaO(ticketOrigem);
+    assert.equal(audit.decisao.evento.id,decOrigem);assert.equal(audit.decisao.resultado,'APROVAR');
+    assert.equal(audit.prova.fonte,'AGENDAMENTO');assert.equal(audit.prova.registroFonte,fonteOrigem.id);
+    assert.equal(audit.prova.versaoFonte,fonteOrigem.version);assert.equal(audit.prova.frequencia,'FALTOU');
+    assert.equal(audit.estadoAplicacao,'SEM_APLICACAO');assert.equal(audit.integridadeEventos,true);
+    assert.deepEqual(await prontuarioO(),antesOrigem);
+    const q=await abrirFilaOrigem('APROVADA');
+    await q.getByRole('link',{name:'Consultar prova, aplicação e auditoria de origem',exact:true}).click();
+    await q.getByRole('heading',{name:'Prova registrada na aprovação',exact:true}).waitFor();
+    await shot(q,'origem-prova-aprovada');
+  });
+  await step('reconhecimento de origem não cria frequência e mantém auditoria isolada',async()=>{
+    const p=adminB.page;
+    const caminho=revOrigem+'/'+ticketOrigem+'/origem/aplicar';
+    const audit=await auditoriaO(ticketOrigem);
+    for(const actor of [profB,b,admin]){
+      const r=await actor.page.request.post(base+caminho+'?version='+audit.versaoVinculo,{headers:{Authorization:'Bearer '+actor.token},data:{justificativa:motivosOrigem.aplicar}});
+      assert.equal(r.status(),actor===admin?404:403);
+    }
+    apOrigem=await comandoO(p,caminho,'Aplicar reconhecimento de origem',motivosOrigem.aplicar);
+    await p.getByText('Aplicação: ORIGEM RECONHECIDA',{exact:true}).waitFor();
+    const depois=await auditoriaO(ticketOrigem);
+    assert.equal(depois.aplicacao.id,apOrigem);assert.equal(depois.aplicacao.justificativa,motivosOrigem.aplicar);
+    assert.deepEqual(depois.prova,audit.prova);assert.deepEqual(depois.decisao,audit.decisao);
+    assert.equal(depois.integridadeEventos,true);
+    const pr=await conferirFonteOrigem();const evento=pr.historico.find(x=>x.id===histOrigem);
+    assert(evento?.origemCorrigida);assert.equal(evento.agendamentoId,fonteOrigem.id);
+    assert.equal(pr.historico.filter(x=>x.id===histOrigem).length,1);
+    await get(admin,revOrigem+'/'+ticketOrigem+'/origem/auditoria',404);
+    await get(profB,revOrigem+'/'+ticketOrigem+'/origem/auditoria',403);
+    const filaO=(await get(adminB,fila+'?estado=APROVADA')).itens.find(x=>x.ticket===ticketOrigem);
+    assert.equal(filaO.aplicacao,'ORIGEM_RECONHECIDA');
+    await shot(p,'origem-reconhecida');
+  });
+  await step('reversão e reabertura preservam trilha e exigem nova decisão',async()=>{
+    const p=adminB.page;
+    const original=await auditoriaO(ticketOrigem);
+    revEvento=await comandoO(p,revOrigem+'/origem/aplicacoes/'+apOrigem+'/desfazer','Desfazer aplicação',motivosOrigem.desfazer);
+    await p.getByText('Aplicação: REVERTIDA',{exact:true}).waitFor();
+    const revertida=await auditoriaO(ticketOrigem);
+    assert.equal(revertida.reversao.id,revEvento);assert.equal(revertida.reversao.justificativa,motivosOrigem.desfazer);
+    assert.deepEqual(revertida.aplicacao,original.aplicacao);assert.deepEqual(revertida.decisao,original.decisao);
+    assert(!(await conferirFonteOrigem()).historico.some(x=>x.id===histOrigem));
+    await shot(p,'origem-revertida');
+    novoTicket=await comandoO(p,revOrigem+'/'+ticketOrigem+'/origem/reabrir','Reabrir revisão',motivosOrigem.reabrir);
+    assert.notEqual(novoTicket,ticketOrigem);
+    const anterior=await auditoriaO(ticketOrigem),nova=await auditoriaO(novoTicket);
+    assert.deepEqual(anterior.reaberturaPosterior,{anterior:ticketOrigem,nova:novoTicket,motivo:'APLICACAO_REVERTIDA'});
+    assert.deepEqual(nova.reaberturaAnterior,anterior.reaberturaPosterior);
+    assert.equal(nova.decisao,null);assert.equal(nova.prova,null);assert.equal(nova.aplicacao,null);
+    assert.equal(nova.solicitacao.justificativa,motivosOrigem.reabrir);
+    assert.deepEqual(anterior.reversao,revertida.reversao);
+    assert.equal(anterior.integridadeEventos,true);assert.equal(nova.integridadeEventos,true);
+    await p.getByRole('link',{name:novoTicket,exact:true}).click();
+    await p.getByText('Aplicação: SEM APLICACAO',{exact:true}).waitFor();
+    assert(await p.getByRole('button',{name:'Aplicar reconhecimento de origem',exact:true}).isDisabled());
+    const negada=await adminB.page.request.post(base+revOrigem+'/'+novoTicket+'/origem/aplicar?version='+nova.versaoVinculo,{headers:{Authorization:'Bearer '+adminB.token},data:{justificativa:motivosOrigem.novaAplicacao}});
+    assert.equal(negada.status(),409);
+    const novaDec=await aprovarOrigem(novoTicket,motivosOrigem.novaDecisao);
+    assert.notEqual(novaDec,decOrigem);
+    const q=await abrirTrilhaOrigem(novoTicket);
+    const novoReconhecimento=await comandoO(q,revOrigem+'/'+novoTicket+'/origem/aplicar','Aplicar reconhecimento de origem',motivosOrigem.novaAplicacao);
+    assert.notEqual(novoReconhecimento,apOrigem);
+    await q.getByText('Aplicação: ORIGEM RECONHECIDA',{exact:true}).waitFor();
+    const final=await auditoriaO(novoTicket);
+    assert.equal(final.decisao.evento.id,novaDec);assert.equal(final.aplicacao.id,novoReconhecimento);
+    assert.equal(final.integridadeEventos,true);
+    assert.equal((await auditoriaO(ticketOrigem)).estadoAplicacao,'REVERTIDA');
+    assert.deepEqual((await auditoriaO(ticketOrigem)).reversao,revertida.reversao);
+    assert((await conferirFonteOrigem()).historico.some(x=>x.id===histOrigem&&x.origemCorrigida));
+    await shot(q,'origem-nova-aplicacao');
+  });
   assert.deepEqual(pageErrors,[],'Erros JavaScript não tratados');
   assert(!http.some(r=>r.status>=500),'Não deve haver erro técnico nas chamadas da interface');
 } catch(e){
@@ -939,4 +1102,4 @@ try {
   await writeFile(resolve(output,'resultados.json'),JSON.stringify({mode:'Spring Boot real, H2 em memória, sem mocks HTTP',results,http,pageErrors,groupRequests,groupForms},null,2));
 }
 console.log(JSON.stringify({results,http,pageErrors,groupRequests,groupForms},null,2));
-if(!process.exitCode) assert.equal(results.filter(r=>r.status==='PASS').length,23,'Todas as vinte e três fases devem passar');
+if(!process.exitCode) assert.equal(results.filter(r=>r.status==='PASS').length,26,'Todas as vinte e seis fases devem passar');

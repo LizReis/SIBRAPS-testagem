@@ -21,7 +21,8 @@ import jakarta.persistence.EntityManager;
 
 /** Servidor local, somente no classpath de teste, para execução do Angular de ensaio. */
 @TestConfiguration
-@Import({EscritoresHttpIsolados.class, br.sibraps.modelovinculo.ResolucoesFrequenciaController.class})
+@Import({EscritoresHttpIsolados.class, br.sibraps.modelovinculo.ResolucoesFrequenciaController.class,
+        br.sibraps.modelovinculo.RevisaoOrigemController.class})
 public class AplicacaoEnsaioLocal {
     public static void main(String[] args) {
         var senha = System.getenv("SIBRAPS_ENSAIO_SENHA");
@@ -128,7 +129,23 @@ public class AplicacaoEnsaioLocal {
             sql.execute(fonte);
             if (!com.pet.buscaativa.migration.EvidenciaResolucaoSchemaGuard.instalada(jdbc))
                 throw new IllegalStateException("Estrutura de resolução ausente no ensaio.");
+            // Reaproveitar migrations originais de origem, apenas no H2 sintético.
+            var origem = new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator();
+            for (String arquivo : new String[]{"V27__prova_aprovacao_origem_historica.sql",
+                    "V28__aplicacao_origem_historica.sql","V29__reversao_origem_historica.sql"})
+                origem.addScript(new org.springframework.core.io.ClassPathResource("agenda-migration/h2/" + arquivo));
+            origem.execute(fonte);
+            try (var conexao = fonte.getConnection()) {
+                var contexto = org.mockito.Mockito.mock(org.flywaydb.core.api.migration.Context.class);
+                org.mockito.Mockito.when(contexto.getConnection()).thenReturn(conexao);
+                new com.pet.buscaativa.migration.V30__reabertura_origem_historica().migrate(contexto);
+            }
+            new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(
+                    new org.springframework.core.io.ClassPathResource("agenda-migration/h2/V31__evidencia_integridade_origem.sql")).execute(fonte);
+            if (!com.pet.buscaativa.migration.EvidenciaOrigemSchemaGuard.instalada(jdbc))
+                throw new IllegalStateException("Estrutura de origem ausente no ensaio.");
             com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.prepararDuplicidadeNavegador(app);
+            com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.prepararOrigemNavegador(app);
         };
     }
 

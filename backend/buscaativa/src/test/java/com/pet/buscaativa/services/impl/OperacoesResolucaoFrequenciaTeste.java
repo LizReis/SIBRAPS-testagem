@@ -35,6 +35,12 @@ public final class OperacoesResolucaoFrequenciaTeste {
     /** Fixture de legado somente no servidor de navegador, antes de disponibilizar a jornada.
      * USF B separa a duplicidade dos cenários normais da USF A. Nenhuma decisão é pré-criada. */
     public static void prepararDuplicidadeNavegador(ApplicationContext app) {
+        prepararLegadoNavegador(app,false);
+    }
+    public static void prepararOrigemNavegador(ApplicationContext app) {
+        prepararLegadoNavegador(app,true);
+    }
+    private static void prepararLegadoNavegador(ApplicationContext app,boolean origemAusente) {
         final String email="profissional.b@test.local";
         var ids=tx(app).execute(t->{
             var em=EntityManagerFactoryUtils.getTransactionalEntityManager(app.getBean(jakarta.persistence.EntityManagerFactory.class));
@@ -44,10 +50,11 @@ public final class OperacoesResolucaoFrequenciaTeste {
             usf.setId(u.getUsfAtuacao().getId());
             return new Object[]{u.getId(),usf};
         });
-        var dados=new com.pet.buscaativa.entities.dto.PacienteDTO(null,"Caso Sintético Duplicidade",
+        var dados=new com.pet.buscaativa.entities.dto.PacienteDTO(null,origemAusente?"Caso Sintético Origem":"Caso Sintético Duplicidade",
                 "Responsável Sintética Legado",LocalDate.of(1978,6,18),null,
                 com.pet.buscaativa.entities.enums.SexoEnum.FEMININO,com.pet.buscaativa.entities.enums.RacaCorEnum.PARDA,
-                "700000000000013","11144477735","81999990005",null,true,
+                origemAusente?"700000000000021":"700000000000013",origemAusente?"12345678909":"11144477735",
+                origemAusente?"81999990006":"81999990005",null,true,
                 com.pet.buscaativa.entities.enums.TipoAcompanhamento.AMBOS,null,null,
                 (com.pet.buscaativa.entities.UsfReferencia)ids[1],com.pet.buscaativa.entities.enums.CapsEnum.CAPS_AD,null,null);
         var cadastro=como(email,()->app.getBean(CadastroAcompanhamentoLocalEnsaioService.class)
@@ -59,8 +66,18 @@ public final class OperacoesResolucaoFrequenciaTeste {
         });
         // Mesma fonte, mesmo instante e mesmo profissional; duplicidade conhecida
         // pela construção da fixture, não inferida automaticamente pelo sistema.
-        falta(app,email,pessoa,(Long)ids[0],LocalDate.of(2026,11,23),9);
-        falta(app,email,pessoa,(Long)ids[0],LocalDate.of(2026,11,23),9);
+        if (origemAusente) {
+            var reserva=falta(app,email,pessoa,(Long)ids[0],LocalDate.of(2026,11,23),10);
+            // Fixture exclusivamente de legado: apagar somente a origem bruta
+            // de um histórico sintético, mantendo a fonte e sua frequência intactas.
+            int linhas=app.getBean(org.springframework.jdbc.core.JdbcTemplate.class).update(
+                    "update tb_historico_paciente set unidade_origem_chave=null where paciente_id=? and agendamento_id=? and tipo='FALTA' and unidade_origem_chave is not null",
+                    pessoa,reserva.id());
+            if(linhas!=1) throw new IllegalStateException("Fixture de origem deve conter um único histórico.");
+        } else {
+            falta(app,email,pessoa,(Long)ids[0],LocalDate.of(2026,11,23),9);
+            falta(app,email,pessoa,(Long)ids[0],LocalDate.of(2026,11,23),9);
+        }
     }
     public record Reserva(Long id,Integer versao) {}
     public static Reserva falta(ApplicationContext app,String email,Long paciente,Long profissional,LocalDate data,int hora) {
