@@ -32,6 +32,36 @@ public final class OperacoesResolucaoFrequenciaTeste {
         SecurityContextHolder.setContext(contexto);
         try {return acao.get();} finally {SecurityContextHolder.setContext(anterior);}
     }
+    /** Fixture de legado somente no servidor de navegador, antes de disponibilizar a jornada.
+     * USF B separa a duplicidade dos cenários normais da USF A. Nenhuma decisão é pré-criada. */
+    public static void prepararDuplicidadeNavegador(ApplicationContext app) {
+        final String email="profissional.b@test.local";
+        var ids=tx(app).execute(t->{
+            var em=EntityManagerFactoryUtils.getTransactionalEntityManager(app.getBean(jakarta.persistence.EntityManagerFactory.class));
+            var u=em.createQuery("select u from Usuario u where u.email=:email",Usuario.class)
+                    .setParameter("email",email).getSingleResult();
+            var usf=new com.pet.buscaativa.entities.UsfReferencia();
+            usf.setId(u.getUsfAtuacao().getId());
+            return new Object[]{u.getId(),usf};
+        });
+        var dados=new com.pet.buscaativa.entities.dto.PacienteDTO(null,"Caso Sintético Duplicidade",
+                "Responsável Sintética Legado",LocalDate.of(1978,6,18),null,
+                com.pet.buscaativa.entities.enums.SexoEnum.FEMININO,com.pet.buscaativa.entities.enums.RacaCorEnum.PARDA,
+                "700000000000013","11144477735","81999990005",null,true,
+                com.pet.buscaativa.entities.enums.TipoAcompanhamento.AMBOS,null,null,
+                (com.pet.buscaativa.entities.UsfReferencia)ids[1],com.pet.buscaativa.entities.enums.CapsEnum.CAPS_AD,null,null);
+        var cadastro=como(email,()->app.getBean(CadastroAcompanhamentoLocalEnsaioService.class)
+                .cadastrarNovoComIdentificadores(dados,false));
+        Long pessoa=tx(app).execute(t->{
+            var em=EntityManagerFactoryUtils.getTransactionalEntityManager(app.getBean(jakarta.persistence.EntityManagerFactory.class));
+            return em.createQuery("select p.id from Paciente p where p.idPublico=:id",Long.class)
+                    .setParameter("id",cadastro.paciente()).getSingleResult();
+        });
+        // Mesma fonte, mesmo instante e mesmo profissional; duplicidade conhecida
+        // pela construção da fixture, não inferida automaticamente pelo sistema.
+        falta(app,email,pessoa,(Long)ids[0],LocalDate.of(2026,11,23),9);
+        falta(app,email,pessoa,(Long)ids[0],LocalDate.of(2026,11,23),9);
+    }
     public record Reserva(Long id,Integer versao) {}
     public static Reserva falta(ApplicationContext app,String email,Long paciente,Long profissional,LocalDate data,int hora) {
         // Apenas fixture: reproduz compromissos antigos coincidentes sem

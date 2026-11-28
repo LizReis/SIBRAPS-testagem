@@ -21,7 +21,7 @@ import jakarta.persistence.EntityManager;
 
 /** Servidor local, somente no classpath de teste, para execução do Angular de ensaio. */
 @TestConfiguration
-@Import(EscritoresHttpIsolados.class)
+@Import({EscritoresHttpIsolados.class, br.sibraps.modelovinculo.ResolucoesFrequenciaController.class})
 public class AplicacaoEnsaioLocal {
     public static void main(String[] args) {
         var senha = System.getenv("SIBRAPS_ENSAIO_SENHA");
@@ -80,7 +80,8 @@ public class AplicacaoEnsaioLocal {
     }
 
     @Bean
-    ApplicationRunner criarAtoresSinteticos(EntityManager em, TransactionTemplate tx, PasswordEncoder encoder) {
+    ApplicationRunner criarAtoresSinteticos(EntityManager em, TransactionTemplate tx, PasswordEncoder encoder,
+            javax.sql.DataSource fonte, org.springframework.context.ApplicationContext app) {
         return args -> {
             String senha = encoder.encode(System.getenv("SIBRAPS_ENSAIO_SENHA"));
             tx.executeWithoutResult(ignorado -> {
@@ -111,6 +112,23 @@ public class AplicacaoEnsaioLocal {
                     }
                 }
             });
+            // Hibernate cria a base JPA; estas quatro estruturas aditivas não são entidades.
+            // Somente neste servidor test-only, depois da verificação do H2 em memória.
+            try (var conexao = fonte.getConnection()) {
+                if (!EscritoresHttpIsolados.BANCO.equals(conexao.getMetaData().getURL()))
+                    throw new IllegalStateException("Estruturas de resolução exigem o H2 isolado.");
+            }
+            var jdbc = new org.springframework.jdbc.core.JdbcTemplate(fonte);
+            jdbc.execute("alter table tb_vinculo_assistencial add constraint if not exists uk_vinculo_revisao_identidade unique (id,paciente_id,unidade_chave)");
+            var sql = new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator();
+            for (String arquivo : new String[]{"V23__resolucao_frequencia_local.sql",
+                    "V24__reversao_resolucao_frequencia.sql","V25__aplicacao_pendencia_resolucao.sql",
+                    "V26__evidencia_resolucao_historica.sql"})
+                sql.addScript(new org.springframework.core.io.ClassPathResource("agenda-migration/h2/" + arquivo));
+            sql.execute(fonte);
+            if (!com.pet.buscaativa.migration.EvidenciaResolucaoSchemaGuard.instalada(jdbc))
+                throw new IllegalStateException("Estrutura de resolução ausente no ensaio.");
+            com.pet.buscaativa.services.impl.OperacoesResolucaoFrequenciaTeste.prepararDuplicidadeNavegador(app);
         };
     }
 
