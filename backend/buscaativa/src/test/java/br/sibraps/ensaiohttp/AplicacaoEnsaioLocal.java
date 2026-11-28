@@ -112,6 +112,24 @@ public class AplicacaoEnsaioLocal {
                         }
                     }
                 }
+                // CAPS AD não possui USF de atuação; referência territorial não cria vínculo.
+                for (var perfil : TipoUsuario.values()) {
+                    var u = new Usuario();
+                    u.setNome(perfil.name() + " sintético CAPS AD");
+                    u.setEmail(perfil.name().toLowerCase(java.util.Locale.ROOT) + ".caps@test.local");
+                    u.setSenha(senha);
+                    u.setTipoUsuario(perfil);
+                    u.setUnidadeAtuacao(UnidadeAtuacao.CAPS_AD);
+                    em.persist(u);
+                    if (perfil == TipoUsuario.PROFISSIONAL) {
+                        var oferta = new com.pet.buscaativa.entities.DisponibilidadeExcecao();
+                        oferta.setUsuario(u);
+                        oferta.setData(java.time.LocalDate.of(2026, 11, 25));
+                        oferta.setTurno(com.pet.buscaativa.entities.enums.TurnoEnum.MANHA);
+                        oferta.setCapacidade(10);
+                        em.persist(oferta);
+                    }
+                }
             });
             // Hibernate cria a base JPA; estas quatro estruturas aditivas não são entidades.
             // Somente neste servidor test-only, depois da verificação do H2 em memória.

@@ -1250,6 +1250,215 @@ try {
     assert.equal(await itemBusca(p,c.nome).count(),0);
     await shot(p,'busca-ativa-apos-recalculo');
   });
+  let capsProf,capsAdmin,capsRecep,localCaps,profCapsId,reservaCaps,grupoCaps,sessaoCaps,estadoUsfs;
+  const temaCaps='Grupo sintético CAPS AD',horaCaps='10:30',horaGrupoCaps='20:30';
+  const motivoCaps='Correção sintética do atendimento realizado no CAPS AD.';
+  const motivoGrupoCaps='Correção sintética da frequência do grupo no CAPS AD.';
+  async function prontuarioCaps(actor=capsProf){return get(actor,api+'/pacientes/'+pessoa+'/prontuario');}
+  async function escreverCaps(actor,metodo,rota,dados){
+    return actor.page.request[metodo](base+rota,{headers:{Authorization:'Bearer '+actor.token},data:dados});
+  }
+  await step('CAPS não recebe vínculo automático e confirma identidade sem duplicar cadastro',async()=>{
+    capsProf=await login('PROFISSIONAL','caps');capsAdmin=await login('ADMINISTRADOR','caps');capsRecep=await login('RECEPCAO','caps');
+    for(const [actor,perfil] of [[capsProf,'PROFISSIONAL'],[capsAdmin,'ADMINISTRADOR'],[capsRecep,'RECEPCAO']]){
+      await actor.page.clock.setSystemTime(new Date('2026-11-26T00:30:00Z'));
+      const me=await get(actor,'/api/usuarios/me');
+      assert.equal(me.tipoUsuario,perfil);assert.equal(me.unidadeAtuacao,'CAPS_AD');
+      const busca=await get(actor,api+'/pacientes/pesquisa?q='+cpf);
+      assert.equal(busca.pacientes.length,0,'CAPS de referência não implica vínculo assistencial');
+      await get(actor,api+'/pacientes/'+pessoa+'/detalhe',404);
+      await get(actor,api+'/pacientes/'+pessoa+'/prontuario',404);
+    }
+    profCapsId=(await get(capsProf,'/api/usuarios/me')).idPublico;
+    const antesA=await detail(a,pessoa),antesB=await detail(b,pessoa);
+    assert.equal(antesA.cadastro.capsReferencia,'CAPS_AD');
+    const p=capsRecep.page;await openForm(p);
+    await p.locator('#cpf-existente').fill(cpf);
+    const consulta=expectResponse(p,'POST',api+'/pacientes/cadastro-unico/conferencia',200);
+    await p.getByRole('button',{name:'Conferir cadastro existente'}).click();
+    const identidade=await (await consulta).json();
+    assert.equal(identidade.nome,nome);assert.equal(identidade.idPublico,undefined);
+    await p.getByRole('heading',{name:'Confira com o paciente antes de continuar'}).waitFor();
+    const confirmar=p.getByRole('button',{name:'Confirmar e vincular à minha unidade'});
+    assert(await confirmar.isDisabled());
+    await p.locator('app-cadastro-existente input[type=checkbox]').check();
+    await p.locator('#modalidade-vinculo').selectOption('AMBOS');
+    const vincular=expectResponse(p,'POST',api+'/pacientes/cadastro-unico/confirmar-vinculo',204);
+    await confirmar.click();await vincular;
+    await p.getByText('Vínculo com a sua unidade confirmado. Não foi criado outro cadastro.',{exact:true}).waitFor();
+    const dc=await detail(capsProf,pessoa);
+    localCaps=dc.paciente.vinculo;
+    assert(localCaps&&localCaps!==localA&&localCaps!==localB);
+    assert.equal(dc.paciente.idPublico,pessoa);assert.equal(dc.paciente.indicadores.tipoAcompanhamento,'AMBOS');
+    assert.equal(dc.paciente.indicadores.countFaltas,0);
+    const pr=await prontuarioCaps();
+    assert.equal(pr.atendimentos.length,0);assert.equal(pr.sessoes.length,0);
+    assert.equal(pr.presencasComprovadas,0);assert.equal(pr.faltasComprovadas,0);
+    assert.deepEqual((await detail(a,pessoa)).paciente.indicadores,antesA.paciente.indicadores);
+    assert.deepEqual((await detail(b,pessoa)).paciente.indicadores,antesB.paciente.indicadores);
+    await shot(p,'caps-vinculo-confirmado');
+    await p.goto(base+'/pacientes/detalhes/'+pessoa+'?vinculo='+localCaps);
+    await p.getByRole('link',{name:'Editar cadastro compartilhado'}).click();
+    await p.waitForURL('**/pacientes/editar/'+pessoa);
+    await p.waitForFunction(n=>document.querySelector('#nome')?.value===n,nome);
+    assert.equal(await p.locator('#tipoAcompanhamento').count(),0);
+    await p.locator('#telefone').fill('81999990009');
+    const salvar=expectResponse(p,'PUT',api+'/pacientes/'+pessoa+'/vinculos/'+localCaps+'/cadastro',200);
+    await p.locator('form').filter({has:p.locator('#nome')}).locator('button[type=submit]').click();await salvar;
+    await p.waitForURL('**/pacientes/detalhes/'+pessoa+'?*');
+    const detalhes=await Promise.all([a,b,capsProf].map(actor=>detail(actor,pessoa)));
+    for(const d of detalhes){
+      assert.equal(d.paciente.idPublico,pessoa);assert.equal(d.cadastro.telefone,'81999990009');
+      assert.equal(d.paciente.versaoCadastro,detalhes[0].paciente.versaoCadastro);
+    }
+    assert.deepEqual(detalhes.map(x=>x.paciente.vinculo),[localA,localB,localCaps]);
+    assert.deepEqual(detalhes.map(x=>x.paciente.indicadores.tipoAcompanhamento),['AMBOS','GRUPO_TERAPEUTICO','AMBOS']);
+    assert.deepEqual(detalhes[0].paciente.indicadores,antesA.paciente.indicadores);
+    assert.deepEqual(detalhes[1].paciente.indicadores,antesB.paciente.indicadores);
+    estadoUsfs=await estadoClinico();
+    await shot(p,'caps-cadastro-compartilhado');
+  });
+  await step('CAPS registra e corrige atendimento local sem modificar falta da USF',async()=>{
+    const p=capsRecep.page;
+    await p.goto(base+'/agenda/novo');
+    await p.getByRole('heading',{name:'Novo Agendamento',exact:true}).waitFor();
+    const pesquisa=expectResponse(p,'GET',api+'/pacientes/pesquisa',200,u=>u.searchParams.get('q')===cpf);
+    await p.locator('#busca').fill(cpf);
+    assert((await (await pesquisa).json()).pacientes.some(x=>x.idPublico===pessoa&&x.vinculo===localCaps));
+    await p.getByRole('option').filter({hasText:nome}).click();
+    await p.locator('#prof').selectOption(profCapsId);
+    const opcoes=await p.locator('#prof option').evaluateAll(els=>els.map(x=>x.value));
+    assert(!opcoes.includes(coordenador),'Profissional USF não deve ser selecionável no CAPS');
+    await escolherHorario(p,amanha,horaCaps);
+    const criar=expectResponse(p,'POST',agendaPath,201);
+    await p.getByRole('button',{name:'Confirmar agendamento',exact:true}).click();
+    const ag=await (await criar).json();
+    assert.equal(ag.frequenciaAssistencial,'NAO_REGISTRADA');
+    assert.equal(ag.usuarioId,profCapsId);
+    await p.waitForURL('**/agenda?*');
+    await abrirAgenda(capsRecep,amanha);
+    const card=cartao(p,horaCaps);
+    await card.getByText('Frequência: Não registrada',{exact:true}).waitFor();
+    const faltaC=expectResponse(p,'PATCH',agendaPath+'/'+ag.id+'/status',200,u=>u.searchParams.get('novoStatus')==='FALTOU');
+    await card.getByRole('button',{name:'Registrar falta de '+nome,exact:true}).click();
+    const faltou=await (await faltaC).json();
+    assert.equal(faltou.frequenciaAssistencial,'FALTOU');
+    assert.equal((await detail(capsProf,pessoa)).paciente.indicadores.countFaltas,1);
+    assert.deepEqual(await estadoClinico(),estadoUsfs);
+    const rota=agendaPath+'/'+ag.id+'/frequencia/correcao';
+    const dados={novaFrequencia:'PRESENTE',version:faltou.version,justificativa:motivoCaps};
+    assert.equal((await escreverCaps(capsRecep,'patch',rota,dados)).status(),403);
+    for(const actor of [a,admin,adminB])assert.equal((await escreverCaps(actor,'patch',rota,dados)).status(),404);
+    const q=await abrirAgenda(capsProf,amanha);
+    await cartao(q,horaCaps).getByRole('button',{name:'Corrigir para Presente'}).click();
+    const confirmar=q.getByRole('button',{name:'Confirmar operação'});
+    assert(await confirmar.isDisabled());await q.getByLabel('Justificativa').fill(motivoCaps);
+    const corr=expectResponse(q,'PATCH',rota,200);
+    await confirmar.click();reservaCaps=await (await corr).json();
+    assert.equal(reservaCaps.frequenciaAssistencial,'PRESENTE');
+    await cartao(q,horaCaps).getByText('Frequência: Presente',{exact:true}).waitFor();
+    const pc=await prontuarioCaps();
+    assert.equal(pc.atendimentos.length,1);assert.equal(pc.atendimentos[0].id,reservaCaps.id);
+    assert.equal(pc.presencasComprovadas,1);assert.equal(pc.faltasComprovadas,0);
+    assert.equal((await detail(capsProf,pessoa)).paciente.indicadores.countFaltas,0);
+    const usf=await get(a,agendaPath+'/'+sucessor.id);
+    assert.equal(usf.frequenciaAssistencial,'FALTOU','Presença CAPS e falta USF podem coexistir');
+    assert.deepEqual(await estadoClinico(),estadoUsfs);
+    const audit=await get(capsAdmin,agendaPath+'/'+reservaCaps.id+'/auditoria-correcoes');
+    assert(audit.content.some(x=>x.justificativa===motivoCaps&&x.frequenciaNova==='PRESENTE'));
+    for(const actor of [a,admin,adminB]){
+      await get(actor,agendaPath+'/'+reservaCaps.id,404);
+      await get(actor,agendaPath+'/'+reservaCaps.id+'/auditoria-correcoes',404);
+    }
+    for(const actor of [capsProf,capsAdmin]){
+      await get(actor,agendaPath+'/'+sucessor.id,404);
+      await get(actor,agendaPath+'/'+primeiro.id+'/auditoria-correcoes',404);
+    }
+    await shot(q,'caps-correcao-individual');
+  });
+  await step('CAPS mantém grupo, auditoria, prontuário e painel separados das USFs',async()=>{
+    const p=capsRecep.page;await p.goto(base+'/grupos-terapeuticos/novo');
+    await p.getByRole('heading',{name:'Agendar grupo terapêutico',exact:true}).waitFor();
+    await p.locator('#tema').fill(temaCaps);await p.locator('#data').fill(amanha);
+    await p.locator('#horario').fill(horaGrupoCaps);await p.locator('#recorrencia').selectOption('UNICA');
+    const busca=expectResponse(p,'GET',api+'/pacientes/pesquisa',200,u=>u.searchParams.get('q')===cpf);
+    await p.locator('#paciente').fill(cpf);
+    assert((await (await busca).json()).pacientes.some(x=>x.idPublico===pessoa&&x.vinculo===localCaps));
+    await p.locator('ul.results button').filter({hasText:nome}).click();
+    await p.getByRole('button',{name:'Adicionar paciente',exact:true}).click();
+    await p.locator('ul.selected').getByText(nome,{exact:true}).waitFor();
+    await p.locator('#coordenador').selectOption(profCapsId);
+    await p.locator('form.ng-valid').waitFor();
+    const resp=expectResponse(p,'POST',gruposPath,200);
+    await p.getByRole('button',{name:'Agendar grupo',exact:true}).click();
+    const criado=await (await resp).json();grupoCaps=criado.grupo;assert.equal(criado.sessoes.length,1);sessaoCaps=criado.sessoes[0];
+    await p.waitForURL('**/grupos-terapeuticos?*');
+    const q=capsProf.page;await q.goto(base+'/grupos-terapeuticos?data='+amanha);
+    await q.getByRole('row').filter({hasText:temaCaps}).getByRole('button',{name:/^(Gerenciar|Ver detalhes)$/}).click();
+    await q.waitForURL(u=>u.pathname==='/grupos-terapeuticos/detalhes/'+grupoCaps+'/sessao/'+sessaoCaps);
+    await q.getByRole('tab',{name:'Ocorrência da sessão',exact:true}).click();
+    const row=q.locator('section.occurrence .person').filter({hasText:nome});
+    await row.getByRole('button',{name:'Faltou',exact:true}).click();
+    const rota=gruposPath+'/sessoes/'+sessaoCaps;
+    const realizar=expectResponse(q,'POST',rota+'/confirmacao-ocorrencia',200);
+    await q.getByRole('button',{name:'Confirmar realização',exact:true}).click();
+    const realizada=await (await realizar).json();
+    assert.equal(realizada.status,'REALIZADA');assert.equal(participante(realizada).statusPresenca,'FALTOU');
+    await row.getByText('Confirmada: Faltou',{exact:true}).waitFor();
+    assert.equal((await detail(capsProf,pessoa)).paciente.indicadores.countFaltas,1);
+    assert.deepEqual(await estadoClinico(),estadoUsfs);
+    const dados={version:realizada.version,frequencias:[{pacienteId:pessoa,statusPresenca:'PRESENTE'}],justificativa:motivoGrupoCaps};
+    assert.equal((await escreverCaps(capsRecep,'patch',rota+'/frequencias',dados)).status(),403);
+    for(const actor of [admin,adminB])assert.equal((await escreverCaps(actor,'patch',rota+'/frequencias',dados)).status(),404);
+    await q.getByRole('button',{name:'Corrigir frequência',exact:true}).click();
+    await row.getByRole('button',{name:'Presente',exact:true}).click();
+    await q.getByRole('button',{name:'Revisar correções'}).click();
+    const dialog=q.getByRole('dialog',{name:'Confirmar correção de frequência?'});
+    const confirmar=dialog.getByRole('button',{name:'Confirmar correção',exact:true});
+    assert(await confirmar.isDisabled());await dialog.getByLabel('Justificativa').fill(motivoGrupoCaps);
+    const corr=expectResponse(q,'PATCH',rota+'/frequencias',200);
+    await confirmar.click();const corrigida=await (await corr).json();
+    assert.equal(participante(corrigida).statusPresenca,'PRESENTE');
+    assert.equal(corrigida.responsavelAtendimentoId,profCapsId);
+    await row.getByText('Confirmada: Presente',{exact:true}).waitFor();
+    const pr=await prontuarioCaps();
+    assert.equal(pr.atendimentos.length,1);assert.equal(pr.sessoes.length,1);
+    assert.equal(pr.presencasComprovadas,2);assert.equal(pr.faltasComprovadas,0);
+    assert.equal((await detail(capsProf,pessoa)).paciente.indicadores.countFaltas,0);
+    assert.deepEqual(await estadoClinico(),estadoUsfs);
+    const audit=await get(capsAdmin,rota+'/auditoria-correcoes');
+    assert(audit.content.some(x=>x.justificativa===motivoGrupoCaps&&x.frequenciaNova==='PRESENTE'));
+    for(const actor of [a,admin,adminB]){
+      await get(actor,gruposPath+'/'+grupoCaps,404);
+      await get(actor,rota+'/auditoria-correcoes',404);
+    }
+    for(const actor of [capsProf,capsAdmin]){
+      await get(actor,gruposPath+'/'+grupoId,404);
+      await get(actor,gruposPath+'/sessoes/'+sessaoId+'/auditoria-correcoes',404);
+    }
+    const sessA=await sessaoAtual(a);
+    const externa=await escreverCaps(capsAdmin,'patch',gruposPath+'/sessoes/'+sessaoId+'/frequencias',
+      {version:sessA.version,frequencias:[{pacienteId:pessoa,statusPresenca:'FALTOU'}],justificativa:motivoGrupoCaps});
+    assert.equal(externa.status(),404);
+    const painelC=await get(capsAdmin,api+'/painel/resumo');
+    assert.equal(painelC.totalPacientesAtivos,1);
+    assert.equal(painelC.atividade.reservasIndividuaisComprovadas,1);
+    assert.equal(painelC.atividade.sessoesDistintasComprovadas,1);
+    assert.equal(painelC.atividade.presencasComprovadas,2);assert.equal(painelC.atividade.faltasComprovadas,0);
+    assert.equal((await buscarAlertas(capsProf)).alertas.length,0);
+    const pendenciasCaps=await get(capsAdmin,fila);
+    assert.equal(pendenciasCaps.total,0,'Não importar pendências de USFs');
+    await get(capsRecep,rota+'/auditoria-correcoes',403);
+    await get(capsAdmin,revOrigem+'/'+ticketOrigem+'/origem/auditoria',404);
+    await get(capsAdmin,rotaDup,404);
+    const auditC=await get(capsAdmin,trilhaBusca+'?tamanho=100');
+    assert(!auditC.content.some(x=>x.tipoEvento==='ENCAMINHAMENTO_ALERTA'||x.tipoEvento==='VISUALIZACAO_ALERTA'),'Não importar eventos RNF17 das USFs');
+    assert.deepEqual(await estadoClinico(),estadoUsfs);
+    await shot(q,'caps-grupo-corrigido');
+    await q.goto(base+'/painel');
+    await secBusca(q).getByText('Nenhum alerta confirmado.',{exact:true}).waitFor();
+    await shot(q,'caps-painel-local');
+  });
   assert.deepEqual(pageErrors,[],'Erros JavaScript não tratados');
   assert(!http.some(r=>r.status>=500),'Não deve haver erro técnico nas chamadas da interface');
 } catch(e){
@@ -1279,4 +1488,4 @@ try {
   await writeFile(resolve(output,'resultados.json'),JSON.stringify({mode:'Spring Boot real, H2 em memória, sem mocks HTTP',results,http,pageErrors,groupRequests,groupForms},null,2));
 }
 console.log(JSON.stringify({results,http,pageErrors,groupRequests,groupForms},null,2));
-if(!process.exitCode) assert.equal(results.filter(r=>r.status==='PASS').length,29,'Todas as vinte e nove fases devem passar');
+if(!process.exitCode) assert.equal(results.filter(r=>r.status==='PASS').length,32,'Todas as trinta e duas fases devem passar');
