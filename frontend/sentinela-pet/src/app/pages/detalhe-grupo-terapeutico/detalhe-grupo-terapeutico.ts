@@ -230,7 +230,7 @@ export class DetalheGrupoTerapeutico implements OnInit {
     const termo = this.termoPaciente.trim(); if (!termo) { this.pacientesEncontrados = []; return; }
     this.buscandoPacientes = true; this.erro = '';
     this.pacientes.pesquisar({ busca: termo, pagina: 0, tamanho: 10 }).subscribe({
-      next: r => { const inscritos = new Set(this.sessao?.participantes.map(p => p.pacienteId)); this.pacientesEncontrados = r.pacientes.filter(p => p.statusPaciente === 'ATIVO' && !!p.idPublico && (this.modoInscricao !== 'SESSAO' || !inscritos.has(p.idPublico))); this.buscandoPacientes = false; },
+      next: r => { const inscritos = new Set(this.sessao?.participantes.map(p => p.pacienteId)); this.pacientesEncontrados = r.pacientes.filter(p => p.statusPaciente === 'ATIVO' && !!p.idPublico && (this.modoInscricao !== 'SESSAO' || !inscritos.has(p.idPublico))); this.buscandoPacientes = false; this.cdr.markForCheck(); },
       error: e => { this.buscandoPacientes = false; this.tratarErro(e); },
     });
   }

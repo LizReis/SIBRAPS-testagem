@@ -70,7 +70,7 @@ public class AplicacaoEnsaioLocal {
         @Override public java.time.Instant instant() {
             try {
                 String instante = java.nio.file.Files.readString(arquivo).trim();
-                if (!java.util.Set.of("2026-11-24T22:00:00Z", "2026-11-25T22:00:00Z", "2026-11-25T23:00:00Z").contains(instante))
+                if (!java.util.Set.of("2026-11-24T22:00:00Z", "2026-11-25T22:00:00Z", "2026-11-25T23:00:00Z", "2026-11-26T00:30:00Z").contains(instante))
                     throw new IllegalStateException("Instante fora das fases previstas do ensaio.");
                 return java.time.Instant.parse(instante);
             } catch (java.io.IOException e) {
