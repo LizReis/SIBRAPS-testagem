@@ -1,0 +1,97 @@
+name: SIBRAPS - Etapa 9 auditoria diagnostica de dependencias
+on:
+  push:
+    branches: [correcao-cadastro-unico-isolamento]
+    paths:
+      - '.github/workflows/etapa9-auditoria-dependencias.yml'
+      - 'frontend/sentinela-pet/package.json'
+      - 'frontend/sentinela-pet/package-lock.json'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  npm-audit:
+    name: Inventario npm completo e sem dependencias de desenvolvimento
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend/sentinela-pet
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22'
+      - run: npm install --global npm@11.6.2 --no-audit --no-fund
+      - name: Consultar auditoria a partir do lockfile sem instalar a aplicacao
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p auditoria-etapa9
+          sha256sum package.json package-lock.json > auditoria-etapa9/lockfiles.sha256
+          node --version > auditoria-etapa9/versoes.txt
+          npm --version >> auditoria-etapa9/versoes.txt
+          git rev-parse HEAD >> auditoria-etapa9/versoes.txt
+          date -u +%FT%TZ >> auditoria-etapa9/versoes.txt
+          for escopo in completo producao; do
+            status=0
+            argumentos=(--json --package-lock-only --audit-level=low)
+            if [[ "$escopo" == producao ]]; then
+              argumentos+=(--omit=dev)
+            else
+              argumentos+=(--include=dev --include=optional --include=peer)
+            fi
+            npm audit "${argumentos[@]}" > "auditoria-etapa9/$escopo.json" 2> "auditoria-etapa9/$escopo.stderr.txt" || status=$?
+            printf '%s\n' "$status" > "auditoria-etapa9/$escopo.exit.txt"
+          done
+          sha256sum --check auditoria-etapa9/lockfiles.sha256
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const dir='auditoria-etapa9/';
+          const reports={};
+          const invalid=[];
+          for(const scope of ['completo','producao']){
+            try{
+              const report=JSON.parse(fs.readFileSync(dir+scope+'.json','utf8'));
+              const exit=Number(fs.readFileSync(dir+scope+'.exit.txt','utf8').trim());
+              assert.equal(report.error,undefined,'Registro npm devolveu erro');
+              assert.equal(report.auditReportVersion,2);
+              const counts=report.metadata?.vulnerabilities;
+              assert(counts && Number.isInteger(counts.total) && counts.total>=0,'Contagem ausente');
+              assert(report.vulnerabilities && typeof report.vulnerabilities==='object','Inventário ausente');
+              assert.equal(exit,counts.total>0?1:0,'Código de saída inesperado');
+              reports[scope]={counts,packages:Object.entries(report.vulnerabilities).map(([name,v])=>({
+                name,severity:v.severity,direct:v.isDirect,range:v.range,
+                via:v.via,fixAvailable:v.fixAvailable,nodes:v.nodes,effects:v.effects
+              }))};
+              console.log(scope+': '+JSON.stringify(counts));
+            }catch(e){
+              invalid.push(scope+': '+e.message);
+            }
+          }
+          const complete=reports.completo,prod=reports.producao;
+          if(complete&&prod){
+            const prodNames=new Set(prod.packages.map(p=>p.name));
+            const summary={completo:complete,producao:prod,
+              apenasInventarioCompleto:complete.packages.filter(p=>!prodNames.has(p.name)).map(p=>p.name),
+              nota:'Escopo npm --omit=dev nao comprova inclusao no bundle ou explorabilidade. Nenhuma correcao automatica.'};
+            fs.writeFileSync(dir+'inventario.json',JSON.stringify(summary,null,2));
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+              '## Auditoria diagnóstica npm (não é aprovação de segurança)\n\n'+
+              '| Escopo | Total | Críticas | Altas | Moderadas | Baixas |\n|---|---:|---:|---:|---:|---:|\n'+
+              Object.entries(reports).map(([k,r])=>'| '+k+' | '+[r.counts.total,r.counts.critical,r.counts.high,r.counts.moderate,r.counts.low].join(' | ')+' |').join('\n')+
+              '\n\nA aprovação do job significa apenas coleta válida. Vulnerabilidades aguardam triagem.\n');
+          }
+          if(invalid.length) throw new Error(invalid.join('; '));
+          JS
+      - name: Evidencias da auditoria npm
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: etapa9-auditoria-npm
+          path: frontend/sentinela-pet/auditoria-etapa9/
+          retention-days: 30
+          if-no-files-found: error
