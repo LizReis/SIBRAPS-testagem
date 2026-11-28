@@ -26,8 +26,15 @@ describe('ReconciliacaoPaciente',()=>{
   });
   function iniciar(){const f=TestBed.createComponent(ReconciliacaoPaciente);f.detectChanges();return f.componentInstance;}
   it('nomeia os seletores de fatos de forma inequívoca e mantém opções protegidas indisponíveis',async()=>{
-    const f=TestBed.createComponent(ReconciliacaoPaciente);f.detectChanges();
-    f.componentInstance.selecionar(g);f.detectChanges();await f.whenStable();
+    const f=TestBed.createComponent(ReconciliacaoPaciente);
+    await f.whenStable();
+    const conferir=Array.from(f.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>)
+      .find(b=>b.textContent?.trim()==='Conferir fatos');
+    expect(conferir).toBeDefined();
+    expect(conferir!.disabled).toBe(false);
+    // O evento real notifica a detecção zoneless, como no navegador.
+    conferir!.click();
+    await f.whenStable();
     const valido=f.nativeElement.querySelector('select[aria-label="Fato válido"]') as HTMLSelectElement;
     const desconsiderado=f.nativeElement.querySelector('select[aria-label="Fato a desconsiderar"]') as HTMLSelectElement;
     expect(valido).not.toBeNull();expect(desconsiderado).not.toBeNull();
