@@ -32,12 +32,15 @@ const server=createServer(async(req,res)=>{
 server.listen(0,'127.0.0.1');await once(server,'listening');
 const base='http://127.0.0.1:'+server.address().port;
 const cpf='52998224725',cns='700000000000005',nome='Paciente Sintético Integração';
-const results=[],http=[],pageErrors=[],contexts=[];
+const results=[],http=[],pageErrors=[],contexts=[],groupRequests=[],groupForms=[];
 let browser,phase='inicialização';
 function expectResponse(page,method,path,status,filter=()=>true){
-  return page.waitForResponse(r=>new URL(r.url()).pathname===path&&r.request().method()===method&&filter(new URL(r.url()))).then(r=>{
+  const pending=page.waitForResponse(r=>new URL(r.url()).pathname===path&&r.request().method()===method&&filter(new URL(r.url()))).then(r=>{
     assert.equal(r.status(),status,method+' '+path+' deve retornar '+status);return r;
-  });
+  }).catch(e=>{throw new Error('Falha aguardando '+method+' '+path+': '+e.message,{cause:e});});
+  // Preserve the rejection for await, but never abort Node before the scenario's catch.
+  void pending.catch(()=>{});
+  return pending;
 }
 async function step(name,fn){
   phase=name;await fn();results.push({name,status:'PASS'});console.log('PASS '+name);
@@ -50,6 +53,7 @@ async function login(perfil,unidade){
   // Keep the clinical date deterministic without freezing Date.now(): RxJS debounceTime uses it.
   await page.clock.install({time:new Date('2026-11-24T22:00:00Z')});
   page.on('pageerror',e=>pageErrors.push(e.message));
+  page.on('request',r=>{const u=new URL(r.url());if(u.pathname.startsWith(api+'/grupos'))groupRequests.push({perfil,unidade,method:r.method(),path:u.pathname});});
   page.on('response',r=>{const u=new URL(r.url());if(u.pathname.startsWith('/api/'))http.push({perfil,unidade,method:r.request().method(),path:u.pathname,status:r.status()});});
   await page.goto(base+'/login');
   await page.locator('#email').fill(perfil.toLowerCase()+'.'+unidade+'@test.local');
@@ -378,7 +382,6 @@ try {
     await p.goto(base+'/grupos-terapeuticos/novo');
     await p.getByRole('heading',{name:'Agendar grupo terapêutico',exact:true}).waitFor();
     await p.locator('#tema').fill(tema);
-    await p.locator('#coordenador').selectOption(coordenador);
     await p.locator('#data').fill(dataGrupo);
     await p.locator('#horario').fill(horarioGrupo);
     await p.locator('#recorrencia').selectOption('UNICA');
@@ -389,9 +392,25 @@ try {
     await p.locator('ul.results button').filter({hasText:nome}).click();
     await p.getByRole('button',{name:'Adicionar paciente',exact:true}).click();
     await p.locator('ul.selected').getByText(nome,{exact:true}).waitFor();
+    // Select the dynamic option after the other fields and async search have settled.
+    await p.locator('#coordenador').selectOption(coordenador);
+    const form=p.locator('form');
+    await p.locator('.summary dd').filter({hasText:'Não selecionado'}).waitFor({state:'hidden'});
+    for(const [id,valor] of Object.entries({tema,coordenador,data:dataGrupo,horario:horarioGrupo,recorrencia:'UNICA'})){
+      assert.equal(await p.locator('#'+id).inputValue(),valor,'Valor do campo '+id+' antes do envio');
+    }
+    assert.equal(await p.locator('#data').getAttribute('min'),dataGrupo,'Data mínima do formulário deve acompanhar o relógio clínico');
+    await form.and(p.locator('.ng-valid')).waitFor({timeout:5000});
+    const enviar=form.getByRole('button',{name:'Agendar grupo',exact:true});
+    await enviar.scrollIntoViewIfNeeded();
+    await enviar.click({trial:true,timeout:5000});
+    await shot(p,'grupo-antes-envio');
     const resp=expectResponse(p,'POST',gruposPath,200);
-    await p.getByRole('button',{name:'Agendar grupo',exact:true}).click();
-    const criado=await (await resp).json();grupoId=criado.grupo;
+    const erroFormulario=p.locator('.submit-error').waitFor({state:'visible',timeout:15000}).then(async()=>{
+      throw new Error('Formulário recusou o envio: '+await p.locator('.submit-error').innerText());
+    });
+    const [resposta]=await Promise.all([Promise.race([resp,erroFormulario]),enviar.click({timeout:8000})]);
+    const criado=await resposta.json();grupoId=criado.grupo;
     assert.equal(criado.sessoes.length,1);sessaoId=criado.sessoes[0];
     await p.waitForURL('**/grupos-terapeuticos?*');
     const sessao=await sessaoAtual(a);
@@ -468,12 +487,26 @@ try {
   assert.deepEqual(pageErrors,[],'Erros JavaScript não tratados');
   assert(!http.some(r=>r.status>=500),'Não deve haver erro técnico nas chamadas da interface');
 } catch(e){
-  results.push({name:phase,status:'FAIL',message:String(e),stack:e instanceof Error?e.stack:undefined});
-  for(const [i,c] of contexts.entries())for(const p of c.pages())await shot(p,'falha-'+i).catch(()=>{});
+  results.push({name:phase,status:'FAIL',message:String(e),stack:e instanceof Error?e.stack:undefined,cause:e?.cause?.stack});
+  for(const [i,c] of contexts.entries())for(const p of c.pages()){
+    if(new URL(p.url()).pathname==='/grupos-terapeuticos/novo'){
+      const estado=await p.evaluate(()=>({
+        form:document.querySelector('form')?.className,
+        campos:['tema','coordenador','data','horario','recorrencia','dataFimRecorrencia'].map(id=>{
+          const el=document.getElementById(id);
+          return {id,value:el?.value,classes:el?.className,min:el?.getAttribute('min'),validation:el?.validationMessage};
+        }),
+        erros:[...document.querySelectorAll('form small, .submit-error')].map(el=>el.textContent.trim()),
+        dataNavegador:new Date().toISOString()
+      })).catch(()=>null);
+      groupForms.push(estado);
+    }
+    await shot(p,'falha-'+i).catch(()=>{});
+  }
   process.exitCode=1;
 } finally {
   await browser?.close();server.close();
-  await writeFile(resolve(output,'resultados.json'),JSON.stringify({mode:'Spring Boot real, H2 em memória, sem mocks HTTP',results,http,pageErrors},null,2));
+  await writeFile(resolve(output,'resultados.json'),JSON.stringify({mode:'Spring Boot real, H2 em memória, sem mocks HTTP',results,http,pageErrors,groupRequests,groupForms},null,2));
 }
-console.log(JSON.stringify({results,http,pageErrors},null,2));
+console.log(JSON.stringify({results,http,pageErrors,groupRequests,groupForms},null,2));
 assert.equal(results.filter(r=>r.status==='PASS').length,14,'Todas as quatorze fases devem passar');
