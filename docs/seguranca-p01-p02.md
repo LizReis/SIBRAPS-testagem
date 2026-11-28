@@ -32,61 +32,17 @@ P06–P16 e Q01–Q04 permanecem fora desses escopos.
   produção fictício, conta administrativa ou banco de produção foi criado por
   esta correção. Não forneça bancos reais para executar testes.
 
-## Desenvolvimento local — Bash
+## Desenvolvimento local
 
-Em uma nova sessão local, a partir da raiz do repositório:
+O procedimento atual usa os perfis `test,dev,diagnostico-migracao` com o
+classpath de testes, dados sintéticos e bind em loopback. A aplicação
+operacional exige esquema já migrado e credenciais externas. O roteiro atual
+descreve as variáveis de ambiente, o login de demonstração e o proxy Angular.
+[Configuração local da Etapa 9](etapa9-relatorio-final.md#12-configuração-para-ensaio-local-seguro)
 
-```bash
-# Não execute com set -x: os valores não devem aparecer no terminal/logs.
-export JWT_SECRET_BASE64="$(openssl rand -base64 32)"
-export DEV_DB_PASSWORD="$(openssl rand -base64 32)"
-export SPRING_PROFILES_ACTIVE=dev
-cd backend/buscaativa
-bash mvnw verify
-java -jar target/buscaativa-0.0.1-SNAPSHOT.jar
-```
-
-Os comandos geram valores apenas nesta sessão; não os exibem. Se reiniciar o
-processo mantendo a sessão, mantenha as mesmas variáveis. Gerar outra chave
-invalida os tokens existentes. Em implantação, provisione e retenha a chave em
-um gerenciador de segredos: não execute uma geração nova a cada reinício.
-
-Para iniciar somente o frontend, em outro terminal:
-
-```bash
-cd frontend/sentinela-pet
-npm ci
-npm start
-```
-
-O contrato de login permanece `POST /api/auth/login`, corpo com `email` e `senha`,
-resposta com `token` e `tipo: Bearer`. O proxy Angular padrão aponta para a API
-na porta 8080. Não há alteração nos guards ou armazenamento do frontend nesta etapa.
-
-## Desenvolvimento local — PowerShell
-
-Da raiz do repositório:
-
-```powershell
-$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-$bytes = New-Object byte[] 32
-try {
-    $rng.GetBytes($bytes)
-    $env:JWT_SECRET_BASE64 = [Convert]::ToBase64String($bytes)
-    $rng.GetBytes($bytes)
-    $env:DEV_DB_PASSWORD = [Convert]::ToBase64String($bytes)
-} finally {
-    [Array]::Clear($bytes, 0, $bytes.Length)
-    $rng.Dispose()
-}
-$env:SPRING_PROFILES_ACTIVE = 'dev'
-Set-Location backend/buscaativa
-.\mvnw.cmd verify
-java -jar target/buscaativa-0.0.1-SNAPSHOT.jar
-```
-
-Os exemplos não contêm valores fixos utilizáveis. Evite transcrição, depuração
-ou comandos que imprimam variáveis/ambiente. Restrinja o acesso ao processo.
+Armazene a chave do ambiente definitivo em um gerenciador de segredos e
+preserve-a nos reinícios normais. Uma rotação invalida as sessões anteriores.
+Evite transcrição, depuração ou comandos que imprimam os valores.
 
 ## Testes
 
@@ -178,9 +134,9 @@ não altera regras de USF/CAPS nem o esquema das entidades.
    ausência de `DevConfig` não cria nem preserva contas demonstrativas como
    mecanismo de implantação.
 
-Esta mudança não configura infraestrutura de produção, TLS público, CORS,
-revogação individual de JWT, atualizações gerais de dependências ou as demais
-correções da auditoria. Valide esses requisitos separadamente antes de uso real.
+O relatório da Etapa 9 detalha a política CORS atual e as decisões ainda
+necessárias sobre infraestrutura, TLS e revogação individual.
+[Segurança operacional da Etapa 9](etapa9-relatorio-final.md#6-segurança-operacional)
 
 ## Logging temporário
 
@@ -196,8 +152,9 @@ falhas de inicialização, erros nem resultados dos testes.
 `.github/workflows/ci.yml` executa backend e build Angular em PRs para `main`,
 pushes na `main` e manualmente. Não exige Secrets. O checkout raso é suficiente.
 O backend usa Java21 e `bash ./mvnw verify`; o frontend usa Node22 e npm11.6.2.
-A suíte Angular possui falhas preexistentes Q01–Q04 e está em um job diagnóstico
-manual (`run_frontend_tests`), desmarcado por padrão. Se selecionado, suas falhas
-ficam visíveis; não há `continue-on-error`. O build Angular continua obrigatório.
-Não há deploy ou merge automático. Configure na proteção da branch os checks
-Backend e Frontend build como obrigatórios se desejar bloquear integração na UI.
+O workflow principal oferece a suíte Angular no job manual
+`run_frontend_tests`. O workflow da branch de trabalho executa a suíte completa,
+o contrato experimental e os cenários de navegador. O relatório da Etapa 9
+registra o resultado dessas execuções. As regras de aprovação e os checks
+obrigatórios dependem da proteção de branch no GitHub.
+[Regressão da Etapa 9](etapa9-relatorio-final.md#8-regressão-e-resultados)
