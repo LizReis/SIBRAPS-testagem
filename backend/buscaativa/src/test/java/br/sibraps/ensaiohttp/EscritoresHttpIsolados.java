@@ -5,6 +5,7 @@ import java.util.Set;
 import javax.sql.DataSource;
 
 import br.sibraps.modelovinculo.ConsultasVinculoController;
+import br.sibraps.modelovinculo.AuditoriaCorrecaoLocalController;
 import br.sibraps.modelovinculo.EscritoresVinculoController.Cadastro;
 import br.sibraps.modelovinculo.EscritoresVinculoController.Individual;
 import br.sibraps.modelovinculo.EscritoresVinculoController.Coletivo;
@@ -30,7 +31,8 @@ import jakarta.servlet.http.HttpServletResponse;
 /** Montagem explícita, fora da busca de componentes e do artefato da aplicação. */
 @TestConfiguration
 @Profile("test & ensaio-estado-local & escritores-http-local & !dev")
-@Import({Cadastro.class, Individual.class, Coletivo.class, ConsultasVinculoController.class})
+@Import({Cadastro.class, Individual.class, Coletivo.class, ConsultasVinculoController.class,
+        AuditoriaCorrecaoLocalController.class})
 public class EscritoresHttpIsolados {
     public static final String RAIZ = "/api/ensaio-escritores";
     public static final String BANCO = "jdbc:h2:mem:escritores-http-6b1";
@@ -74,6 +76,9 @@ public class EscritoresHttpIsolados {
                             var tipo = metodo.getBeanType();
                             if (Cadastro.class.isAssignableFrom(tipo) || Individual.class.isAssignableFrom(tipo)
                                     || Coletivo.class.isAssignableFrom(tipo) || ConsultasVinculoController.class.isAssignableFrom(tipo)
+                                    || (AuditoriaCorrecaoLocalController.class.isAssignableFrom(tipo)
+                                        && "GET".equals(req.getMethod())
+                                        && Set.of("individual", "coletiva").contains(metodo.getMethod().getName()))
                                     || AuthController.class.isAssignableFrom(tipo) && metodo.getMethod().getName().equals("login")
                                     || com.pet.buscaativa.controllers.UsuarioController.class.isAssignableFrom(tipo)
                                     && Set.of("me", "listarProfissionaisParaSelecao", "listarUsuariosElegiveisParaReferencia")

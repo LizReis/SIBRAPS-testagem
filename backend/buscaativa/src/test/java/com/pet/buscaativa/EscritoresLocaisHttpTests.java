@@ -223,6 +223,17 @@ class EscritoresLocaisHttpTests extends SecurityTestSupport {
         }
         assertThat(pacientes.findByIdPublico(pessoa).orElseThrow().getTelefone()).isEqualTo("81999990003");
         enviar(patch(rota + "/frequencia/correcao"), clinico, correcao).andExpect(status().isUnprocessableContent());
+        String auditoriaIndividual = rota + "/auditoria-correcoes";
+        enviar(get(auditoriaIndividual), clinico, null).andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].justificativa").value(JUSTIFICATIVA))
+                .andExpect(jsonPath("$.content[0].frequenciaAnterior").value("FALTOU"))
+                .andExpect(jsonPath("$.content[0].frequenciaNova").value("PRESENTE"));
+        enviar(get(auditoriaIndividual), login(administracao), null).andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1));
+        enviar(get(auditoriaIndividual), operador, null).andExpect(status().isForbidden());
+        enviar(get(auditoriaIndividual), login(outroProfissional), null).andExpect(status().isForbidden());
+        enviar(get(auditoriaIndividual), login(profissionalB), null).andExpect(status().isNotFound());
 
         var outra = marcar(pessoa, operador, "10:00");
         String outraRota = RAIZ + "/agendamentos/" + outra.path("id").asLong();
@@ -301,6 +312,18 @@ class EscritoresLocaisHttpTests extends SecurityTestSupport {
                 "frequencias", List.of(Map.of("pacienteId", pessoa, "statusPresenca", "FALTOU")),
                 "justificativa", JUSTIFICATIVA))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.participantes[0].statusPresenca").value("FALTOU"));
+        String auditoriaColetiva = sessao + "/auditoria-correcoes";
+        enviar(get(auditoriaColetiva), admin, null).andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].justificativa").value(JUSTIFICATIVA))
+                .andExpect(jsonPath("$.content[0].tipoCorrecao").value("GRUPO"))
+                .andExpect(jsonPath("$.content[0].frequenciaAnterior").value("PRESENTE"))
+                .andExpect(jsonPath("$.content[0].frequenciaNova").value("FALTOU"));
+        enviar(get(auditoriaColetiva), clinico, null).andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1));
+        enviar(get(auditoriaColetiva), login(recepcao), null).andExpect(status().isForbidden());
+        enviar(get(auditoriaColetiva), login(outroProfissional), null).andExpect(status().isForbidden());
+        enviar(get(auditoriaColetiva), externo, null).andExpect(status().isNotFound());
 
         String local = caminho(vinculo, pessoa);
         String versao = vinculos.findByIdPublico(vinculo).orElseThrow().getVersion().toString();
